@@ -1,9 +1,12 @@
 const state = {
   page: "welcome",
   lastScenarioPage: "scenario-edit",
+  campaignActionMode: null,
   monsters: [],
   monsterSearchQuery: "",
+  scenarioSearchQuery: "",
   monsterEditorReadOnly: true,
+  draftLibraryEntryImageData: "",
   selectedMonsterId: null,
   draftMonsterImageData: "",
   runPreviewEnemyId: null,
@@ -27,7 +30,9 @@ const els = {
   pageMonsters: document.getElementById("pageMonsters"),
   pageAnalytics: document.getElementById("pageAnalytics"),
   pageCampaign: document.getElementById("pageCampaign"),
+  pageCampaignCompleted: document.getElementById("pageCampaignCompleted"),
   pageScenarioEdit: document.getElementById("pageScenarioEdit"),
+  pageScenarioCompletedEdit: document.getElementById("pageScenarioCompletedEdit"),
   pageScenarioRun: document.getElementById("pageScenarioRun"),
   mainHomeBtn: document.getElementById("mainHomeBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
@@ -58,9 +63,14 @@ const els = {
   libraryEntryName: document.getElementById("libraryEntryName"),
   libraryEntryLegendary: document.getElementById("libraryEntryLegendary"),
   libraryEntryLegendaryWrap: document.getElementById("libraryEntryLegendaryWrap"),
+  libraryEntryImageFile: document.getElementById("libraryEntryImageFile"),
+  libraryEntryImagePreview: document.getElementById("libraryEntryImagePreview"),
   createCampaignModalForm: document.getElementById("createCampaignModalForm"),
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
+  completedScenarioPageTitle: document.getElementById("completedScenarioPageTitle"),
+  viewCompletedScenariosBtn: document.getElementById("viewCompletedScenariosBtn"),
+  backToCampaignBtn: document.getElementById("backToCampaignBtn"),
   deleteCampaignBtn: document.getElementById("deleteCampaignBtn"),
   characterList: document.getElementById("characterList"),
   createCharacterForm: document.getElementById("createCharacterForm"),
@@ -68,11 +78,18 @@ const els = {
   charName: document.getElementById("charName"),
   charClass: document.getElementById("charClass"),
   scenarioList: document.getElementById("scenarioList"),
+  completedScenarioList: document.getElementById("completedScenarioList"),
+  scenarioSearchInput: document.getElementById("scenarioSearchInput"),
   createScenarioForm: document.getElementById("createScenarioForm"),
   addScenarioBtn: document.getElementById("addScenarioBtn"),
   scenarioName: document.getElementById("scenarioName"),
   scenarioNotes: document.getElementById("scenarioNotes"),
+  completeScenarioFromEditBtn: document.getElementById("completeScenarioFromEditBtn"),
   goRunFromEditBtn: document.getElementById("goRunFromEditBtn"),
+  reopenScenarioBtn: document.getElementById("reopenScenarioBtn"),
+  completedEditScenarioName: document.getElementById("completedEditScenarioName"),
+  completedEditScenarioNotes: document.getElementById("completedEditScenarioNotes"),
+  completedCombatantList: document.getElementById("completedCombatantList"),
   editScenarioForm: document.getElementById("editScenarioForm"),
   editScenarioName: document.getElementById("editScenarioName"),
   editScenarioNotes: document.getElementById("editScenarioNotes"),
@@ -89,6 +106,7 @@ const els = {
   runScenarioNotes: document.getElementById("runScenarioNotes"),
   runRound: document.getElementById("runRound"),
   runCurrentTurn: document.getElementById("runCurrentTurn"),
+  completeScenarioBtn: document.getElementById("completeScenarioBtn"),
   goEditFromRunBtn: document.getElementById("goEditFromRunBtn"),
   activeMonsterImageWrap: document.getElementById("activeMonsterImageWrap"),
   activeMonsterImageHint: document.getElementById("activeMonsterImageHint"),
@@ -266,6 +284,16 @@ function setEnemyMonsterPreview(dataUrl) {
   }
 }
 
+function setLibraryEntryImagePreview(dataUrl) {
+  if (dataUrl) {
+    els.libraryEntryImagePreview.src = dataUrl;
+    els.libraryEntryImagePreview.classList.remove("hidden");
+  } else {
+    els.libraryEntryImagePreview.src = "";
+    els.libraryEntryImagePreview.classList.add("hidden");
+  }
+}
+
 function updateMonsterLegendaryFieldsVisibility() {
   const isLegendary = els.monsterIsLegendary.value === "true";
   els.monsterLegendaryActionsWrap.classList.toggle("hidden", !isLegendary);
@@ -366,6 +394,7 @@ function closeImageModal() {
 
 function openCampaignActionModal(mode) {
   if ((mode === "character" || mode === "scenario") && !state.selectedCampaignId) return;
+  state.campaignActionMode = mode;
   const isCampaign = mode === "campaign";
   const isLibraryEntry = mode === "library-entry";
   const isCharacter = mode === "character";
@@ -390,6 +419,9 @@ function openCampaignActionModal(mode) {
   } else if (isLibraryEntry) {
     els.libraryEntryName.value = "";
     els.libraryEntryLegendary.value = "false";
+    state.draftLibraryEntryImageData = "";
+    setLibraryEntryImagePreview("");
+    els.libraryEntryImageFile.value = "";
     const defaultLegendary = document.querySelector(
       'input[name="libraryLegendaryActionsCount"][value="3"]'
     );
@@ -408,6 +440,7 @@ function openCampaignActionModal(mode) {
 }
 
 function closeCampaignActionModal() {
+  state.campaignActionMode = null;
   els.campaignActionModal.classList.add("hidden");
 }
 
@@ -550,10 +583,24 @@ function parseRoute(pathname) {
     return { page: "campaign", campaignId: Number(match[1]) };
   }
 
+  match = path.match(/^\/campaigns\/(\d+)\/completed$/);
+  if (match) {
+    return { page: "campaign-completed", campaignId: Number(match[1]) };
+  }
+
   match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|run)$/);
   if (match) {
     return {
       page: match[3] === "run" ? "scenario-run" : "scenario-edit",
+      campaignId: Number(match[1]),
+      scenarioId: Number(match[2])
+    };
+  }
+
+  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/completed\/edit$/);
+  if (match) {
+    return {
+      page: "scenario-completed-edit",
       campaignId: Number(match[1]),
       scenarioId: Number(match[2])
     };
@@ -568,11 +615,17 @@ function routePathFor(page, campaignId = null, scenarioId = null) {
   if (page === "campaign" && Number.isInteger(campaignId)) {
     return `/campaigns/${campaignId}`;
   }
+  if (page === "campaign-completed" && Number.isInteger(campaignId)) {
+    return `/campaigns/${campaignId}/completed`;
+  }
   if (
-    (page === "scenario-edit" || page === "scenario-run") &&
+    (page === "scenario-edit" || page === "scenario-run" || page === "scenario-completed-edit") &&
     Number.isInteger(campaignId) &&
     Number.isInteger(scenarioId)
   ) {
+    if (page === "scenario-completed-edit") {
+      return `/campaigns/${campaignId}/scenarios/${scenarioId}/completed/edit`;
+    }
     const mode = page === "scenario-run" ? "run" : "edit";
     return `/campaigns/${campaignId}/scenarios/${scenarioId}/${mode}`;
   }
@@ -663,6 +716,13 @@ async function applyRoute(route, { replace = false } = {}) {
     return;
   }
 
+  if (route.page === "campaign-completed") {
+    renderCompletedScenariosPage();
+    showPage("campaign-completed");
+    await syncHistory(routePathFor("campaign-completed", route.campaignId), { replace });
+    return;
+  }
+
   if (!Number.isInteger(route.scenarioId)) {
     await safeNavigate(routePathFor("campaign", route.campaignId), "Invalid scenario route.");
     return;
@@ -679,10 +739,29 @@ async function applyRoute(route, { replace = false } = {}) {
   if (!isCurrent()) return;
 
   state.lastScenarioPage = route.page;
+  const scenario = selectedScenario();
+  const isCompletedScenario = Number(scenario?.is_completed) === 1;
+  if (route.page === "scenario-edit" && isCompletedScenario) {
+    await safeNavigate(
+      routePathFor("scenario-completed-edit", route.campaignId, route.scenarioId),
+      "This encounter is completed. Opened read-only view."
+    );
+    return;
+  }
+  if (route.page === "scenario-completed-edit" && !isCompletedScenario) {
+    await safeNavigate(
+      routePathFor("scenario-edit", route.campaignId, route.scenarioId),
+      "Encounter is active. Opened editable view."
+    );
+    return;
+  }
   if (route.page === "scenario-run") {
     focusPreviewOnActiveNonPc();
     renderScenarioRunPage();
     showPage("scenario-run");
+  } else if (route.page === "scenario-completed-edit") {
+    renderScenarioCompletedEditPage();
+    showPage("scenario-completed-edit");
   } else {
     renderScenarioEditPage();
     showPage("scenario-edit");
@@ -712,7 +791,9 @@ function showPage(page) {
   els.pageMonsters.classList.toggle("hidden", page !== "monsters");
   els.pageAnalytics.classList.toggle("hidden", page !== "analytics");
   els.pageCampaign.classList.toggle("hidden", page !== "campaign");
+  els.pageCampaignCompleted.classList.toggle("hidden", page !== "campaign-completed");
   els.pageScenarioEdit.classList.toggle("hidden", page !== "scenario-edit");
+  els.pageScenarioCompletedEdit.classList.toggle("hidden", page !== "scenario-completed-edit");
   els.pageScenarioRun.classList.toggle("hidden", page !== "scenario-run");
   renderMainSections();
   renderNav();
@@ -722,7 +803,9 @@ function renderMainSections() {
   const inHome =
     state.page === "welcome" ||
     state.page === "campaign" ||
+    state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
+    state.page === "scenario-completed-edit" ||
     state.page === "scenario-run";
   els.mainHomeBtn.classList.toggle("active", inHome);
   els.mainMonstersBtn.classList.toggle("active", state.page === "monsters");
@@ -736,7 +819,9 @@ function renderNav() {
   const inHomePath =
     state.page === "welcome" ||
     state.page === "campaign" ||
+    state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
+    state.page === "scenario-completed-edit" ||
     state.page === "scenario-run";
 
   const inMonsters = state.page === "monsters";
@@ -759,7 +844,13 @@ function renderNav() {
   const showCampaignCrumb =
     inHomePath &&
     Boolean(campaign) &&
-    (state.page === "campaign" || state.page === "scenario-edit" || state.page === "scenario-run");
+    (
+      state.page === "campaign" ||
+      state.page === "campaign-completed" ||
+      state.page === "scenario-edit" ||
+      state.page === "scenario-completed-edit" ||
+      state.page === "scenario-run"
+    );
   els.navCampaignBtn.classList.toggle("hidden", !showCampaignCrumb);
   els.navSepCampaign.classList.toggle("hidden", !showCampaignCrumb);
   if (showCampaignCrumb && campaign) {
@@ -771,12 +862,18 @@ function renderNav() {
     inHomePath &&
     Boolean(scenario) &&
     (state.page === "scenario-edit" || state.page === "scenario-run");
-  els.navScenarioBtn.classList.toggle("hidden", !showScenarioCrumb);
-  els.navSepScenario.classList.toggle("hidden", !showScenarioCrumb);
-  if (showScenarioCrumb && scenario) {
+  const showCompletedScenarioCrumb =
+    inHomePath &&
+    Boolean(scenario) &&
+    state.page === "scenario-completed-edit";
+  els.navScenarioBtn.classList.toggle("hidden", !(showScenarioCrumb || showCompletedScenarioCrumb));
+  els.navSepScenario.classList.toggle("hidden", !(showScenarioCrumb || showCompletedScenarioCrumb));
+  if ((showScenarioCrumb || showCompletedScenarioCrumb) && scenario) {
     els.navScenarioBtn.textContent = scenario.name;
     els.navScenarioBtn.disabled =
-      state.page === "scenario-edit" || state.page === "scenario-run";
+      state.page === "scenario-edit" ||
+      state.page === "scenario-run" ||
+      state.page === "scenario-completed-edit";
   }
 }
 
@@ -1012,13 +1109,22 @@ function renderCharacters() {
 }
 
 function renderScenarios() {
+  if (els.scenarioSearchInput.value !== state.scenarioSearchQuery) {
+    els.scenarioSearchInput.value = state.scenarioSearchQuery;
+  }
+  const query = state.scenarioSearchQuery.trim().toLowerCase();
+  const filtered = query
+    ? state.scenarios.filter((scenario) => scenario.name.toLowerCase().includes(query))
+    : state.scenarios;
+  const activeScenarios = filtered.filter((scenario) => Number(scenario.is_completed) !== 1);
+
   els.scenarioList.innerHTML = "";
-  if (state.scenarios.length === 0) {
-    els.scenarioList.innerHTML = "<li>No scenarios yet.</li>";
+  if (activeScenarios.length === 0) {
+    els.scenarioList.innerHTML = query ? "<li>No matches found.</li>" : "<li>No scenarios yet.</li>";
     return;
   }
 
-  for (const scenario of state.scenarios) {
+  for (const scenario of activeScenarios) {
     const li = document.createElement("li");
     const row = document.createElement("div");
     row.className = "list-row";
@@ -1034,23 +1140,12 @@ function renderScenarios() {
     editButton.type = "button";
     editButton.textContent = "Edit";
     editButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-edit", {
+      await navigateToPage("scenario-completed-edit", {
         campaignId: state.selectedCampaignId,
         scenarioId: scenario.id
       });
     });
     actions.appendChild(editButton);
-
-    const runButton = document.createElement("button");
-    runButton.type = "button";
-    runButton.textContent = "Run";
-    runButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-run", {
-        campaignId: state.selectedCampaignId,
-        scenarioId: scenario.id
-      });
-    });
-    actions.appendChild(runButton);
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -1081,6 +1176,83 @@ function renderScenarios() {
     row.appendChild(actions);
     li.appendChild(row);
     els.scenarioList.appendChild(li);
+  }
+}
+
+function renderCompletedScenariosPage() {
+  const campaign = selectedCampaign();
+  els.completedScenarioPageTitle.textContent = campaign
+    ? `Completed Scenarios: ${campaign.name}`
+    : "Completed Scenarios";
+
+  const completedScenarios = state.scenarios.filter((scenario) => Number(scenario.is_completed) === 1);
+  els.completedScenarioList.innerHTML = "";
+  if (completedScenarios.length === 0) {
+    els.completedScenarioList.innerHTML = "<li>No completed scenarios yet.</li>";
+    return;
+  }
+
+  for (const scenario of completedScenarios) {
+    const li = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "list-row";
+
+    const label = document.createElement("span");
+    label.textContent = scenario.name;
+    row.appendChild(label);
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+
+    const reopenButton = document.createElement("button");
+    reopenButton.type = "button";
+    reopenButton.textContent = "Reopen";
+    reopenButton.addEventListener("click", async () => {
+      try {
+        await api(`/api/scenarios/${scenario.id}/completed`, {
+          method: "POST",
+          body: JSON.stringify({ completed: false })
+        });
+        await loadCampaignData();
+        renderCompletedScenariosPage();
+        setStatus(`Reopened scenario: ${scenario.name}`);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+    actions.appendChild(reopenButton);
+
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.addEventListener("click", async () => {
+      await navigateToPage("scenario-edit", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
+    });
+    actions.appendChild(editButton);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "delete-btn";
+    removeButton.textContent = "X";
+    removeButton.addEventListener("click", async () => {
+      if (!window.confirm(`Delete scenario "${scenario.name}"?`)) return;
+      try {
+        await api(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
+        await loadCampaignData();
+        renderCompletedScenariosPage();
+        setStatus(`Deleted scenario: ${scenario.name}`);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+    actions.appendChild(removeButton);
+
+    row.appendChild(actions);
+    li.appendChild(row);
+    els.completedScenarioList.appendChild(li);
   }
 }
 
@@ -1374,12 +1546,79 @@ function renderScenarioEditPage() {
   }
 }
 
+function applyConditionStyleReadonly(li, combatant) {
+  const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
+  if (keys.length === 0) return;
+
+  for (const key of keys) {
+    const condition = CONDITION_BY_KEY[key];
+    if (!condition) continue;
+    const chip = document.createElement("span");
+    chip.className = "condition-chip condition-chip-readonly";
+    chip.textContent = condition.label;
+    chip.setAttribute("data-tip", condition.tip);
+    li.appendChild(chip);
+  }
+}
+
+function renderScenarioCompletedEditPage() {
+  const scenario = selectedScenario();
+  if (!scenario) return;
+
+  els.completedEditScenarioName.value = scenario.name;
+  els.completedEditScenarioNotes.value = scenario.notes || "";
+  els.completedCombatantList.innerHTML = "";
+
+  if (state.combat.combatants.length === 0) {
+    els.completedCombatantList.innerHTML = "<li>No combatants yet.</li>";
+    return;
+  }
+
+  for (const combatant of state.combat.combatants) {
+    const li = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "combatant-row";
+
+    const name = createCombatantNameElement(combatant);
+    row.appendChild(name);
+
+    const initPrefix = document.createElement("span");
+    initPrefix.className = "field-prefix";
+    initPrefix.textContent = "Init";
+    row.appendChild(initPrefix);
+    const initValue = document.createElement("span");
+    initValue.textContent = String(combatant.initiative);
+    row.appendChild(initValue);
+
+    if (combatant.kind === "enemy") {
+      const hpPrefix = document.createElement("span");
+      hpPrefix.className = "field-prefix";
+      hpPrefix.textContent = "HP";
+      row.appendChild(hpPrefix);
+      const hpValue = document.createElement("span");
+      hpValue.textContent = combatant.hp == null ? "-" : String(combatant.hp);
+      row.appendChild(hpValue);
+    }
+
+    li.appendChild(row);
+    applyConditionStyleReadonly(li, combatant);
+    els.completedCombatantList.appendChild(li);
+  }
+}
+
 function renderScenarioRunPage() {
   const scenario = selectedScenario();
   if (!scenario) return;
 
   els.runScenarioName.textContent = scenario.name;
   els.runScenarioNotes.textContent = scenario.notes || "No notes yet.";
+  if (Number(scenario.is_completed) === 1) {
+    els.completeScenarioBtn.textContent = "Completed";
+    els.completeScenarioBtn.disabled = true;
+  } else {
+    els.completeScenarioBtn.textContent = "Complete";
+    els.completeScenarioBtn.disabled = false;
+  }
   els.runRound.textContent = String(state.combat.round);
   els.runOrderList.innerHTML = "";
   els.activeMonsterImage.classList.add("hidden");
@@ -1430,6 +1669,16 @@ function renderScenarioRunPage() {
       li.classList.add("run-tone-npc");
     } else {
       li.classList.add("run-tone-enemy");
+    }
+    const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
+    if (keys.includes("down")) {
+      li.classList.add("run-down");
+    }
+    if (combatant.kind === "enemy") {
+      const hpValue = Number(combatant.hp);
+      if (Number.isFinite(hpValue) && hpValue <= 0) {
+        li.classList.add("run-defeated");
+      }
     }
     const row = document.createElement("div");
     row.className = "combatant-row";
@@ -1545,38 +1794,6 @@ function renderScenarioRunPage() {
       right.appendChild(hp);
       attachEnemyHpBlurUpdate(hp, combatant);
 
-      const damage = document.createElement("button");
-      damage.type = "button";
-      damage.textContent = "Damage";
-      damage.classList.add("enemy-damage-btn");
-      if (combatant.enemy_role === "npc") damage.classList.add("npc-damage-btn");
-      damage.addEventListener("click", async () => {
-        const n = Number(delta.value);
-        if (!Number.isFinite(n)) return;
-        try {
-          await api(`/api/combatants/${combatant.id}/hp-adjust`, {
-            method: "POST",
-            body: JSON.stringify({ delta: -Math.abs(Math.trunc(n)) })
-          });
-          await safeLoadCombatState();
-          renderScenarioRunPage();
-        } catch (error) {
-          setStatus(error.message);
-        }
-      });
-      right.appendChild(damage);
-
-      const delta = document.createElement("input");
-      delta.type = "text";
-      delta.className = "run-order-delta";
-      delta.min = "1";
-      delta.max = "99";
-      delta.maxLength = 3;
-      delta.value = "0";
-      delta.placeholder = "Delta";
-      setupRunQuickEditInput(delta);
-      right.appendChild(delta);
-
       const heal = document.createElement("button");
       heal.type = "button";
       heal.textContent = "Heal";
@@ -1597,6 +1814,38 @@ function renderScenarioRunPage() {
         }
       });
       right.appendChild(heal);
+
+      const delta = document.createElement("input");
+      delta.type = "text";
+      delta.className = "run-order-delta";
+      delta.min = "1";
+      delta.max = "99";
+      delta.maxLength = 3;
+      delta.value = "0";
+      delta.placeholder = "Delta";
+      setupRunQuickEditInput(delta);
+      right.appendChild(delta);
+
+      const damage = document.createElement("button");
+      damage.type = "button";
+      damage.textContent = "Damage";
+      damage.classList.add("enemy-damage-btn");
+      if (combatant.enemy_role === "npc") damage.classList.add("npc-damage-btn");
+      damage.addEventListener("click", async () => {
+        const n = Number(delta.value);
+        if (!Number.isFinite(n)) return;
+        try {
+          await api(`/api/combatants/${combatant.id}/hp-adjust`, {
+            method: "POST",
+            body: JSON.stringify({ delta: -Math.abs(Math.trunc(n)) })
+          });
+          await safeLoadCombatState();
+          renderScenarioRunPage();
+        } catch (error) {
+          setStatus(error.message);
+        }
+      });
+      right.appendChild(damage);
     }
 
     row.appendChild(right);
@@ -1609,6 +1858,20 @@ function renderScenarioRunPage() {
     applyConditionStyle(li, combatant);
     els.runOrderList.appendChild(li);
   }
+}
+
+async function completeSelectedScenario() {
+  const scenario = selectedScenario();
+  if (!scenario) return;
+  await api(`/api/scenarios/${scenario.id}/completed`, {
+    method: "POST",
+    body: JSON.stringify({ completed: true })
+  });
+  await loadCampaignData();
+  await navigateToPage("campaign-completed", {
+    campaignId: state.selectedCampaignId
+  });
+  setStatus(`Completed scenario: ${scenario.name}`);
 }
 
 function renderCampaignPage() {
@@ -1627,7 +1890,13 @@ async function loadCampaigns() {
         api(`/api/campaigns/${campaign.id}/characters`),
         api(`/api/campaigns/${campaign.id}/scenarios`)
       ]);
-      return [campaign.id, { players, scenarioCount: scenarios.length }];
+      return [
+        campaign.id,
+        {
+          players,
+          scenarioCount: scenarios.filter((scenario) => Number(scenario.is_completed) !== 1).length
+        }
+      ];
     })
   );
   state.campaignSummaries = Object.fromEntries(summaryEntries);
@@ -1653,7 +1922,8 @@ async function loadCampaignData() {
   state.scenarios = scenarios;
 
   if (!state.scenarios.some((s) => s.id === state.selectedScenarioId)) {
-    state.selectedScenarioId = state.scenarios[0]?.id ?? null;
+    const preferred = state.scenarios.find((scenario) => Number(scenario.is_completed) !== 1);
+    state.selectedScenarioId = preferred?.id ?? state.scenarios[0]?.id ?? null;
   }
 
   await safeLoadCombatState();
@@ -1729,7 +1999,15 @@ function bindEvents() {
       if (!state.selectedScenarioId) return;
       if (state.page === "scenario-run") {
         event.preventDefault();
-        els.goEditFromRunBtn.click();
+        const scenario = selectedScenario();
+        if (Number(scenario?.is_completed) === 1) {
+          navigateToPage("scenario-completed-edit", {
+            campaignId: state.selectedCampaignId,
+            scenarioId: state.selectedScenarioId
+          });
+        } else {
+          els.goEditFromRunBtn.click();
+        }
       } else if (state.page === "scenario-edit") {
         event.preventDefault();
         els.goRunFromEditBtn.click();
@@ -1788,6 +2066,20 @@ function bindEvents() {
 
   els.addScenarioBtn.addEventListener("click", () => {
     openCampaignActionModal("scenario");
+  });
+
+  els.viewCompletedScenariosBtn.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign-completed", {
+      campaignId: state.selectedCampaignId
+    });
+  });
+
+  els.backToCampaignBtn.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign", {
+      campaignId: state.selectedCampaignId
+    });
   });
 
   els.addCampaignBtn.addEventListener("click", () => {
@@ -1859,13 +2151,48 @@ function bindEvents() {
     }
   });
 
+  els.libraryEntryImageFile.addEventListener("change", async () => {
+    const file = els.libraryEntryImageFile.files?.[0];
+    if (!file) return;
+    try {
+      state.draftLibraryEntryImageData = await readFileAsDataUrl(file);
+      setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
   els.monsterSearchInput.addEventListener("input", () => {
     state.monsterSearchQuery = els.monsterSearchInput.value || "";
     renderMonsterList();
   });
 
+  els.scenarioSearchInput.addEventListener("input", () => {
+    state.scenarioSearchQuery = els.scenarioSearchInput.value || "";
+    renderScenarios();
+  });
+
   document.addEventListener("paste", async (event) => {
     if (state.page !== "monsters") return;
+    if (
+      !els.campaignActionModal.classList.contains("hidden") &&
+      state.campaignActionMode === "library-entry"
+    ) {
+      const items = event.clipboardData?.items || [];
+      const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      try {
+        state.draftLibraryEntryImageData = await readFileAsDataUrl(file);
+        setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
+        setStatus("Pasted statblock screenshot.");
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
     if (state.monsterEditorReadOnly) return;
     const items = event.clipboardData?.items || [];
     const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
@@ -1953,7 +2280,7 @@ function bindEvents() {
           name: els.libraryEntryName.value.trim(),
           isLegendary,
           legendaryActionsCount,
-          monsterImageData: ""
+          monsterImageData: state.draftLibraryEntryImageData || ""
         })
       });
       closeCampaignActionModal();
@@ -2093,6 +2420,33 @@ function bindEvents() {
     });
   });
 
+  els.reopenScenarioBtn.addEventListener("click", async () => {
+    const scenario = selectedScenario();
+    if (!scenario) return;
+    try {
+      await api(`/api/scenarios/${scenario.id}/completed`, {
+        method: "POST",
+        body: JSON.stringify({ completed: false })
+      });
+      await loadCampaignData();
+      await navigateToPage("scenario-edit", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
+      setStatus(`Reopened scenario: ${scenario.name}`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.completeScenarioFromEditBtn.addEventListener("click", async () => {
+    try {
+      await completeSelectedScenario();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
   els.addEnemyForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!state.selectedScenarioId) return;
@@ -2170,6 +2524,14 @@ function bindEvents() {
       focusPreviewOnActiveNonPc();
       state.lastScenarioPage = "scenario-run";
       renderScenarioRunPage();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.completeScenarioBtn.addEventListener("click", async () => {
+    try {
+      await completeSelectedScenario();
     } catch (error) {
       setStatus(error.message);
     }

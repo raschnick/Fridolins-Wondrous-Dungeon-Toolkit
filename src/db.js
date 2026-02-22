@@ -34,6 +34,7 @@ function initDb() {
       campaign_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       notes TEXT NOT NULL DEFAULT '',
+      is_completed INTEGER NOT NULL DEFAULT 0,
       current_round INTEGER NOT NULL DEFAULT 1,
       current_turn_index INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -139,6 +140,14 @@ function initDb() {
       "ALTER TABLE combat_scenarios ADD COLUMN current_turn_index INTEGER NOT NULL DEFAULT 0"
     );
   }
+  if (!scenarioColumns.includes("is_completed")) {
+    db.exec(
+      "ALTER TABLE combat_scenarios ADD COLUMN is_completed INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  db.exec(
+    "UPDATE combat_scenarios SET is_completed = 0 WHERE is_completed NOT IN (0, 1) OR is_completed IS NULL"
+  );
 
   const combatantColumns = db
     .prepare("PRAGMA table_info(scenario_combatants)")

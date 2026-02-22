@@ -57,7 +57,7 @@ function asId(value) {
 function getScenario(scenarioId) {
   return db
     .prepare(
-      "SELECT id, campaign_id, name, notes, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
 }
@@ -494,7 +494,7 @@ app.get("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenarios = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
+      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
     )
     .all(campaignId);
   res.json(scenarios);
@@ -525,7 +525,7 @@ app.post("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenario = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(result.lastInsertRowid);
 
@@ -551,7 +551,35 @@ app.put("/api/scenarios/:scenarioId", (req, res) => {
 
   const updated = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+    )
+    .get(scenarioId);
+  res.json(updated);
+});
+
+app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  const completedInput = req.body?.completed;
+  const completed =
+    completedInput === true ||
+    completedInput === 1 ||
+    `${completedInput || ""}`.trim().toLowerCase() === "true" ||
+    `${completedInput || ""}`.trim() === "1";
+
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+
+  const scenarioExists = db
+    .prepare("SELECT 1 FROM combat_scenarios WHERE id = ?")
+    .get(scenarioId);
+  if (!scenarioExists) return badRequest(res, "Scenario not found.");
+
+  db.prepare(
+    "UPDATE combat_scenarios SET is_completed = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(completed ? 1 : 0, scenarioId);
+
+  const updated = db
+    .prepare(
+      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
   res.json(updated);

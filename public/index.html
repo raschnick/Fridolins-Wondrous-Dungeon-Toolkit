@@ -124,18 +124,40 @@
 
           <article class="panel">
             <div class="row between panel-header-actions">
-              <h3>Combat Scenarios</h3>
-              <button id="addScenarioBtn" type="button">Add Scenario</button>
+              <h3>Encounters</h3>
+              <div class="row">
+                <button id="viewCompletedScenariosBtn" type="button">Completed Encounters</button>
+                <button id="addScenarioBtn" type="button">Add Encounter</button>
+              </div>
             </div>
+            <input
+              id="scenarioSearchInput"
+              type="search"
+              placeholder="Search scenarios"
+              aria-label="Search scenarios"
+            />
             <ul id="scenarioList" class="list"></ul>
           </article>
         </section>
       </section>
 
+      <section id="pageCampaignCompleted" class="page hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2 id="completedScenarioPageTitle">Completed Scenarios</h2>
+            <button id="backToCampaignBtn" type="button">Back to Campaign</button>
+          </div>
+          <ul id="completedScenarioList" class="list"></ul>
+        </div>
+      </section>
+
       <section id="pageScenarioEdit" class="panel page hidden">
         <div class="row between">
           <h2>Edit Scenario</h2>
-          <button id="goRunFromEditBtn" type="button">Run View</button>
+          <div class="row">
+            <button id="completeScenarioFromEditBtn" type="button">Complete</button>
+            <button id="goRunFromEditBtn" type="button">Run View</button>
+          </div>
         </div>
 
         <form id="editScenarioForm" class="stacked-form">
@@ -182,12 +204,32 @@
         </section>
       </section>
 
+      <section id="pageScenarioCompletedEdit" class="panel page hidden">
+        <div class="row between">
+          <h2>Completed Encounter</h2>
+          <button id="reopenScenarioBtn" type="button">Reopen Encounter</button>
+        </div>
+
+        <div class="stacked-form">
+          <input id="completedEditScenarioName" type="text" readonly />
+          <textarea id="completedEditScenarioNotes" rows="5" readonly></textarea>
+        </div>
+
+        <section class="subpanel">
+          <h3>Encounter Combatants</h3>
+          <ul id="completedCombatantList" class="list"></ul>
+        </section>
+      </section>
+
       <section id="pageScenarioRun" class="panel page hidden run-page">
         <div class="run-split">
           <div>
             <div class="row between">
               <h2 id="runScenarioName"></h2>
-              <button id="goEditFromRunBtn" type="button">Edit View</button>
+              <div class="row">
+                <button id="completeScenarioBtn" type="button">Complete</button>
+                <button id="goEditFromRunBtn" type="button">Edit View</button>
+              </div>
             </div>
             <p id="runScenarioNotes"></p>
             <p><strong>Round:</strong> <span id="runRound">1</span></p>
@@ -295,6 +337,14 @@
               <label><input type="radio" name="libraryLegendaryActionsCount" value="3" checked />3</label>
               <label><input type="radio" name="libraryLegendaryActionsCount" value="4" />4</label>
             </fieldset>
+            <label for="libraryEntryImageFile">Statblock Screenshot</label>
+            <input id="libraryEntryImageFile" type="file" accept="image/*" />
+            <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
+            <img
+              id="libraryEntryImagePreview"
+              class="monster-image hidden"
+              alt="New library entry statblock preview"
+            />
             <div class="row">
               <button type="submit">Create Entry</button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
