@@ -386,6 +386,178 @@ function createCombatantNameElement(combatant) {
   return wrapper;
 }
 
+function normalizePathname(pathname) {
+  if (!pathname) return "/";
+  const cleaned = pathname.replace(/\/+$/, "");
+  return cleaned === "" ? "/" : cleaned;
+}
+
+function parseRoute(pathname) {
+  const path = normalizePathname(pathname);
+  if (path === "/") return { page: "welcome" };
+  if (path === "/monsters") return { page: "monsters" };
+  if (path === "/analytics") return { page: "analytics" };
+
+  let match = path.match(/^\/campaigns\/(\d+)$/);
+  if (match) {
+    return { page: "campaign", campaignId: Number(match[1]) };
+  }
+
+  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|run)$/);
+  if (match) {
+    return {
+      page: match[3] === "run" ? "scenario-run" : "scenario-edit",
+      campaignId: Number(match[1]),
+      scenarioId: Number(match[2])
+    };
+  }
+  return null;
+}
+
+function routePathFor(page, campaignId = null, scenarioId = null) {
+  if (page === "welcome") return "/";
+  if (page === "monsters") return "/monsters";
+  if (page === "analytics") return "/analytics";
+  if (page === "campaign" && Number.isInteger(campaignId)) {
+    return `/campaigns/${campaignId}`;
+  }
+  if (
+    (page === "scenario-edit" || page === "scenario-run") &&
+    Number.isInteger(campaignId) &&
+    Number.isInteger(scenarioId)
+  ) {
+    const mode = page === "scenario-run" ? "run" : "edit";
+    return `/campaigns/${campaignId}/scenarios/${scenarioId}/${mode}`;
+  }
+  return "/";
+}
+
+async function syncHistory(path, { replace = false } = {}) {
+  if (replace) {
+    history.replaceState({}, "", path);
+    return;
+  }
+  if (window.location.pathname !== path) {
+    history.pushState({}, "", path);
+  }
+}
+
+let routeRequestId = 0;
+
+async function applyRoute(route, { replace = false } = {}) {
+  const requestId = ++routeRequestId;
+  const isCurrent = () => requestId === routeRequestId;
+
+  const safeNavigate = async (path, message) => {
+    if (message) setStatus(message);
+    await navigateToPath(path, { replace: true });
+  };
+
+  if (route.page === "monsters") {
+    try {
+      await loadMonsters();
+    } catch (error) {
+      setStatus(error.message);
+    }
+    if (!isCurrent()) return;
+    showPage("monsters");
+    await syncHistory("/monsters", { replace });
+    return;
+  }
+
+  if (route.page === "analytics") {
+    showPage("analytics");
+    await syncHistory("/analytics", { replace });
+    return;
+  }
+
+  if (route.page === "welcome") {
+    state.selectedCampaignId = null;
+    state.selectedScenarioId = null;
+    state.characters = [];
+    state.scenarios = [];
+    await safeLoadCombatState();
+    try {
+      await loadCampaigns();
+    } catch (error) {
+      setStatus(error.message);
+    }
+    if (!isCurrent()) return;
+    showPage("welcome");
+    await syncHistory("/", { replace });
+    return;
+  }
+
+  if (!Number.isInteger(route.campaignId)) {
+    await safeNavigate("/", "Invalid campaign route.");
+    return;
+  }
+
+  try {
+    await loadCampaigns();
+  } catch (error) {
+    setStatus(error.message);
+  }
+  if (!isCurrent()) return;
+
+  const campaignExists = state.campaigns.some((c) => c.id === route.campaignId);
+  if (!campaignExists) {
+    await safeNavigate("/", "Campaign not found.");
+    return;
+  }
+
+  state.selectedCampaignId = route.campaignId;
+  await loadCampaignData();
+  if (!isCurrent()) return;
+
+  if (route.page === "campaign") {
+    showPage("campaign");
+    await syncHistory(routePathFor("campaign", route.campaignId), { replace });
+    return;
+  }
+
+  if (!Number.isInteger(route.scenarioId)) {
+    await safeNavigate(routePathFor("campaign", route.campaignId), "Invalid scenario route.");
+    return;
+  }
+
+  const scenarioExists = state.scenarios.some((s) => s.id === route.scenarioId);
+  if (!scenarioExists) {
+    await safeNavigate(routePathFor("campaign", route.campaignId), "Scenario not found in campaign.");
+    return;
+  }
+
+  state.selectedScenarioId = route.scenarioId;
+  await safeLoadCombatState();
+  if (!isCurrent()) return;
+
+  state.lastScenarioPage = route.page;
+  if (route.page === "scenario-run") {
+    focusPreviewOnActiveNonPc();
+    renderScenarioRunPage();
+    showPage("scenario-run");
+  } else {
+    renderScenarioEditPage();
+    showPage("scenario-edit");
+  }
+  await syncHistory(routePathFor(route.page, route.campaignId, route.scenarioId), { replace });
+}
+
+async function navigateToPath(path, { replace = false } = {}) {
+  const route = parseRoute(path);
+  if (!route) {
+    setStatus("Unknown route. Redirected to home.");
+    await applyRoute({ page: "welcome" }, { replace: true });
+    return;
+  }
+  await applyRoute(route, { replace });
+}
+
+async function navigateToPage(page, { campaignId = null, scenarioId = null, replace = false } = {}) {
+  const path = routePathFor(page, campaignId, scenarioId);
+  await navigateToPath(path, { replace });
+}
+
 function showPage(page) {
   state.page = page;
   document.body.classList.toggle("page-run", page === "scenario-run");
@@ -474,9 +646,7 @@ function renderWelcomeCampaigns() {
     button.type = "button";
     button.textContent = campaign.name;
     button.addEventListener("click", async () => {
-      state.selectedCampaignId = campaign.id;
-      await loadCampaignData();
-      showPage("campaign");
+      await navigateToPage("campaign", { campaignId: campaign.id });
     });
     li.appendChild(button);
     els.welcomeCampaignList.appendChild(li);
@@ -656,11 +826,10 @@ function renderScenarios() {
     editButton.type = "button";
     editButton.textContent = "Edit";
     editButton.addEventListener("click", async () => {
-      state.selectedScenarioId = scenario.id;
-      state.lastScenarioPage = "scenario-edit";
-      await safeLoadCombatState();
-      renderScenarioEditPage();
-      showPage("scenario-edit");
+      await navigateToPage("scenario-edit", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
     });
     actions.appendChild(editButton);
 
@@ -668,11 +837,10 @@ function renderScenarios() {
     runButton.type = "button";
     runButton.textContent = "Run";
     runButton.addEventListener("click", async () => {
-      state.selectedScenarioId = scenario.id;
-      state.lastScenarioPage = "scenario-run";
-      await safeLoadCombatState();
-      renderScenarioRunPage();
-      showPage("scenario-run");
+      await navigateToPage("scenario-run", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
     });
     actions.appendChild(runButton);
 
@@ -684,10 +852,17 @@ function renderScenarios() {
       if (!window.confirm(`Delete scenario "${scenario.name}"?`)) return;
       try {
         await api(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
+        const wasSelected = state.selectedScenarioId === scenario.id;
         if (state.selectedScenarioId === scenario.id) {
           state.selectedScenarioId = null;
         }
         await loadCampaignData();
+        if (wasSelected && state.selectedCampaignId) {
+          await navigateToPage("campaign", {
+            campaignId: state.selectedCampaignId,
+            replace: true
+          });
+        }
         setStatus(`Deleted scenario: ${scenario.name}`);
       } catch (error) {
         setStatus(error.message);
@@ -1254,6 +1429,10 @@ async function safeLoadCombatState() {
 }
 
 function bindEvents() {
+  window.addEventListener("popstate", async () => {
+    await navigateToPath(window.location.pathname, { replace: true });
+  });
+
   els.imageModalCloseBtn.addEventListener("click", closeImageModal);
   els.imageModal.addEventListener("click", (event) => {
     if (event.target === els.imageModal) closeImageModal();
@@ -1309,45 +1488,46 @@ function bindEvents() {
   });
 
   els.mainHomeBtn.addEventListener("click", () => {
-    showPage("welcome");
+    navigateToPage("welcome");
   });
 
   els.mainMonstersBtn.addEventListener("click", async () => {
-    await loadMonsters();
-    showPage("monsters");
+    await navigateToPage("monsters");
   });
 
   els.mainAnalyticsBtn.addEventListener("click", () => {
-    showPage("analytics");
+    navigateToPage("analytics");
   });
 
-  els.navHomeBtn.addEventListener("click", () => {
+  els.navHomeBtn.addEventListener("click", async () => {
     if (state.page === "monsters") {
-      showPage("monsters");
+      await navigateToPage("monsters");
       return;
     }
     if (state.page === "analytics") {
-      showPage("analytics");
+      await navigateToPage("analytics");
       return;
     }
-    showPage("welcome");
+    await navigateToPage("welcome");
   });
 
   els.navCampaignBtn.addEventListener("click", async () => {
     if (!state.selectedCampaignId) return;
-    await loadCampaignData();
-    showPage("campaign");
+    await navigateToPage("campaign", { campaignId: state.selectedCampaignId });
   });
 
   els.navScenarioBtn.addEventListener("click", async () => {
     if (!state.selectedScenarioId) return;
-    await safeLoadCombatState();
     if (state.lastScenarioPage === "scenario-run") {
-      renderScenarioRunPage();
-      showPage("scenario-run");
+      await navigateToPage("scenario-run", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: state.selectedScenarioId
+      });
     } else {
-      renderScenarioEditPage();
-      showPage("scenario-edit");
+      await navigateToPage("scenario-edit", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: state.selectedScenarioId
+      });
     }
   });
 
@@ -1457,10 +1637,7 @@ function bindEvents() {
         body: JSON.stringify({ name: els.newCampaignName.value })
       });
       els.newCampaignName.value = "";
-      state.selectedCampaignId = campaign.id;
-      await loadCampaigns();
-      await loadCampaignData();
-      showPage("campaign");
+      await navigateToPage("campaign", { campaignId: campaign.id });
       setStatus(`Created campaign: ${campaign.name}`);
     } catch (error) {
       setStatus(error.message);
@@ -1485,8 +1662,7 @@ function bindEvents() {
       state.characters = [];
       state.scenarios = [];
       await safeLoadCombatState();
-      await loadCampaigns();
-      showPage("welcome");
+      await navigateToPage("welcome");
       setStatus(`Deleted campaign: ${campaign.name}`);
     } catch (error) {
       setStatus(error.message);
@@ -1554,11 +1730,10 @@ function bindEvents() {
 
   els.goRunFromEditBtn.addEventListener("click", async () => {
     if (!state.selectedScenarioId) return;
-    await safeLoadCombatState();
-    focusPreviewOnActiveNonPc();
-    state.lastScenarioPage = "scenario-run";
-    renderScenarioRunPage();
-    showPage("scenario-run");
+    await navigateToPage("scenario-run", {
+      campaignId: state.selectedCampaignId,
+      scenarioId: state.selectedScenarioId
+    });
   });
 
   els.addEnemyForm.addEventListener("submit", async (event) => {
@@ -1622,10 +1797,10 @@ function bindEvents() {
 
   els.goEditFromRunBtn.addEventListener("click", async () => {
     if (!state.selectedScenarioId) return;
-    await safeLoadCombatState();
-    state.lastScenarioPage = "scenario-edit";
-    renderScenarioEditPage();
-    showPage("scenario-edit");
+    await navigateToPage("scenario-edit", {
+      campaignId: state.selectedCampaignId,
+      scenarioId: state.selectedScenarioId
+    });
   });
 
   els.resetCombatBtn.addEventListener("click", async () => {
@@ -1646,17 +1821,12 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
-  showPage("welcome");
   try {
     await loadMonsters();
   } catch (error) {
     setStatus(error.message);
   }
-  try {
-    await loadCampaigns();
-  } catch (error) {
-    setStatus(error.message);
-  }
+  await navigateToPath(window.location.pathname, { replace: true });
 }
 
 init();

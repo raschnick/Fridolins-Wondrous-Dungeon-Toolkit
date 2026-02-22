@@ -1089,6 +1089,10 @@ app.post("/api/combatants/:combatantId/legendary-actions", (req, res) => {
   res.json(getCombatantById(combatantId));
 });
 
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+});
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Internal server error." });
