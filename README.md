@@ -1,11 +1,11 @@
 # Fridolins Wondrous Dungeon Toolkit
 
-Local web app starter for tracking D&D 5e (2024) campaigns, characters, and combat scenarios.
+Local D&D 5e (2024) campaign and combat tracker with offline-friendly SQLite storage.
 
 ## Stack
 
-- Node.js + Express for local API/server
-- SQLite (`better-sqlite3`) for portable local data file
+- Node.js + Express API/server
+- SQLite (`better-sqlite3`) local database
 - Vanilla HTML/CSS/JS frontend
 
 ## Run
@@ -26,34 +26,102 @@ npm start
 
 `http://localhost:3000`
 
-SQLite database file is stored at:
+Default SQLite database path:
 
 `/Users/rani/dev/Fridolins Wondrous Dungeon Toolkit/data/itracker.sqlite`
 
-## Current features
+## URL routes
 
-- Welcome page for campaign selection/creation
-- Monster Library page for storing and editing local monster statblocks
-  - Includes a starter set of prebuilt 5e-style monsters
-- Campaign page for managing:
-  - Characters (add/delete)
-  - Combat scenarios (add/delete)
-  - Enter scenario `Edit` or `Run` page
-- Scenario Edit page:
-  - Edit scenario name/notes
-  - Add custom enemies
-  - View all encounter combatants
-  - Remove a PC from only that scenario
-  - Initiative auto-saves when input loses focus
-- Scenario Run page:
-  - Initiative order sorted descending
-  - Current turn highlight
-  - `Next Turn` progression
-  - Round increments when order wraps
-  - `Reset to Round 1`
-  - Initiative auto-saves when input loses focus (PCs and enemies)
-- Campaign PCs are included by default in every scenario unless removed from that scenario
+- `/` -> Home
+- `/library` -> Library
+- `/analytics` -> Analytics (placeholder)
+- `/campaigns/:campaignId` -> Campaign
+- `/campaigns/:campaignId/scenarios/:scenarioId/edit` -> Scenario Edit
+- `/campaigns/:campaignId/scenarios/:scenarioId/run` -> Scenario Run
 
-## Next suggested step
+Legacy `/monsters` routes are accepted and normalized to `/library`.
 
-Add enemy templates/stat blocks and quick add from a bestiary.
+## Current functionality
+
+### Home
+
+- Campaign overview list with:
+  - campaign name
+  - player chips with mini class icons
+  - scenario count
+- Entire campaign rows are clickable (and keyboard accessible) to open campaign pages
+- Create Campaign uses themed modal popup
+
+### Campaign
+
+- Character management:
+  - add via modal
+  - class-restricted dropdown (Artificer, Barbarian, Bard, Cleric, Druid, Fighter, Monk, Paladin, Rogue, Sorcerer, Warlock, Wizard)
+  - delete
+- Scenario management:
+  - add via modal (name + optional quick notes)
+  - delete
+  - open in Edit or Run mode
+- Delete campaign with exact-name confirmation
+
+### Library
+
+- Search/filter library entries by name
+- Create `New Entry` via themed popup modal
+- Supports image-only entries (name + statblock screenshot)
+- Legendary metadata on entries:
+  - `Is Legendary` true/false
+  - legendary action count (2-4)
+- Read-only by default:
+  - `Edit` button (or `E`) enters edit mode
+  - `E` again cancels unsaved changes
+  - `S` saves while editing
+  - Save/Delete controls only visible in edit mode
+- Clipboard paste (`Cmd+V`) and file upload for statblock images with client-side compression
+- Legendary entries show `L` badge in list
+
+### Scenario Edit
+
+- Edit scenario name/notes
+- Add custom non-PC combatants (Enemy or NPC)
+- Optional source from Library when adding combatants
+- Remove combatants from scenario
+- PCs auto-included in scenarios (unless removed from that scenario)
+- Initiative and HP edits save on blur
+- Right-side statblock preview panel with zoom modal
+- Condition system:
+  - multi-condition support per combatant
+  - add from fixed dropdown
+  - remove by clicking chips
+
+### Scenario Run
+
+- Turn order sorted by initiative
+- Current-turn highlight
+- Revoke Turn (step backward), Next Turn (step forward), Reset Combat
+- HP quick editing + damage/heal delta actions for non-PCs
+- Reaction tracker per combatant
+- Legendary action trackers for legendary non-PCs
+- NPC statblock panel remains visible while scrolling (sticky)
+- Click non-PC names to preview statblocks; click statblock to zoom
+
+## Keyboard shortcuts
+
+When not typing in a field:
+
+- Global scenario mode switching:
+  - `E` in Run -> switch to Edit
+  - `E` in Edit -> switch to Run
+- Scenario Run:
+  - `N` -> Next Turn
+  - `B` -> Revoke Turn
+  - `R` -> Toggle reaction for active combatant
+  - `L` -> Spend one legendary action for active combatant; when 0, next `L` refills to max
+- Library:
+  - `E` -> toggle edit/cancel
+  - `S` -> save current entry (only in edit mode)
+
+## Notes
+
+- API endpoints remain under `/api/*`.
+- Non-API routes are served via SPA fallback to support direct URL loads and browser history navigation.
