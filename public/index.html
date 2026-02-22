@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fridolins Wondrous Dungeon Toolkit</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header header-bar">
+        <img
+          src="/images/logo_wide.png"
+          alt="Fridolins Wondrous Dungeon Toolkit"
+          class="app-logo"
+        />
+        <nav class="main-sections">
+          <button id="mainHomeBtn" type="button">Home</button>
+          <button id="mainMonstersBtn" type="button">Monster Library</button>
+          <button id="mainAnalyticsBtn" type="button">Analytics</button>
+        </nav>
+      </header>
+
+      <nav class="panel nav-pane" id="topNav">
+        <button id="navHomeBtn" type="button">Home</button>
+        <span id="navSepMonster" class="nav-sep hidden">></span>
+        <button id="navMonsterBtn" type="button" class="hidden">Monster Library</button>
+        <span id="navSepCampaign" class="nav-sep hidden">></span>
+        <button id="navCampaignBtn" type="button" class="hidden">Campaign</button>
+        <span id="navSepScenario" class="nav-sep hidden">></span>
+        <button id="navScenarioBtn" type="button" class="hidden">Encounter</button>
+      </nav>
+
+      <section id="pageWelcome" class="panel page">
+        <div class="row between welcome-header">
+          <h2>Welcome</h2>
+          <form id="createCampaignForm" class="inline-form welcome-create-form">
+            <input
+              id="newCampaignName"
+              name="name"
+              type="text"
+              placeholder="New campaign name"
+              required
+            />
+            <button type="submit">Create Campaign</button>
+          </form>
+        </div>
+        <p>Select a campaign to continue.</p>
+        <ul id="welcomeCampaignList" class="list selectable"></ul>
+      </section>
+
+      <section id="pageMonsters" class="page hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Monster Library</h2>
+            <button id="newMonsterBtn" type="button">New</button>
+          </div>
+          <p class="hint">
+            Includes starter 5e-style monsters. Add or edit your own statblocks here.
+          </p>
+        </div>
+
+        <section class="grid">
+          <article class="panel">
+            <h3>Monsters</h3>
+            <ul id="monsterList" class="list selectable"></ul>
+          </article>
+
+          <article class="panel">
+            <h3>Statblock Editor</h3>
+            <form id="monsterForm" class="stacked-form">
+              <label for="monsterName">Name</label>
+              <input id="monsterName" placeholder="Name" required />
+              <label for="monsterIsLegendary">Is Legendary</label>
+              <select id="monsterIsLegendary">
+                <option value="false" selected>False</option>
+                <option value="true">True</option>
+              </select>
+              <fieldset id="monsterLegendaryActionsWrap" class="legendary-actions hidden">
+                <legend>Legendary Actions Count</legend>
+                <label><input type="radio" name="monsterLegendaryActionsCount" value="2" />2</label>
+                <label><input type="radio" name="monsterLegendaryActionsCount" value="3" checked />3</label>
+                <label><input type="radio" name="monsterLegendaryActionsCount" value="4" />4</label>
+              </fieldset>
+              <label for="monsterImageFile">Statblock Screenshot</label>
+              <input id="monsterImageFile" type="file" accept="image/*" />
+              <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
+              <img id="monsterImagePreview" class="monster-image hidden" alt="Monster statblock preview" />
+              <div class="row">
+                <button id="saveMonsterBtn" type="submit">Save Monster</button>
+                <button id="deleteMonsterBtn" type="button">Delete</button>
+              </div>
+            </form>
+          </article>
+        </section>
+      </section>
+
+      <section id="pageAnalytics" class="panel page hidden">
+        <h2>Analytics</h2>
+        <p>TODO: Add encounter and campaign analytics dashboards.</p>
+      </section>
+
+      <section id="pageCampaign" class="page hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2 id="campaignPageTitle">Campaign</h2>
+            <button id="deleteCampaignBtn" type="button" class="delete-btn">Delete Campaign</button>
+          </div>
+        </div>
+
+        <section class="grid">
+          <article class="panel">
+            <h3>Characters</h3>
+            <ul id="characterList" class="list"></ul>
+            <form id="createCharacterForm" class="stacked-form">
+              <input id="charName" name="name" type="text" placeholder="Name" required />
+              <select id="charClass" name="className" required>
+                <option value="" selected disabled>Select class</option>
+                <option value="Artificer">Artificer</option>
+                <option value="Barbarian">Barbarian</option>
+                <option value="Bard">Bard</option>
+                <option value="Cleric">Cleric</option>
+                <option value="Druid">Druid</option>
+                <option value="Fighter">Fighter</option>
+                <option value="Monk">Monk</option>
+                <option value="Paladin">Paladin</option>
+                <option value="Rogue">Rogue</option>
+                <option value="Sorcerer">Sorcerer</option>
+                <option value="Warlock">Warlock</option>
+                <option value="Wizard">Wizard</option>
+              </select>
+              <button type="submit">Add Character</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <h3>Combat Scenarios</h3>
+            <ul id="scenarioList" class="list"></ul>
+            <form id="createScenarioForm" class="stacked-form">
+              <input
+                id="scenarioName"
+                name="name"
+                type="text"
+                placeholder="Scenario name"
+                required
+              />
+              <textarea
+                id="scenarioNotes"
+                name="notes"
+                placeholder="Quick notes"
+                rows="4"
+              ></textarea>
+              <button type="submit">Add Scenario</button>
+            </form>
+          </article>
+        </section>
+      </section>
+
+      <section id="pageScenarioEdit" class="panel page hidden">
+        <div class="row between">
+          <h2>Edit Scenario</h2>
+          <button id="goRunFromEditBtn" type="button">Run View</button>
+        </div>
+
+        <form id="editScenarioForm" class="stacked-form">
+          <input id="editScenarioName" name="name" type="text" required />
+          <textarea id="editScenarioNotes" name="notes" rows="5"></textarea>
+          <button type="submit">Save Scenario</button>
+        </form>
+
+        <section class="subpanel">
+          <h3>Encounter Combatants</h3>
+          <p class="hint">Campaign PCs are included by default per scenario.</p>
+          <div class="edit-add-layout">
+            <form id="addEnemyForm" class="stacked-form add-enemy-form">
+              <strong>Add Custom Combatant</strong>
+              <label for="enemyMonsterSelect">Monster Source</label>
+              <select id="enemyMonsterSelect">
+                <option value="">From Monster Library (optional)</option>
+              </select>
+              <label for="enemyRole">Combatant Type</label>
+              <select id="enemyRole">
+                <option value="enemy" selected>Type: Enemy</option>
+                <option value="npc">Type: NPC</option>
+              </select>
+              <label for="enemyName">Name</label>
+              <input id="enemyName" type="text" placeholder="Enemy name" required />
+              <label for="enemyInitiative">Initiative</label>
+              <div class="row">
+                <input id="enemyInitiative" type="number" placeholder="Initiative" required />
+                <button id="rollEnemyInitiativeBtn" type="button">Roll Init</button>
+              </div>
+              <label for="enemyHp">Hit Points</label>
+              <input id="enemyHp" type="number" placeholder="HP (optional)" />
+              <button type="submit">Add Enemy</button>
+            </form>
+            <div class="enemy-preview-panel">
+              <img
+                id="enemyMonsterPreview"
+                class="monster-image hidden"
+                alt="Selected enemy statblock preview"
+              />
+            </div>
+          </div>
+          <ul id="combatantEditList" class="list"></ul>
+        </section>
+      </section>
+
+      <section id="pageScenarioRun" class="panel page hidden run-page">
+        <div class="run-split">
+          <div>
+            <div class="row between">
+              <h2 id="runScenarioName"></h2>
+              <button id="goEditFromRunBtn" type="button">Edit View</button>
+            </div>
+            <p id="runScenarioNotes"></p>
+            <p><strong>Round:</strong> <span id="runRound">1</span></p>
+            <p><strong>Current turn:</strong> <span id="runCurrentTurn">No combatants yet</span></p>
+            <div class="row run-controls">
+              <button id="revokeTurnBtn" type="button">Revoke Turn</button>
+              <button id="nextTurnBtn" type="button">Next Turn</button>
+              <button id="resetCombatBtn" type="button">Reset to Round 1</button>
+            </div>
+            <ul id="runOrderList" class="list"></ul>
+          </div>
+          <div id="activeMonsterImageWrap" class="panel">
+            <h3>NPC Statblock</h3>
+            <p id="activeMonsterImageHint" class="hint">No enemy statblock selected.</p>
+            <img id="activeMonsterImage" class="monster-image hidden" alt="Enemy statblock" />
+          </div>
+        </div>
+      </section>
+
+      <div id="imageModal" class="image-modal hidden" role="dialog" aria-modal="true">
+        <button id="imageModalCloseBtn" class="image-modal-close" type="button">Close</button>
+        <img id="imageModalImg" class="image-modal-img" alt="Expanded statblock" />
+      </div>
+
+      <p id="status" class="status"></p>
+    </main>
+
+    <script src="/main.js" defer></script>
+  </body>
+</html>

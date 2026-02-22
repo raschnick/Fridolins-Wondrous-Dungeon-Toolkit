@@ -1,0 +1,14 @@
+{
+  "name": "fridolins-wondrous-dungeon-toolkit",
+  "version": "0.1.0",
+  "description": "Local D&D 5e 2024 initiative tracker basics",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.2"
+  }
+}

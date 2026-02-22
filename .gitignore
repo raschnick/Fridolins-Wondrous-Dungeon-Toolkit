@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Node / dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment
+.env
+.env.*
+
+# Runtime / generated
+*.log
+coverage/
+dist/
+build/
+
+# SQLite databases (local app data)
+data/*.sqlite
+data/*.sqlite-*
+*.sqlite
+*.sqlite-*
