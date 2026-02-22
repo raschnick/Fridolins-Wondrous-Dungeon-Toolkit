@@ -19,7 +19,7 @@
         />
         <nav class="main-sections">
           <button id="mainHomeBtn" type="button">Home</button>
-          <button id="mainMonstersBtn" type="button">Monster Library</button>
+          <button id="mainMonstersBtn" type="button">Library</button>
           <button id="mainAnalyticsBtn" type="button">Analytics</button>
         </nav>
       </header>
@@ -27,7 +27,7 @@
       <nav class="panel nav-pane" id="topNav">
         <button id="navHomeBtn" type="button">Home</button>
         <span id="navSepMonster" class="nav-sep hidden">></span>
-        <button id="navMonsterBtn" type="button" class="hidden">Monster Library</button>
+        <button id="navMonsterBtn" type="button" class="hidden">Library</button>
         <span id="navSepCampaign" class="nav-sep hidden">></span>
         <button id="navCampaignBtn" type="button" class="hidden">Campaign</button>
         <span id="navSepScenario" class="nav-sep hidden">></span>
@@ -37,30 +37,26 @@
       <section id="pageWelcome" class="panel page">
         <div class="row between welcome-header">
           <h2>Welcome</h2>
-          <form id="createCampaignForm" class="inline-form welcome-create-form">
-            <input
-              id="newCampaignName"
-              name="name"
-              type="text"
-              placeholder="New campaign name"
-              required
-            />
-            <button type="submit">Create Campaign</button>
-          </form>
+          <button id="addCampaignBtn" type="button">Create Campaign</button>
         </div>
-        <p>Select a campaign to continue.</p>
         <ul id="welcomeCampaignList" class="list selectable"></ul>
+        <div class="app-footer-logo-wrap">
+          <img src="/images/logo.png" alt="Fridolins logo" class="app-footer-logo" />
+        </div>
       </section>
 
       <section id="pageMonsters" class="page hidden">
         <div class="panel">
           <div class="row between">
-            <h2>Monster Library</h2>
-            <button id="newMonsterBtn" type="button">New</button>
+            <h2>Library</h2>
+            <button id="newMonsterBtn" type="button">New Entry</button>
           </div>
-          <p class="hint">
-            Includes starter 5e-style monsters. Add or edit your own statblocks here.
-          </p>
+          <input
+            id="monsterSearchInput"
+            type="search"
+            placeholder="Search monsters and NPCs"
+            aria-label="Search monsters and NPCs"
+          />
         </div>
 
         <section class="grid">
@@ -70,29 +66,35 @@
           </article>
 
           <article class="panel">
-            <h3>Statblock Editor</h3>
-            <form id="monsterForm" class="stacked-form">
-              <label for="monsterName">Name</label>
-              <input id="monsterName" placeholder="Name" required />
-              <label for="monsterIsLegendary">Is Legendary</label>
-              <select id="monsterIsLegendary">
-                <option value="false" selected>False</option>
-                <option value="true">True</option>
-              </select>
-              <fieldset id="monsterLegendaryActionsWrap" class="legendary-actions hidden">
-                <legend>Legendary Actions Count</legend>
-                <label><input type="radio" name="monsterLegendaryActionsCount" value="2" />2</label>
-                <label><input type="radio" name="monsterLegendaryActionsCount" value="3" checked />3</label>
-                <label><input type="radio" name="monsterLegendaryActionsCount" value="4" />4</label>
-              </fieldset>
-              <label for="monsterImageFile">Statblock Screenshot</label>
-              <input id="monsterImageFile" type="file" accept="image/*" />
-              <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
-              <img id="monsterImagePreview" class="monster-image hidden" alt="Monster statblock preview" />
-              <div class="row">
-                <button id="saveMonsterBtn" type="submit">Save Monster</button>
-                <button id="deleteMonsterBtn" type="button">Delete</button>
+            <div class="row between panel-header-actions">
+              <h3>Preview</h3>
+              <button id="editMonsterBtn" type="button">Edit</button>
+            </div>
+            <form id="monsterForm" class="stacked-form monster-form-readonly">
+              <div class="monster-edit-fields">
+                <label for="monsterName">Name</label>
+                <input id="monsterName" placeholder="Name" required />
+                <label for="monsterIsLegendary">Is Legendary</label>
+                <select id="monsterIsLegendary">
+                  <option value="false" selected>False</option>
+                  <option value="true">True</option>
+                </select>
+                <fieldset id="monsterLegendaryActionsWrap" class="legendary-actions hidden">
+                  <legend>Legendary Actions Count</legend>
+                  <label><input type="radio" name="monsterLegendaryActionsCount" value="2" />2</label>
+                  <label><input type="radio" name="monsterLegendaryActionsCount" value="3" checked />3</label>
+                  <label><input type="radio" name="monsterLegendaryActionsCount" value="4" />4</label>
+                </fieldset>
+                <label for="monsterImageFile">Statblock Screenshot</label>
+                <input id="monsterImageFile" type="file" accept="image/*" />
+                <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
+                <div class="row monster-form-actions">
+                  <button id="saveMonsterBtn" type="submit">Save</button>
+                  <button id="deleteMonsterBtn" class="delete-btn" type="button">Delete</button>
+                </div>
               </div>
+              <div id="monsterReadonlyView" class="monster-readonly-view"></div>
+              <img id="monsterImagePreview" class="monster-image hidden" alt="Monster statblock preview" />
             </form>
           </article>
         </section>
@@ -113,48 +115,19 @@
 
         <section class="grid">
           <article class="panel">
-            <h3>Characters</h3>
+            <div class="row between panel-header-actions">
+              <h3>Characters</h3>
+              <button id="addCharacterBtn" type="button">Add Character</button>
+            </div>
             <ul id="characterList" class="list"></ul>
-            <form id="createCharacterForm" class="stacked-form">
-              <input id="charName" name="name" type="text" placeholder="Name" required />
-              <select id="charClass" name="className" required>
-                <option value="" selected disabled>Select class</option>
-                <option value="Artificer">Artificer</option>
-                <option value="Barbarian">Barbarian</option>
-                <option value="Bard">Bard</option>
-                <option value="Cleric">Cleric</option>
-                <option value="Druid">Druid</option>
-                <option value="Fighter">Fighter</option>
-                <option value="Monk">Monk</option>
-                <option value="Paladin">Paladin</option>
-                <option value="Rogue">Rogue</option>
-                <option value="Sorcerer">Sorcerer</option>
-                <option value="Warlock">Warlock</option>
-                <option value="Wizard">Wizard</option>
-              </select>
-              <button type="submit">Add Character</button>
-            </form>
           </article>
 
           <article class="panel">
-            <h3>Combat Scenarios</h3>
+            <div class="row between panel-header-actions">
+              <h3>Combat Scenarios</h3>
+              <button id="addScenarioBtn" type="button">Add Scenario</button>
+            </div>
             <ul id="scenarioList" class="list"></ul>
-            <form id="createScenarioForm" class="stacked-form">
-              <input
-                id="scenarioName"
-                name="name"
-                type="text"
-                placeholder="Scenario name"
-                required
-              />
-              <textarea
-                id="scenarioNotes"
-                name="notes"
-                placeholder="Quick notes"
-                rows="4"
-              ></textarea>
-              <button type="submit">Add Scenario</button>
-            </form>
           </article>
         </section>
       </section>
@@ -179,7 +152,7 @@
               <strong>Add Custom Combatant</strong>
               <label for="enemyMonsterSelect">Monster Source</label>
               <select id="enemyMonsterSelect">
-                <option value="">From Monster Library (optional)</option>
+                <option value="">From Library (optional)</option>
               </select>
               <label for="enemyRole">Combatant Type</label>
               <select id="enemyRole">
@@ -239,7 +212,99 @@
         <img id="imageModalImg" class="image-modal-img" alt="Expanded statblock" />
       </div>
 
+      <div id="campaignActionModal" class="campaign-action-modal hidden" role="dialog" aria-modal="true">
+        <div class="panel campaign-action-dialog">
+          <div class="row between campaign-action-head">
+            <h3 id="campaignActionTitle">Add</h3>
+            <button id="campaignActionCloseBtn" class="delete-btn" type="button">X</button>
+          </div>
+
+          <form id="createCharacterForm" class="stacked-form hidden">
+            <input id="charName" name="name" type="text" placeholder="Name" required />
+            <select id="charClass" name="className" required>
+              <option value="" selected disabled>Select class</option>
+              <option value="Artificer">Artificer</option>
+              <option value="Barbarian">Barbarian</option>
+              <option value="Bard">Bard</option>
+              <option value="Cleric">Cleric</option>
+              <option value="Druid">Druid</option>
+              <option value="Fighter">Fighter</option>
+              <option value="Monk">Monk</option>
+              <option value="Paladin">Paladin</option>
+              <option value="Rogue">Rogue</option>
+              <option value="Sorcerer">Sorcerer</option>
+              <option value="Warlock">Warlock</option>
+              <option value="Wizard">Wizard</option>
+            </select>
+            <div class="row">
+              <button type="submit">Add Character</button>
+              <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <form id="createScenarioForm" class="stacked-form hidden">
+            <input
+              id="scenarioName"
+              name="name"
+              type="text"
+              placeholder="Scenario name"
+              required
+            />
+            <textarea
+              id="scenarioNotes"
+              name="notes"
+              placeholder="Quick notes (optional)"
+              rows="4"
+            ></textarea>
+            <div class="row">
+              <button type="submit">Add Scenario</button>
+              <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <form id="createCampaignModalForm" class="stacked-form hidden">
+            <input
+              id="newCampaignName"
+              name="name"
+              type="text"
+              placeholder="Campaign name"
+              required
+            />
+            <div class="row">
+              <button type="submit">Create Campaign</button>
+              <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <form id="createLibraryEntryForm" class="stacked-form hidden">
+            <input
+              id="libraryEntryName"
+              name="name"
+              type="text"
+              placeholder="Entry name"
+              required
+            />
+            <label for="libraryEntryLegendary">Is Legendary</label>
+            <select id="libraryEntryLegendary">
+              <option value="false" selected>False</option>
+              <option value="true">True</option>
+            </select>
+            <fieldset id="libraryEntryLegendaryWrap" class="legendary-actions hidden">
+              <legend>Legendary Actions Count</legend>
+              <label><input type="radio" name="libraryLegendaryActionsCount" value="2" />2</label>
+              <label><input type="radio" name="libraryLegendaryActionsCount" value="3" checked />3</label>
+              <label><input type="radio" name="libraryLegendaryActionsCount" value="4" />4</label>
+            </fieldset>
+            <div class="row">
+              <button type="submit">Create Entry</button>
+              <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <p id="status" class="status"></p>
+
     </main>
 
     <script src="/main.js" defer></script>

@@ -2,10 +2,13 @@ const state = {
   page: "welcome",
   lastScenarioPage: "scenario-edit",
   monsters: [],
+  monsterSearchQuery: "",
+  monsterEditorReadOnly: true,
   selectedMonsterId: null,
   draftMonsterImageData: "",
   runPreviewEnemyId: null,
   campaigns: [],
+  campaignSummaries: {},
   selectedCampaignId: null,
   characters: [],
   scenarios: [],
@@ -29,6 +32,7 @@ const els = {
   mainHomeBtn: document.getElementById("mainHomeBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
+  addCampaignBtn: document.getElementById("addCampaignBtn"),
   welcomeCampaignList: document.getElementById("welcomeCampaignList"),
   navMonsterBtn: document.getElementById("navMonsterBtn"),
   navSepMonster: document.getElementById("navSepMonster"),
@@ -38,24 +42,34 @@ const els = {
   navSepCampaign: document.getElementById("navSepCampaign"),
   navSepScenario: document.getElementById("navSepScenario"),
   monsterList: document.getElementById("monsterList"),
+  monsterSearchInput: document.getElementById("monsterSearchInput"),
   monsterForm: document.getElementById("monsterForm"),
   monsterName: document.getElementById("monsterName"),
   monsterIsLegendary: document.getElementById("monsterIsLegendary"),
   monsterLegendaryActionsWrap: document.getElementById("monsterLegendaryActionsWrap"),
+  monsterReadonlyView: document.getElementById("monsterReadonlyView"),
   monsterImageFile: document.getElementById("monsterImageFile"),
   monsterImagePreview: document.getElementById("monsterImagePreview"),
+  editMonsterBtn: document.getElementById("editMonsterBtn"),
+  saveMonsterBtn: document.getElementById("saveMonsterBtn"),
   newMonsterBtn: document.getElementById("newMonsterBtn"),
   deleteMonsterBtn: document.getElementById("deleteMonsterBtn"),
-  createCampaignForm: document.getElementById("createCampaignForm"),
+  createLibraryEntryForm: document.getElementById("createLibraryEntryForm"),
+  libraryEntryName: document.getElementById("libraryEntryName"),
+  libraryEntryLegendary: document.getElementById("libraryEntryLegendary"),
+  libraryEntryLegendaryWrap: document.getElementById("libraryEntryLegendaryWrap"),
+  createCampaignModalForm: document.getElementById("createCampaignModalForm"),
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
   deleteCampaignBtn: document.getElementById("deleteCampaignBtn"),
   characterList: document.getElementById("characterList"),
   createCharacterForm: document.getElementById("createCharacterForm"),
+  addCharacterBtn: document.getElementById("addCharacterBtn"),
   charName: document.getElementById("charName"),
   charClass: document.getElementById("charClass"),
   scenarioList: document.getElementById("scenarioList"),
   createScenarioForm: document.getElementById("createScenarioForm"),
+  addScenarioBtn: document.getElementById("addScenarioBtn"),
   scenarioName: document.getElementById("scenarioName"),
   scenarioNotes: document.getElementById("scenarioNotes"),
   goRunFromEditBtn: document.getElementById("goRunFromEditBtn"),
@@ -82,6 +96,9 @@ const els = {
   imageModal: document.getElementById("imageModal"),
   imageModalImg: document.getElementById("imageModalImg"),
   imageModalCloseBtn: document.getElementById("imageModalCloseBtn"),
+  campaignActionModal: document.getElementById("campaignActionModal"),
+  campaignActionTitle: document.getElementById("campaignActionTitle"),
+  campaignActionCloseBtn: document.getElementById("campaignActionCloseBtn"),
   revokeTurnBtn: document.getElementById("revokeTurnBtn"),
   nextTurnBtn: document.getElementById("nextTurnBtn"),
   resetCombatBtn: document.getElementById("resetCombatBtn"),
@@ -254,6 +271,88 @@ function updateMonsterLegendaryFieldsVisibility() {
   els.monsterLegendaryActionsWrap.classList.toggle("hidden", !isLegendary);
 }
 
+function updateLibraryEntryLegendaryFieldsVisibility() {
+  const isLegendary = els.libraryEntryLegendary.value === "true";
+  els.libraryEntryLegendaryWrap.classList.toggle("hidden", !isLegendary);
+}
+
+function setMonsterEditorReadOnly(readOnly) {
+  state.monsterEditorReadOnly = readOnly;
+  els.monsterForm.classList.toggle("monster-form-readonly", readOnly);
+  els.monsterName.readOnly = readOnly;
+  els.monsterIsLegendary.disabled = readOnly;
+  els.monsterImageFile.disabled = readOnly;
+  document
+    .querySelectorAll('input[name="monsterLegendaryActionsCount"]')
+    .forEach((input) => {
+      input.disabled = readOnly;
+    });
+  els.editMonsterBtn.textContent = readOnly ? "Edit" : "Cancel";
+  els.editMonsterBtn.disabled = !selectedMonster();
+  els.saveMonsterBtn.disabled = readOnly;
+  renderMonsterReadonlyView();
+}
+
+function cancelMonsterEditorChanges() {
+  const monster = selectedMonster();
+  if (monster) {
+    fillMonsterForm(monster);
+  } else {
+    clearMonsterForm();
+  }
+  setMonsterEditorReadOnly(true);
+}
+
+function appendReadonlyRow(labelText, valueText) {
+  const row = document.createElement("div");
+  row.className = "monster-readonly-row";
+  const label = document.createElement("span");
+  label.className = "monster-readonly-label";
+  label.textContent = labelText;
+  row.appendChild(label);
+  const value = document.createElement("span");
+  value.className = "monster-readonly-value";
+  value.textContent = valueText;
+  row.appendChild(value);
+  els.monsterReadonlyView.appendChild(row);
+}
+
+function renderMonsterReadonlyView() {
+  if (!els.monsterReadonlyView) return;
+  els.monsterReadonlyView.innerHTML = "";
+  if (!state.monsterEditorReadOnly) return;
+
+  const monster = selectedMonster();
+  if (!monster) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "Select an entry or create one with New Entry.";
+    els.monsterReadonlyView.appendChild(empty);
+    return;
+  }
+
+  appendReadonlyRow("Name", monster.name || "-");
+  if (monster.is_legendary) {
+    const count = Number(monster.legendary_actions_count);
+    const suffix = Number.isInteger(count) ? ` (${count})` : "";
+    appendReadonlyRow("Legendary", `Yes${suffix}`);
+  } else {
+    appendReadonlyRow("Legendary", "No");
+  }
+}
+
+function toggleMonsterEditorMode() {
+  if (!selectedMonster()) {
+    setStatus("Select a library entry first.");
+    return;
+  }
+  if (state.monsterEditorReadOnly) {
+    setMonsterEditorReadOnly(false);
+  } else {
+    cancelMonsterEditorChanges();
+  }
+}
+
 function openImageModal(src) {
   if (!src) return;
   els.imageModalImg.src = src;
@@ -263,6 +362,53 @@ function openImageModal(src) {
 function closeImageModal() {
   els.imageModal.classList.add("hidden");
   els.imageModalImg.src = "";
+}
+
+function openCampaignActionModal(mode) {
+  if ((mode === "character" || mode === "scenario") && !state.selectedCampaignId) return;
+  const isCampaign = mode === "campaign";
+  const isLibraryEntry = mode === "library-entry";
+  const isCharacter = mode === "character";
+  els.createCampaignModalForm.classList.toggle("hidden", !isCampaign);
+  els.createLibraryEntryForm.classList.toggle("hidden", !isLibraryEntry);
+  els.createCharacterForm.classList.toggle("hidden", !isCharacter);
+  els.createScenarioForm.classList.toggle(
+    "hidden",
+    isCharacter || isCampaign || isLibraryEntry
+  );
+  if (isCampaign) {
+    els.campaignActionTitle.textContent = "Create Campaign";
+  } else if (isLibraryEntry) {
+    els.campaignActionTitle.textContent = "New Library Entry";
+  } else {
+    els.campaignActionTitle.textContent = isCharacter ? "Add Character" : "Add Scenario";
+  }
+  els.campaignActionModal.classList.remove("hidden");
+  if (isCampaign) {
+    els.newCampaignName.value = "";
+    els.newCampaignName.focus();
+  } else if (isLibraryEntry) {
+    els.libraryEntryName.value = "";
+    els.libraryEntryLegendary.value = "false";
+    const defaultLegendary = document.querySelector(
+      'input[name="libraryLegendaryActionsCount"][value="3"]'
+    );
+    if (defaultLegendary) defaultLegendary.checked = true;
+    updateLibraryEntryLegendaryFieldsVisibility();
+    els.libraryEntryName.focus();
+  } else if (isCharacter) {
+    els.charName.value = "";
+    els.charClass.value = "";
+    els.charName.focus();
+  } else {
+    els.scenarioName.value = "";
+    els.scenarioNotes.value = "";
+    els.scenarioName.focus();
+  }
+}
+
+function closeCampaignActionModal() {
+  els.campaignActionModal.classList.add("hidden");
 }
 
 function dataUrlBytes(dataUrl) {
@@ -395,6 +541,7 @@ function normalizePathname(pathname) {
 function parseRoute(pathname) {
   const path = normalizePathname(pathname);
   if (path === "/") return { page: "welcome" };
+  if (path === "/library") return { page: "monsters" };
   if (path === "/monsters") return { page: "monsters" };
   if (path === "/analytics") return { page: "analytics" };
 
@@ -416,7 +563,7 @@ function parseRoute(pathname) {
 
 function routePathFor(page, campaignId = null, scenarioId = null) {
   if (page === "welcome") return "/";
-  if (page === "monsters") return "/monsters";
+  if (page === "monsters") return "/library";
   if (page === "analytics") return "/analytics";
   if (page === "campaign" && Number.isInteger(campaignId)) {
     return `/campaigns/${campaignId}`;
@@ -461,7 +608,7 @@ async function applyRoute(route, { replace = false } = {}) {
     }
     if (!isCurrent()) return;
     showPage("monsters");
-    await syncHistory("/monsters", { replace });
+    await syncHistory("/library", { replace });
     return;
   }
 
@@ -596,7 +743,7 @@ function renderNav() {
   const inAnalytics = state.page === "analytics";
 
   if (inMonsters) {
-    els.navHomeBtn.textContent = "Monster Library";
+    els.navHomeBtn.textContent = "Library";
     els.navHomeBtn.disabled = true;
   } else if (inAnalytics) {
     els.navHomeBtn.textContent = "Analytics";
@@ -642,13 +789,63 @@ function renderWelcomeCampaigns() {
 
   for (const campaign of state.campaigns) {
     const li = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = campaign.name;
-    button.addEventListener("click", async () => {
+    li.className = "campaign-overview-row";
+    li.tabIndex = 0;
+
+    const row = document.createElement("div");
+    row.className = "campaign-overview-grid";
+
+    const name = document.createElement("strong");
+    name.textContent = campaign.name;
+    row.appendChild(name);
+
+    const playersWrap = document.createElement("div");
+    playersWrap.className = "campaign-overview-players";
+    const summary = state.campaignSummaries[campaign.id] || { players: [], scenarioCount: 0 };
+    if (summary.players.length === 0) {
+      const noPlayers = document.createElement("span");
+      noPlayers.className = "hint";
+      noPlayers.textContent = "No players";
+      playersWrap.appendChild(noPlayers);
+    } else {
+      for (const player of summary.players) {
+        const badge = document.createElement("span");
+        badge.className = "campaign-player-badge";
+
+        const icon = document.createElement("img");
+        icon.className = "campaign-player-icon";
+        icon.alt = player.class_name || "PC";
+        icon.src = `/icons/classes/${slugifyClassName(player.class_name)}.png`;
+        icon.addEventListener("error", () => {
+          if (!icon.src.endsWith("/icons/pc.svg")) icon.src = "/icons/pc.svg";
+        });
+        badge.appendChild(icon);
+
+        const label = document.createElement("span");
+        label.textContent = player.name;
+        badge.appendChild(label);
+        playersWrap.appendChild(badge);
+      }
+    }
+    row.appendChild(playersWrap);
+
+    const scenarioCount = document.createElement("span");
+    scenarioCount.className = "campaign-scenario-count";
+    scenarioCount.textContent = `${summary.scenarioCount} scenario${summary.scenarioCount === 1 ? "" : "s"}`;
+    row.appendChild(scenarioCount);
+
+    li.appendChild(row);
+
+    const openCampaign = async () => {
       await navigateToPage("campaign", { campaignId: campaign.id });
+    };
+    li.addEventListener("click", openCampaign);
+    li.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      await openCampaign();
     });
-    li.appendChild(button);
+
     els.welcomeCampaignList.appendChild(li);
   }
 }
@@ -665,6 +862,7 @@ function clearMonsterForm() {
   updateMonsterLegendaryFieldsVisibility();
   setMonsterImagePreview("");
   els.monsterImageFile.value = "";
+  renderMonsterReadonlyView();
   renderMonsterList();
 }
 
@@ -679,6 +877,7 @@ function fillMonsterForm(monster) {
   state.draftMonsterImageData = monster.monster_image_data || "";
   setMonsterImagePreview(state.draftMonsterImageData);
   els.monsterImageFile.value = "";
+  renderMonsterReadonlyView();
 }
 
 function monsterFormPayload() {
@@ -698,13 +897,18 @@ function monsterFormPayload() {
 }
 
 function renderMonsterList() {
+  const query = state.monsterSearchQuery.trim().toLowerCase();
+  const filtered = query
+    ? state.monsters.filter((monster) => monster.name.toLowerCase().includes(query))
+    : state.monsters;
+
   els.monsterList.innerHTML = "";
-  if (state.monsters.length === 0) {
-    els.monsterList.innerHTML = "<li>No monsters yet.</li>";
+  if (filtered.length === 0) {
+    els.monsterList.innerHTML = query ? "<li>No matches found.</li>" : "<li>No monsters yet.</li>";
     return;
   }
 
-  for (const monster of state.monsters) {
+  for (const monster of filtered) {
     const li = document.createElement("li");
     if (monster.id === state.selectedMonsterId) li.classList.add("active");
     const row = document.createElement("div");
@@ -732,8 +936,12 @@ function renderMonsterList() {
     row.appendChild(label);
 
     li.addEventListener("click", () => {
+      if (!state.monsterEditorReadOnly && monster.id !== state.selectedMonsterId) {
+        setMonsterEditorReadOnly(true);
+      }
       state.selectedMonsterId = monster.id;
       fillMonsterForm(monster);
+      setMonsterEditorReadOnly(true);
       renderMonsterList();
     });
 
@@ -744,7 +952,7 @@ function renderMonsterList() {
 }
 
 function renderEnemyMonsterOptions() {
-  els.enemyMonsterSelect.innerHTML = '<option value="">From Monster Library (optional)</option>';
+  els.enemyMonsterSelect.innerHTML = '<option value="">From Library (optional)</option>';
   for (const monster of state.monsters) {
     const option = document.createElement("option");
     option.value = String(monster.id);
@@ -973,6 +1181,46 @@ function focusPreviewOnActiveNonPc() {
   }
 }
 
+function activeCombatant() {
+  return state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId) || null;
+}
+
+async function toggleActiveCombatantReaction() {
+  const combatant = activeCombatant();
+  if (!combatant || !state.selectedScenarioId) return;
+  const reactionReady = Number(combatant.reaction_available) !== 0;
+  await api(`/api/combatants/${combatant.id}/reaction`, {
+    method: "POST",
+    body: JSON.stringify({ available: !reactionReady })
+  });
+  await safeLoadCombatState();
+  renderScenarioRunPage();
+}
+
+async function cycleActiveCombatantLegendaryAction() {
+  const combatant = activeCombatant();
+  if (!combatant || !state.selectedScenarioId) return;
+  const isLegendary =
+    combatant.kind === "enemy" &&
+    Number(combatant.is_legendary) === 1 &&
+    Number.isInteger(Number(combatant.legendary_actions_count));
+  if (!isLegendary) return;
+
+  const legendaryMax = Number(combatant.legendary_actions_count);
+  const currentRemainingRaw = Number(combatant.legendary_actions_remaining);
+  const currentRemaining = Number.isInteger(currentRemainingRaw)
+    ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
+    : legendaryMax;
+  const nextRemaining = currentRemaining > 0 ? currentRemaining - 1 : legendaryMax;
+
+  await api(`/api/combatants/${combatant.id}/legendary-actions`, {
+    method: "POST",
+    body: JSON.stringify({ remaining: nextRemaining })
+  });
+  await safeLoadCombatState();
+  renderScenarioRunPage();
+}
+
 function attachConditionAdd(select, combatant) {
   select.addEventListener("change", async () => {
     const conditionKey = select.value || "";
@@ -1197,7 +1445,6 @@ function renderScenarioRunPage() {
         renderScenarioRunPage();
       });
     }
-    row.appendChild(name);
 
     const initiative = document.createElement("input");
     initiative.type = "number";
@@ -1234,6 +1481,7 @@ function renderScenarioRunPage() {
     });
     row.appendChild(reactionButton);
 
+    let legendaryWrap = null;
     if (
       combatant.kind === "enemy" &&
       Number(combatant.is_legendary) === 1 &&
@@ -1244,7 +1492,7 @@ function renderScenarioRunPage() {
       const legendaryRemaining = Number.isInteger(currentRemainingRaw)
         ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
         : legendaryMax;
-      const legendaryWrap = document.createElement("div");
+      legendaryWrap = document.createElement("div");
       legendaryWrap.className = "legendary-track";
       for (let i = 1; i <= legendaryMax; i += 1) {
         const pip = document.createElement("button");
@@ -1272,8 +1520,9 @@ function renderScenarioRunPage() {
         });
         legendaryWrap.appendChild(pip);
       }
-      row.appendChild(legendaryWrap);
     }
+    row.appendChild(name);
+    if (legendaryWrap) row.appendChild(legendaryWrap);
 
     const conditionSelect = createConditionSelect(combatant);
     right.appendChild(conditionSelect);
@@ -1372,6 +1621,16 @@ function renderCampaignPage() {
 
 async function loadCampaigns() {
   state.campaigns = await api("/api/campaigns");
+  const summaryEntries = await Promise.all(
+    state.campaigns.map(async (campaign) => {
+      const [players, scenarios] = await Promise.all([
+        api(`/api/campaigns/${campaign.id}/characters`),
+        api(`/api/campaigns/${campaign.id}/scenarios`)
+      ]);
+      return [campaign.id, { players, scenarioCount: scenarios.length }];
+    })
+  );
+  state.campaignSummaries = Object.fromEntries(summaryEntries);
   renderWelcomeCampaigns();
   renderNav();
 }
@@ -1442,6 +1701,12 @@ function bindEvents() {
       closeImageModal();
       return;
     }
+    if (event.key === "Escape" && !els.campaignActionModal.classList.contains("hidden")) {
+      closeCampaignActionModal();
+      return;
+    }
+    if (!els.imageModal.classList.contains("hidden")) return;
+    if (!els.campaignActionModal.classList.contains("hidden")) return;
 
     const key = event.key.toLowerCase();
     const target = event.target;
@@ -1456,6 +1721,11 @@ function bindEvents() {
     }
 
     if (key === "e") {
+      if (state.page === "monsters") {
+        event.preventDefault();
+        toggleMonsterEditorMode();
+        return;
+      }
       if (!state.selectedScenarioId) return;
       if (state.page === "scenario-run") {
         event.preventDefault();
@@ -1467,16 +1737,34 @@ function bindEvents() {
       return;
     }
 
+    if (key === "s" && state.page === "monsters" && !state.monsterEditorReadOnly) {
+      event.preventDefault();
+      els.monsterForm.requestSubmit();
+      return;
+    }
+
     if (state.page !== "scenario-run") return;
-    if (key !== "n" && key !== "b") return;
+    if (!["n", "b", "r", "l"].includes(key)) return;
     if (key === "n" && els.nextTurnBtn.disabled) return;
     if (key === "b" && els.revokeTurnBtn.disabled) return;
     event.preventDefault();
     if (key === "n") {
       els.nextTurnBtn.click();
-    } else {
-      els.revokeTurnBtn.click();
+      return;
     }
+    if (key === "b") {
+      els.revokeTurnBtn.click();
+      return;
+    }
+    if (key === "r") {
+      toggleActiveCombatantReaction().catch((error) => {
+        setStatus(error.message);
+      });
+      return;
+    }
+    cycleActiveCombatantLegendaryAction().catch((error) => {
+      setStatus(error.message);
+    });
   });
   els.activeMonsterImage.addEventListener("click", () => {
     if (!els.activeMonsterImage.src) return;
@@ -1485,6 +1773,25 @@ function bindEvents() {
   els.enemyMonsterPreview.addEventListener("click", () => {
     if (!els.enemyMonsterPreview.src) return;
     openImageModal(els.enemyMonsterPreview.src);
+  });
+  els.campaignActionCloseBtn.addEventListener("click", closeCampaignActionModal);
+  els.campaignActionModal.addEventListener("click", (event) => {
+    if (event.target === els.campaignActionModal) closeCampaignActionModal();
+  });
+  document.querySelectorAll(".campaign-action-cancel").forEach((button) => {
+    button.addEventListener("click", closeCampaignActionModal);
+  });
+
+  els.addCharacterBtn.addEventListener("click", () => {
+    openCampaignActionModal("character");
+  });
+
+  els.addScenarioBtn.addEventListener("click", () => {
+    openCampaignActionModal("scenario");
+  });
+
+  els.addCampaignBtn.addEventListener("click", () => {
+    openCampaignActionModal("campaign");
   });
 
   els.mainHomeBtn.addEventListener("click", () => {
@@ -1532,10 +1839,16 @@ function bindEvents() {
   });
 
   els.newMonsterBtn.addEventListener("click", () => {
-    clearMonsterForm();
+    openCampaignActionModal("library-entry");
+  });
+
+  els.editMonsterBtn.addEventListener("click", () => {
+    if (state.page !== "monsters") return;
+    toggleMonsterEditorMode();
   });
 
   els.monsterImageFile.addEventListener("change", async () => {
+    if (state.monsterEditorReadOnly) return;
     const file = els.monsterImageFile.files?.[0];
     if (!file) return;
     try {
@@ -1546,8 +1859,14 @@ function bindEvents() {
     }
   });
 
+  els.monsterSearchInput.addEventListener("input", () => {
+    state.monsterSearchQuery = els.monsterSearchInput.value || "";
+    renderMonsterList();
+  });
+
   document.addEventListener("paste", async (event) => {
     if (state.page !== "monsters") return;
+    if (state.monsterEditorReadOnly) return;
     const items = event.clipboardData?.items || [];
     const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
     if (!imageItem) return;
@@ -1586,6 +1905,8 @@ function bindEvents() {
 
   els.monsterIsLegendary.addEventListener("change", updateMonsterLegendaryFieldsVisibility);
   updateMonsterLegendaryFieldsVisibility();
+  els.libraryEntryLegendary.addEventListener("change", updateLibraryEntryLegendaryFieldsVisibility);
+  updateLibraryEntryLegendaryFieldsVisibility();
 
   els.monsterForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1610,6 +1931,39 @@ function bindEvents() {
         setStatus(`Created monster: ${created.name}`);
       }
       await loadMonsters();
+      setMonsterEditorReadOnly(true);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.createLibraryEntryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const isLegendary = els.libraryEntryLegendary.value === "true";
+      const selectedLegendary = document.querySelector(
+        'input[name="libraryLegendaryActionsCount"]:checked'
+      );
+      const legendaryActionsCount = isLegendary
+        ? Number(selectedLegendary?.value || "")
+        : null;
+      const created = await api("/api/monsters", {
+        method: "POST",
+        body: JSON.stringify({
+          name: els.libraryEntryName.value.trim(),
+          isLegendary,
+          legendaryActionsCount,
+          monsterImageData: ""
+        })
+      });
+      closeCampaignActionModal();
+      await loadMonsters();
+      state.selectedMonsterId = created.id;
+      const current = selectedMonster();
+      if (current) fillMonsterForm(current);
+      renderMonsterList();
+      setMonsterEditorReadOnly(true);
+      setStatus(`Created entry: ${created.name}`);
     } catch (error) {
       setStatus(error.message);
     }
@@ -1629,7 +1983,7 @@ function bindEvents() {
     }
   });
 
-  els.createCampaignForm.addEventListener("submit", async (event) => {
+  els.createCampaignModalForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
       const campaign = await api("/api/campaigns", {
@@ -1637,6 +1991,7 @@ function bindEvents() {
         body: JSON.stringify({ name: els.newCampaignName.value })
       });
       els.newCampaignName.value = "";
+      closeCampaignActionModal();
       await navigateToPage("campaign", { campaignId: campaign.id });
       setStatus(`Created campaign: ${campaign.name}`);
     } catch (error) {
@@ -1682,6 +2037,7 @@ function bindEvents() {
       });
       els.charName.value = "";
       els.charClass.value = "";
+      closeCampaignActionModal();
       await loadCampaignData();
       setStatus("Character added.");
     } catch (error) {
@@ -1702,6 +2058,7 @@ function bindEvents() {
       });
       els.scenarioName.value = "";
       els.scenarioNotes.value = "";
+      closeCampaignActionModal();
       await loadCampaignData();
       setStatus("Scenario added.");
     } catch (error) {
@@ -1823,6 +2180,7 @@ async function init() {
   bindEvents();
   try {
     await loadMonsters();
+    setMonsterEditorReadOnly(true);
   } catch (error) {
     setStatus(error.message);
   }

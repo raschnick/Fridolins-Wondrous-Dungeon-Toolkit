@@ -150,6 +150,15 @@ body {
   justify-content: space-between;
 }
 
+.panel-header-actions {
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.panel-header-actions h3 {
+  margin: 0;
+}
+
 .stacked-form {
   display: grid;
   gap: 0.5rem;
@@ -164,6 +173,10 @@ body {
   margin: 0;
 }
 
+#pageWelcome .welcome-header {
+  margin-bottom: 0.6rem;
+}
+
 .welcome-create-form {
   margin-left: auto;
   flex-wrap: wrap;
@@ -172,6 +185,80 @@ body {
 
 .welcome-create-form input {
   min-width: 220px;
+}
+
+#monsterSearchInput {
+  width: min(420px, 100%);
+  margin: 0.25rem 0 0.55rem;
+}
+
+.monster-form-actions {
+  margin: 0.1rem 0 0.35rem;
+}
+
+#monsterForm .monster-readonly-view {
+  display: none;
+}
+
+#monsterForm .monster-edit-fields {
+  display: grid;
+  gap: 0.62rem;
+}
+
+#monsterForm .monster-edit-fields input,
+#monsterForm .monster-edit-fields select,
+#monsterForm .monster-edit-fields textarea {
+  width: 100%;
+}
+
+#monsterForm .monster-edit-fields .hint {
+  margin: 0.1rem 0 0.15rem;
+}
+
+#monsterForm .monster-edit-fields .legendary-actions {
+  display: block;
+}
+
+#monsterForm .monster-edit-fields .legendary-actions label {
+  margin-right: 0.75rem;
+}
+
+#monsterForm.monster-form-readonly .monster-edit-fields {
+  display: none;
+}
+
+#monsterForm.monster-form-readonly .monster-readonly-view {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+}
+
+.monster-readonly-row {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.monster-readonly-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.monster-readonly-value {
+  font-size: 0.98rem;
+  color: var(--ink);
+}
+
+#deleteMonsterBtn {
+  background: #7d3942;
+  border-color: #964b54;
+  color: #f8edf0;
+  padding: 0.45rem 0.6rem;
+  line-height: normal;
+  font-weight: inherit;
+}
+
+#deleteMonsterBtn:hover {
+  background: #94424c;
 }
 
 input,
@@ -223,6 +310,57 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-alt);
+}
+
+.campaign-overview-row {
+  padding: 0.6rem 0.7rem !important;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.campaign-overview-row:hover {
+  border-color: #4a6281;
+  background: #1a2533;
+}
+
+.campaign-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.8fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.campaign-overview-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.campaign-player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.12rem 0.36rem;
+  border-radius: 999px;
+  border: 1px solid #334658;
+  background: #192430;
+  font-size: 0.78rem;
+  color: #d6e3f1;
+}
+
+.campaign-player-icon {
+  width: 1rem;
+  height: 1rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.campaign-scenario-count {
+  text-align: right;
+  color: #b4c2d1;
+  font-size: 0.86rem;
+  white-space: nowrap;
 }
 
 .run-tone-pc {
@@ -309,6 +447,12 @@ button:hover {
   grid-template-columns: minmax(420px, 1fr) minmax(560px, 760px);
   gap: 1rem;
   align-items: start;
+}
+
+body.page-run #activeMonsterImageWrap {
+  position: sticky;
+  top: 0.9rem;
+  align-self: start;
 }
 
 body.page-run .run-page {
@@ -429,7 +573,7 @@ body.page-run .run-page {
 }
 
 .run-order-init {
-  width: 44px !important;
+  width: 40px !important;
 }
 
 .run-order-hp {
@@ -608,8 +752,7 @@ body.page-run .run-page {
 }
 
 .status {
-  min-height: 1.2rem;
-  color: var(--muted);
+  display: none;
 }
 
 .monster-image {
@@ -637,6 +780,30 @@ body.page-run .run-page {
   padding: 2rem;
 }
 
+.campaign-action-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 9, 14, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 950;
+  padding: 1.5rem;
+}
+
+.campaign-action-dialog {
+  width: min(560px, calc(100vw - 2rem));
+  margin: 0;
+  border-color: #3a495c;
+}
+
+.campaign-action-head {
+  margin-bottom: 0.8rem;
+}
+
+.campaign-action-head h3 {
+  margin: 0;
+}
+
 .image-modal-close {
   position: fixed;
   top: 1.2rem;
@@ -658,4 +825,33 @@ body.page-run .run-page {
 
 .hidden {
   display: none;
+}
+
+.app-footer-logo-wrap {
+  margin-top: 1.2rem;
+  padding-top: 0.6rem;
+  display: flex;
+  justify-content: center;
+}
+
+.app-footer-logo {
+  width: min(26vw, 180px);
+  max-width: 100%;
+  height: auto;
+  opacity: 0.86;
+}
+
+@media (max-width: 860px) {
+  .campaign-overview-grid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .campaign-scenario-count {
+    text-align: left;
+  }
+
+  .app-footer-logo {
+    width: min(46vw, 180px);
+  }
 }

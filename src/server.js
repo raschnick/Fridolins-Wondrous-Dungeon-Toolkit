@@ -1099,5 +1099,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`iTracker running at http://localhost:${port}`);
+  console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
 });
