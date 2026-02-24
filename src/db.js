@@ -20,6 +20,51 @@ function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS campaign_members (
+      campaign_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'player',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (campaign_id, user_id),
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_campaign_members_user
+      ON campaign_members (user_id);
+
+    CREATE TABLE IF NOT EXISTS campaign_live_state (
+      campaign_id INTEGER PRIMARY KEY,
+      shared_scenario_id INTEGER,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+      FOREIGN KEY (shared_scenario_id) REFERENCES combat_scenarios(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'player',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_user
+      ON user_sessions (user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_expires
+      ON user_sessions (expires_at);
+
     CREATE TABLE IF NOT EXISTS characters (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       campaign_id INTEGER NOT NULL,
@@ -47,6 +92,7 @@ function initDb() {
       scenario_id INTEGER NOT NULL,
       kind TEXT NOT NULL CHECK(kind IN ('character', 'enemy')),
       enemy_role TEXT NOT NULL DEFAULT 'enemy',
+      player_visible INTEGER NOT NULL DEFAULT 1,
       reaction_available INTEGER NOT NULL DEFAULT 1,
       reaction_auto_readied INTEGER NOT NULL DEFAULT 0,
       is_legendary INTEGER NOT NULL DEFAULT 0,
@@ -149,6 +195,20 @@ function initDb() {
     "UPDATE combat_scenarios SET is_completed = 0 WHERE is_completed NOT IN (0, 1) OR is_completed IS NULL"
   );
 
+  const userColumns = db
+    .prepare("PRAGMA table_info(users)")
+    .all()
+    .map((column) => column.name);
+  if (!userColumns.includes("role")) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'");
+  }
+  if (!userColumns.includes("active")) {
+    db.exec("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
+  }
+  db.exec("UPDATE users SET role = 'player' WHERE role IS NULL OR trim(role) = ''");
+  db.exec("UPDATE users SET active = 1 WHERE active NOT IN (0, 1) OR active IS NULL");
+  db.exec("DELETE FROM user_sessions WHERE expires_at <= datetime('now')");
+
   const combatantColumns = db
     .prepare("PRAGMA table_info(scenario_combatants)")
     .all()
@@ -168,6 +228,9 @@ function initDb() {
     db.exec("ALTER TABLE scenario_combatants ADD COLUMN enemy_role TEXT NOT NULL DEFAULT 'enemy'");
     db.exec("UPDATE scenario_combatants SET enemy_role = 'enemy' WHERE enemy_role IS NULL OR enemy_role = ''");
   }
+  if (!combatantColumns.includes("player_visible")) {
+    db.exec("ALTER TABLE scenario_combatants ADD COLUMN player_visible INTEGER NOT NULL DEFAULT 1");
+  }
   if (!combatantColumns.includes("reaction_available")) {
     db.exec("ALTER TABLE scenario_combatants ADD COLUMN reaction_available INTEGER NOT NULL DEFAULT 1");
   }
@@ -184,6 +247,8 @@ function initDb() {
     db.exec("ALTER TABLE scenario_combatants ADD COLUMN legendary_actions_remaining INTEGER");
   }
   db.exec("UPDATE scenario_combatants SET reaction_available = 1 WHERE reaction_available IS NULL");
+  db.exec("UPDATE scenario_combatants SET player_visible = 1 WHERE player_visible IS NULL");
+  db.exec("UPDATE scenario_combatants SET player_visible = 1 WHERE player_visible NOT IN (0, 1)");
   db.exec(
     "UPDATE scenario_combatants SET reaction_available = 1 WHERE reaction_available NOT IN (0, 1)"
   );

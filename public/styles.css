@@ -71,8 +71,8 @@ body {
 
 .main-sections {
   display: flex;
-  margin-left: auto;
   flex-wrap: wrap;
+  margin-left: auto;
   justify-content: flex-end;
   gap: 0.45rem;
   align-items: center;
@@ -82,6 +82,52 @@ body {
 
 .main-sections button.active {
   background: var(--accent);
+}
+
+.user-menu {
+  position: relative;
+  margin-left: 0.7rem;
+  align-self: center;
+}
+
+.user-menu-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.95rem;
+  cursor: default;
+  user-select: none;
+}
+
+.user-menu-popover {
+  position: absolute;
+  top: calc(100% + 0.12rem);
+  right: 0;
+  min-width: 9rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+  z-index: 20;
+}
+
+.user-menu:hover .user-menu-popover,
+.user-menu:focus-within .user-menu-popover {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 @media (max-width: 900px) {
@@ -95,6 +141,10 @@ body {
     margin-left: 0;
     width: 100%;
     justify-content: center;
+  }
+
+  .user-menu {
+    margin-left: 0;
   }
 }
 
@@ -195,6 +245,83 @@ body {
 #scenarioSearchInput {
   width: min(420px, 100%);
   margin: 0.2rem 0 0.55rem;
+}
+
+.admin-hero h2 {
+  margin-bottom: 0.25rem;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.admin-panel h3 {
+  margin: 0;
+}
+
+.admin-form-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #18212c;
+  margin-bottom: 0.7rem;
+}
+
+.admin-form-card label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.admin-search {
+  width: min(250px, 100%);
+  margin: 0;
+}
+
+.admin-campaign-list {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.admin-row {
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.admin-row-main {
+  font-weight: 600;
+}
+
+.admin-meta {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-left: auto;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid #3a4a5d;
+  background: #1d2a39;
+  color: #d6e3f1;
+  font-size: 0.75rem;
+}
+
+.admin-badge-active {
+  border-color: #426a56;
+  background: #223b31;
+  color: #d7f3e4;
+}
+
+.admin-badge-inactive {
+  border-color: #6f4a4a;
+  background: #382425;
+  color: #f5d8d8;
 }
 
 .monster-form-actions {
@@ -582,6 +709,24 @@ body.page-run .run-page {
   margin-left: auto;
 }
 
+.run-header-actions {
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.share-status {
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
+.share-status-idle {
+  color: #66cc8a;
+}
+
+.share-status-live {
+  color: #ff6b6b;
+}
+
 .combatant-right {
   margin-left: auto;
   display: flex;
@@ -593,6 +738,23 @@ body.page-run .run-page {
 
 .run-order-init {
   width: 40px !important;
+}
+
+.run-order-init-readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(12, 17, 24, 0.78);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.readonly-control {
+  pointer-events: none;
+  cursor: default;
 }
 
 .run-order-hp {
@@ -700,6 +862,31 @@ body.page-run .run-page {
 
 .npc-heal-btn:hover {
   background: #399861;
+}
+
+.visibility-toggle {
+  font-size: 0.86rem;
+  padding: 0.26rem 0.62rem;
+  line-height: 1.2;
+  background: #2f7f52;
+  border-color: #4e8f66;
+}
+
+.visibility-toggle:hover {
+  background: #3a9963;
+}
+
+.visibility-toggle.is-hidden {
+  background: #6c727b;
+  border-color: #7e8793;
+}
+
+.visibility-toggle.is-hidden:hover {
+  background: #7a8390;
+}
+
+.combatant-hidden-for-players {
+  opacity: 0.8;
 }
 
 .run-input-locked {
@@ -852,7 +1039,7 @@ body.page-run .run-page {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .app-footer-logo-wrap {
@@ -869,6 +1056,30 @@ body.page-run .run-page {
   opacity: 0.86;
 }
 
+.player-waiting {
+  margin-top: 2.2rem;
+  min-height: 62vh;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.player-waiting-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.2vw, 2rem);
+  line-height: 1.2;
+}
+
+.player-waiting-image {
+  display: block;
+  width: min(62vw, 520px);
+  max-width: 100%;
+  height: auto;
+  margin-top: 0.4rem;
+}
+
 @media (max-width: 860px) {
   .campaign-overview-grid {
     grid-template-columns: 1fr;
@@ -877,6 +1088,10 @@ body.page-run .run-page {
 
   .campaign-scenario-count {
     text-align: left;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr;
   }
 
   .app-footer-logo {

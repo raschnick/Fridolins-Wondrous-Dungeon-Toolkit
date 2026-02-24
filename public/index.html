@@ -22,6 +22,13 @@
           <button id="mainMonstersBtn" type="button">Library</button>
           <button id="mainAnalyticsBtn" type="button">Analytics</button>
         </nav>
+        <div id="userMenu" class="user-menu hidden">
+          <span id="userMenuName" class="user-menu-name"></span>
+          <div class="user-menu-popover">
+            <button id="userMenuAdminBtn" type="button">Admin</button>
+            <button id="userMenuLogoutBtn" type="button">Logout</button>
+          </div>
+        </div>
       </header>
 
       <nav class="panel nav-pane" id="topNav">
@@ -34,6 +41,16 @@
         <button id="navScenarioBtn" type="button" class="hidden">Encounter</button>
       </nav>
 
+      <section id="pageLogin" class="panel page hidden">
+        <h2>Login</h2>
+        <form id="loginForm" class="stacked-form">
+          <input id="loginUsername" name="username" type="text" placeholder="Username" required />
+          <input id="loginPassword" name="password" type="password" placeholder="Password" required />
+          <button type="submit">Sign In</button>
+        </form>
+        <p id="loginStatus" class="hint"></p>
+      </section>
+
       <section id="pageWelcome" class="panel page">
         <div class="row between welcome-header">
           <h2>Welcome</h2>
@@ -42,6 +59,26 @@
         <ul id="welcomeCampaignList" class="list selectable"></ul>
         <div class="app-footer-logo-wrap">
           <img src="/images/logo.png" alt="Fridolins logo" class="app-footer-logo" />
+        </div>
+      </section>
+
+      <section id="pagePlayerHome" class="panel page hidden">
+        <div id="playerWaitingWrap" class="player-waiting">
+          <h2 id="playerWaitingTitle" class="player-waiting-title">Waiting for your genius DM to fire up an awesome encounter!</h2>
+          <img
+            id="playerWaitingImage"
+            src="/images/waiting.png"
+            alt="Waiting for encounter"
+            class="player-waiting-image"
+          />
+          <button id="playerRefreshBtn" type="button">Refresh</button>
+        </div>
+        <div id="playerLiveWrap" class="panel hidden">
+          <div class="row between">
+            <h3 id="playerLiveEncounterName"></h3>
+            <span id="playerLiveRound" class="hint"></span>
+          </div>
+          <ul id="playerLiveCombatantList" class="list"></ul>
         </div>
       </section>
 
@@ -103,6 +140,51 @@
       <section id="pageAnalytics" class="panel page hidden">
         <h2>Analytics</h2>
         <p>TODO: Add encounter and campaign analytics dashboards.</p>
+      </section>
+
+      <section id="pageAdmin" class="page hidden">
+        <div class="panel admin-hero">
+          <h2>Admin</h2>
+          <p class="hint">Manage users, campaign access, and account state.</p>
+          <p id="adminStatus" class="hint"></p>
+        </div>
+
+        <section class="admin-grid">
+          <article class="panel admin-panel">
+            <div class="row between panel-header-actions">
+              <h3>Users</h3>
+              <div class="row">
+                <input
+                  id="adminUserSearch"
+                  class="admin-search"
+                  type="search"
+                  placeholder="Search users"
+                  aria-label="Search users"
+                />
+                <button id="adminOpenCreateUserModalBtn" type="button">Add User</button>
+              </div>
+            </div>
+            <ul id="adminUserList" class="list"></ul>
+          </article>
+
+          <article class="panel admin-panel">
+            <div class="row between panel-header-actions">
+              <h3>Campaign Membership</h3>
+              <div class="row">
+                <input
+                  id="adminMemberSearch"
+                  class="admin-search"
+                  type="search"
+                  placeholder="Search members"
+                  aria-label="Search members"
+                />
+                <button id="adminOpenMembershipModalBtn" type="button">Add User to Campaign</button>
+              </div>
+            </div>
+            <ul id="adminCampaignList" class="list selectable admin-campaign-list"></ul>
+            <ul id="adminMemberList" class="list"></ul>
+          </article>
+        </section>
       </section>
 
       <section id="pageCampaign" class="page hidden">
@@ -226,14 +308,15 @@
           <div>
             <div class="row between">
               <h2 id="runScenarioName"></h2>
-              <div class="row">
+              <div class="row run-header-actions">
+                <span id="shareScenarioStatus" class="share-status share-status-idle">Not shared</span>
+                <button id="shareScenarioBtn" type="button">Share with Players</button>
                 <button id="completeScenarioBtn" type="button">Complete</button>
                 <button id="goEditFromRunBtn" type="button">Edit View</button>
               </div>
             </div>
             <p id="runScenarioNotes"></p>
             <p><strong>Round:</strong> <span id="runRound">1</span></p>
-            <p><strong>Current turn:</strong> <span id="runCurrentTurn">No combatants yet</span></p>
             <div class="row run-controls">
               <button id="revokeTurnBtn" type="button">Revoke Turn</button>
               <button id="nextTurnBtn" type="button">Next Turn</button>
@@ -348,6 +431,59 @@
             <div class="row">
               <button type="submit">Create Entry</button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="adminActionModal" class="campaign-action-modal hidden" role="dialog" aria-modal="true">
+        <div class="panel campaign-action-dialog">
+          <div class="row between campaign-action-head">
+            <h3 id="adminActionTitle">Admin Action</h3>
+            <button id="adminActionCloseBtn" class="delete-btn" type="button">X</button>
+          </div>
+
+          <form id="adminCreateUserForm" class="stacked-form admin-form-card hidden" autocomplete="off">
+            <input type="text" name="fake_username" autocomplete="username" class="hidden" />
+            <input type="password" name="fake_password" autocomplete="current-password" class="hidden" />
+            <label for="adminNewUsername">Username</label>
+            <input
+              id="adminNewUsername"
+              name="admin_new_username"
+              type="text"
+              placeholder="Username"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              required
+            />
+            <label for="adminNewPassword">Temporary Password</label>
+            <input
+              id="adminNewPassword"
+              name="admin_new_password"
+              type="password"
+              placeholder="Temporary password"
+              autocomplete="new-password"
+              required
+            />
+            <label for="adminNewRole">Role</label>
+            <select id="adminNewRole">
+              <option value="player" selected>Player</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div class="row">
+              <button type="submit">Create User</button>
+              <button class="admin-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <form id="adminMembershipForm" class="stacked-form admin-form-card hidden">
+            <p id="adminMembershipCampaignHint" class="hint"></p>
+            <label for="adminMemberUserSelect">User</label>
+            <select id="adminMemberUserSelect"></select>
+            <div class="row">
+              <button type="submit">Add/Update Player Access</button>
+              <button class="admin-action-cancel" type="button">Cancel</button>
             </div>
           </form>
         </div>

@@ -1,4 +1,5 @@
 const state = {
+  authUser: null,
   page: "welcome",
   lastScenarioPage: "scenario-edit",
   campaignActionMode: null,
@@ -12,6 +13,14 @@ const state = {
   runPreviewEnemyId: null,
   campaigns: [],
   campaignSummaries: {},
+  adminUsers: [],
+  adminMemberCampaignId: null,
+  adminCampaignMembers: [],
+  adminUserSearchQuery: "",
+  adminMemberSearchQuery: "",
+  campaignLiveScenarioId: null,
+  playerLiveData: null,
+  playerLivePollTimer: null,
   selectedCampaignId: null,
   characters: [],
   scenarios: [],
@@ -26,9 +35,13 @@ const state = {
 
 const els = {
   status: document.getElementById("status"),
+  topNav: document.getElementById("topNav"),
+  pageLogin: document.getElementById("pageLogin"),
   pageWelcome: document.getElementById("pageWelcome"),
+  pagePlayerHome: document.getElementById("pagePlayerHome"),
   pageMonsters: document.getElementById("pageMonsters"),
   pageAnalytics: document.getElementById("pageAnalytics"),
+  pageAdmin: document.getElementById("pageAdmin"),
   pageCampaign: document.getElementById("pageCampaign"),
   pageCampaignCompleted: document.getElementById("pageCampaignCompleted"),
   pageScenarioEdit: document.getElementById("pageScenarioEdit"),
@@ -37,6 +50,22 @@ const els = {
   mainHomeBtn: document.getElementById("mainHomeBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
+  userMenu: document.getElementById("userMenu"),
+  userMenuName: document.getElementById("userMenuName"),
+  userMenuAdminBtn: document.getElementById("userMenuAdminBtn"),
+  userMenuLogoutBtn: document.getElementById("userMenuLogoutBtn"),
+  playerWaitingWrap: document.getElementById("playerWaitingWrap"),
+  playerWaitingTitle: document.getElementById("playerWaitingTitle"),
+  playerWaitingImage: document.getElementById("playerWaitingImage"),
+  playerRefreshBtn: document.getElementById("playerRefreshBtn"),
+  playerLiveWrap: document.getElementById("playerLiveWrap"),
+  playerLiveEncounterName: document.getElementById("playerLiveEncounterName"),
+  playerLiveRound: document.getElementById("playerLiveRound"),
+  playerLiveCombatantList: document.getElementById("playerLiveCombatantList"),
+  loginForm: document.getElementById("loginForm"),
+  loginUsername: document.getElementById("loginUsername"),
+  loginPassword: document.getElementById("loginPassword"),
+  loginStatus: document.getElementById("loginStatus"),
   addCampaignBtn: document.getElementById("addCampaignBtn"),
   welcomeCampaignList: document.getElementById("welcomeCampaignList"),
   navMonsterBtn: document.getElementById("navMonsterBtn"),
@@ -69,6 +98,24 @@ const els = {
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
   completedScenarioPageTitle: document.getElementById("completedScenarioPageTitle"),
+  adminCreateUserForm: document.getElementById("adminCreateUserForm"),
+  adminNewUsername: document.getElementById("adminNewUsername"),
+  adminNewPassword: document.getElementById("adminNewPassword"),
+  adminNewRole: document.getElementById("adminNewRole"),
+  adminStatus: document.getElementById("adminStatus"),
+  adminUserSearch: document.getElementById("adminUserSearch"),
+  adminUserList: document.getElementById("adminUserList"),
+  adminOpenCreateUserModalBtn: document.getElementById("adminOpenCreateUserModalBtn"),
+  adminOpenMembershipModalBtn: document.getElementById("adminOpenMembershipModalBtn"),
+  adminMembershipForm: document.getElementById("adminMembershipForm"),
+  adminMembershipCampaignHint: document.getElementById("adminMembershipCampaignHint"),
+  adminCampaignList: document.getElementById("adminCampaignList"),
+  adminMemberUserSelect: document.getElementById("adminMemberUserSelect"),
+  adminMemberSearch: document.getElementById("adminMemberSearch"),
+  adminMemberList: document.getElementById("adminMemberList"),
+  adminActionModal: document.getElementById("adminActionModal"),
+  adminActionTitle: document.getElementById("adminActionTitle"),
+  adminActionCloseBtn: document.getElementById("adminActionCloseBtn"),
   viewCompletedScenariosBtn: document.getElementById("viewCompletedScenariosBtn"),
   backToCampaignBtn: document.getElementById("backToCampaignBtn"),
   deleteCampaignBtn: document.getElementById("deleteCampaignBtn"),
@@ -105,7 +152,8 @@ const els = {
   runScenarioName: document.getElementById("runScenarioName"),
   runScenarioNotes: document.getElementById("runScenarioNotes"),
   runRound: document.getElementById("runRound"),
-  runCurrentTurn: document.getElementById("runCurrentTurn"),
+  shareScenarioStatus: document.getElementById("shareScenarioStatus"),
+  shareScenarioBtn: document.getElementById("shareScenarioBtn"),
   completeScenarioBtn: document.getElementById("completeScenarioBtn"),
   goEditFromRunBtn: document.getElementById("goEditFromRunBtn"),
   activeMonsterImageWrap: document.getElementById("activeMonsterImageWrap"),
@@ -122,6 +170,32 @@ const els = {
   resetCombatBtn: document.getElementById("resetCombatBtn"),
   runOrderList: document.getElementById("runOrderList")
 };
+
+function openAdminActionModal(mode) {
+  setAdminStatus("");
+  if (mode === "create-user") {
+    els.adminActionTitle.textContent = "Add User";
+    els.adminCreateUserForm.classList.remove("hidden");
+    els.adminMembershipForm.classList.add("hidden");
+    els.adminNewUsername.focus();
+  } else {
+    const campaign = state.campaigns.find((c) => c.id === state.adminMemberCampaignId);
+    if (!campaign) {
+      setStatus("Select a campaign first.");
+      return;
+    }
+    els.adminActionTitle.textContent = "Add User to Campaign";
+    els.adminCreateUserForm.classList.add("hidden");
+    els.adminMembershipForm.classList.remove("hidden");
+    els.adminMembershipCampaignHint.textContent = `Campaign: ${campaign.name}`;
+    els.adminMemberUserSelect.focus();
+  }
+  els.adminActionModal.classList.remove("hidden");
+}
+
+function closeAdminActionModal() {
+  els.adminActionModal.classList.add("hidden");
+}
 
 const CONDITIONS = [
   {
@@ -254,7 +328,15 @@ async function api(path, options = {}) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Request failed." }));
-    throw new Error(err.error || "Request failed.");
+    const error = new Error(err.error || "Request failed.");
+    error.status = res.status;
+    if (res.status === 401) error.code = "AUTH_REQUIRED";
+    if (res.status === 401 && path !== "/api/auth/login") {
+      state.authUser = null;
+      setLoginStatus("Please sign in.");
+      showPage("login");
+    }
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -262,6 +344,15 @@ async function api(path, options = {}) {
 
 function setStatus(message = "") {
   els.status.textContent = message;
+}
+
+function setLoginStatus(message = "") {
+  els.loginStatus.textContent = message;
+}
+
+function setAdminStatus(message = "") {
+  if (!els.adminStatus) return;
+  els.adminStatus.textContent = message;
 }
 
 function setMonsterImagePreview(dataUrl) {
@@ -559,7 +650,8 @@ function createCombatantNameElement(combatant) {
   wrapper.appendChild(icon);
 
   const text = document.createElement("span");
-  text.textContent = combatant.name;
+  const isHiddenForPlayers = Number(combatant.player_visible) === 0;
+  text.textContent = isHiddenForPlayers ? `(${combatant.name})` : combatant.name;
   wrapper.appendChild(text);
 
   return wrapper;
@@ -573,9 +665,12 @@ function normalizePathname(pathname) {
 
 function parseRoute(pathname) {
   const path = normalizePathname(pathname);
+  if (path === "/login") return { page: "login" };
+  if (path === "/player") return { page: "player-home" };
   if (path === "/") return { page: "welcome" };
   if (path === "/library") return { page: "monsters" };
   if (path === "/monsters") return { page: "monsters" };
+  if (path === "/admin") return { page: "admin" };
   if (path === "/analytics") return { page: "analytics" };
 
   let match = path.match(/^\/campaigns\/(\d+)$/);
@@ -609,8 +704,11 @@ function parseRoute(pathname) {
 }
 
 function routePathFor(page, campaignId = null, scenarioId = null) {
+  if (page === "login") return "/login";
+  if (page === "player-home") return "/player";
   if (page === "welcome") return "/";
   if (page === "monsters") return "/library";
+  if (page === "admin") return "/admin";
   if (page === "analytics") return "/analytics";
   if (page === "campaign" && Number.isInteger(campaignId)) {
     return `/campaigns/${campaignId}`;
@@ -653,7 +751,17 @@ async function applyRoute(route, { replace = false } = {}) {
     await navigateToPath(path, { replace: true });
   };
 
+  if (route.page === "login") {
+    showPage("login");
+    await syncHistory("/login", { replace });
+    return;
+  }
+
   if (route.page === "monsters") {
+    if (state.authUser?.role !== "admin") {
+      await safeNavigate("/", "Library access denied.");
+      return;
+    }
     try {
       await loadMonsters();
     } catch (error) {
@@ -665,13 +773,56 @@ async function applyRoute(route, { replace = false } = {}) {
     return;
   }
 
+  if (route.page === "player-home") {
+    try {
+      await loadPlayerLive();
+    } catch (error) {
+      setStatus(error.message);
+    }
+    if (!isCurrent()) return;
+    startPlayerLivePolling();
+    showPage("player-home");
+    await syncHistory("/player", { replace });
+    return;
+  }
+
   if (route.page === "analytics") {
     showPage("analytics");
     await syncHistory("/analytics", { replace });
     return;
   }
 
+  if (route.page === "admin") {
+    if (state.authUser?.role !== "admin") {
+      await safeNavigate("/", "Admin access denied.");
+      return;
+    }
+    try {
+      await loadAdminData();
+      renderAdminPage();
+    } catch (error) {
+      setStatus(error.message);
+    }
+    if (!isCurrent()) return;
+    showPage("admin");
+    await syncHistory("/admin", { replace });
+    return;
+  }
+
   if (route.page === "welcome") {
+    if (state.authUser?.role !== "admin") {
+      try {
+        await loadPlayerLive();
+      } catch (error) {
+        setStatus(error.message);
+      }
+      if (!isCurrent()) return;
+      startPlayerLivePolling();
+      showPage("player-home");
+      await syncHistory("/player", { replace });
+      return;
+    }
+    stopPlayerLivePolling();
     state.selectedCampaignId = null;
     state.selectedScenarioId = null;
     state.characters = [];
@@ -786,10 +937,18 @@ async function navigateToPage(page, { campaignId = null, scenarioId = null, repl
 
 function showPage(page) {
   state.page = page;
+  if (page !== "player-home") {
+    stopPlayerLivePolling();
+  }
   document.body.classList.toggle("page-run", page === "scenario-run");
+  els.pageLogin.classList.toggle("hidden", page !== "login");
+  const hideTopNav = page === "login" || (state.authUser?.role !== "admin");
+  els.topNav.classList.toggle("hidden", hideTopNav);
   els.pageWelcome.classList.toggle("hidden", page !== "welcome");
+  els.pagePlayerHome.classList.toggle("hidden", page !== "player-home");
   els.pageMonsters.classList.toggle("hidden", page !== "monsters");
   els.pageAnalytics.classList.toggle("hidden", page !== "analytics");
+  els.pageAdmin.classList.toggle("hidden", page !== "admin");
   els.pageCampaign.classList.toggle("hidden", page !== "campaign");
   els.pageCampaignCompleted.classList.toggle("hidden", page !== "campaign-completed");
   els.pageScenarioEdit.classList.toggle("hidden", page !== "scenario-edit");
@@ -800,8 +959,21 @@ function showPage(page) {
 }
 
 function renderMainSections() {
+  const isAuthed = Boolean(state.authUser);
+  els.mainHomeBtn.classList.toggle("hidden", !isAuthed);
+  els.userMenu.classList.toggle("hidden", !isAuthed);
+  const showLibrary = isAuthed && state.authUser?.role === "admin";
+  const showAnalytics = isAuthed && state.authUser?.role === "admin";
+  els.mainMonstersBtn.classList.toggle("hidden", !showLibrary);
+  els.mainAnalyticsBtn.classList.toggle("hidden", !showAnalytics);
+  if (!isAuthed) return;
+
+  els.userMenuName.textContent = state.authUser?.username || "";
+  els.userMenuAdminBtn.classList.toggle("hidden", state.authUser?.role !== "admin");
+
   const inHome =
     state.page === "welcome" ||
+    state.page === "player-home" ||
     state.page === "campaign" ||
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
@@ -813,6 +985,7 @@ function renderMainSections() {
 }
 
 function renderNav() {
+  if (!state.authUser || state.page === "login" || state.authUser.role !== "admin") return;
   const campaign = selectedCampaign();
   const scenario = selectedScenario();
 
@@ -826,9 +999,13 @@ function renderNav() {
 
   const inMonsters = state.page === "monsters";
   const inAnalytics = state.page === "analytics";
+  const inAdmin = state.page === "admin";
 
   if (inMonsters) {
     els.navHomeBtn.textContent = "Library";
+    els.navHomeBtn.disabled = true;
+  } else if (inAdmin) {
+    els.navHomeBtn.textContent = "Admin";
     els.navHomeBtn.disabled = true;
   } else if (inAnalytics) {
     els.navHomeBtn.textContent = "Analytics";
@@ -1136,11 +1313,22 @@ function renderScenarios() {
     const actions = document.createElement("div");
     actions.className = "row-actions";
 
+    const runButton = document.createElement("button");
+    runButton.type = "button";
+    runButton.textContent = "Run";
+    runButton.addEventListener("click", async () => {
+      await navigateToPage("scenario-run", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
+    });
+    actions.appendChild(runButton);
+
     const editButton = document.createElement("button");
     editButton.type = "button";
     editButton.textContent = "Edit";
     editButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-completed-edit", {
+      await navigateToPage("scenario-edit", {
         campaignId: state.selectedCampaignId,
         scenarioId: scenario.id
       });
@@ -1393,6 +1581,29 @@ async function cycleActiveCombatantLegendaryAction() {
   renderScenarioRunPage();
 }
 
+function createPlayerVisibilityToggle(combatant, rerender) {
+  const visibleToPlayers = Number(combatant.player_visible) !== 0;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "visibility-toggle";
+  button.classList.toggle("is-hidden", !visibleToPlayers);
+  button.textContent = visibleToPlayers ? "Visible" : "Hidden";
+  button.title = visibleToPlayers ? "Visible in player view" : "Hidden from player view";
+  button.addEventListener("click", async () => {
+    try {
+      await api(`/api/combatants/${combatant.id}/player-visible`, {
+        method: "POST",
+        body: JSON.stringify({ visible: !visibleToPlayers })
+      });
+      await safeLoadCombatState();
+      rerender();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+  return button;
+}
+
 function attachConditionAdd(select, combatant) {
   select.addEventListener("change", async () => {
     const conditionKey = select.value || "";
@@ -1480,6 +1691,9 @@ function renderScenarioEditPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
+    if (Number(combatant.player_visible) === 0) {
+      li.classList.add("combatant-hidden-for-players");
+    }
     const row = document.createElement("div");
     row.className = "combatant-row";
 
@@ -1493,6 +1707,7 @@ function renderScenarioEditPage() {
       });
     }
     row.appendChild(name);
+    row.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioEditPage));
 
     const initiative = document.createElement("input");
     initiative.type = "text";
@@ -1612,6 +1827,18 @@ function renderScenarioRunPage() {
 
   els.runScenarioName.textContent = scenario.name;
   els.runScenarioNotes.textContent = scenario.notes || "No notes yet.";
+  if (state.authUser?.role === "admin") {
+    const isSharedCurrent = state.campaignLiveScenarioId === scenario.id;
+    els.shareScenarioBtn.classList.remove("hidden");
+    els.shareScenarioStatus.classList.remove("hidden");
+    els.shareScenarioStatus.textContent = isSharedCurrent ? "Sharing" : "Not shared";
+    els.shareScenarioStatus.classList.toggle("share-status-live", isSharedCurrent);
+    els.shareScenarioStatus.classList.toggle("share-status-idle", !isSharedCurrent);
+    els.shareScenarioBtn.textContent = isSharedCurrent ? "Stop Sharing" : "Share";
+  } else {
+    els.shareScenarioStatus.classList.add("hidden");
+    els.shareScenarioBtn.classList.add("hidden");
+  }
   if (Number(scenario.is_completed) === 1) {
     els.completeScenarioBtn.textContent = "Completed";
     els.completeScenarioBtn.disabled = true;
@@ -1626,7 +1853,6 @@ function renderScenarioRunPage() {
   els.activeMonsterImageHint.classList.remove("hidden");
 
   if (state.combat.combatants.length === 0) {
-    els.runCurrentTurn.textContent = "No combatants yet";
     els.revokeTurnBtn.disabled = true;
     els.nextTurnBtn.disabled = true;
     els.resetCombatBtn.disabled = true;
@@ -1639,7 +1865,6 @@ function renderScenarioRunPage() {
   els.resetCombatBtn.disabled = false;
 
   const active = state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId);
-  els.runCurrentTurn.textContent = active ? `${active.name} (${active.initiative})` : "Not set";
   if (
     !state.runPreviewEnemyId ||
     !state.combat.combatants.some((c) => c.id === state.runPreviewEnemyId && c.kind === "enemy")
@@ -1663,6 +1888,9 @@ function renderScenarioRunPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
+    if (Number(combatant.player_visible) === 0) {
+      li.classList.add("combatant-hidden-for-players");
+    }
     if (combatant.kind === "character") {
       li.classList.add("run-tone-pc");
     } else if (combatant.enemy_role === "npc") {
@@ -1773,6 +2001,7 @@ function renderScenarioRunPage() {
     row.appendChild(name);
     if (legendaryWrap) row.appendChild(legendaryWrap);
 
+    right.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioRunPage));
     const conditionSelect = createConditionSelect(combatant);
     right.appendChild(conditionSelect);
 
@@ -1904,6 +2133,337 @@ async function loadCampaigns() {
   renderNav();
 }
 
+async function loadCampaignLiveState(campaignId) {
+  if (!Number.isInteger(campaignId)) {
+    state.campaignLiveScenarioId = null;
+    return;
+  }
+  try {
+    const live = await api(`/api/campaigns/${campaignId}/live`);
+    state.campaignLiveScenarioId = Number.isInteger(live?.shared_scenario_id)
+      ? live.shared_scenario_id
+      : null;
+  } catch (_error) {
+    state.campaignLiveScenarioId = null;
+  }
+}
+
+function renderPlayerHome() {
+  const shared = state.playerLiveData?.shared || null;
+  const hasShared = Boolean(shared);
+  els.playerWaitingWrap.classList.toggle("hidden", hasShared);
+  els.playerLiveWrap.classList.toggle("hidden", !hasShared);
+  if (!hasShared) return;
+
+  els.playerLiveEncounterName.textContent = shared.name || "Shared Encounter";
+  els.playerLiveRound.textContent = `Round ${shared.round ?? 1}`;
+  els.playerLiveCombatantList.innerHTML = "";
+
+  const combatants = Array.isArray(shared.combatants) ? shared.combatants : [];
+  if (combatants.length === 0) {
+    els.playerLiveCombatantList.innerHTML = "<li>No combatants yet.</li>";
+    return;
+  }
+
+  for (const combatant of combatants) {
+    const li = document.createElement("li");
+    if (combatant.kind === "character") {
+      li.classList.add("run-tone-pc");
+    } else if (combatant.enemy_role === "npc") {
+      li.classList.add("run-tone-npc");
+    } else {
+      li.classList.add("run-tone-enemy");
+    }
+    const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
+    if (keys.includes("down")) {
+      li.classList.add("run-down");
+    }
+    if (combatant.id === shared.activeCombatantId) {
+      li.classList.add("turn-active");
+    }
+
+    const row = document.createElement("div");
+    row.className = "combatant-row";
+
+    const initiative = document.createElement("span");
+    initiative.className = "run-order-init run-order-init-readonly";
+    initiative.textContent = String(combatant.initiative);
+    row.appendChild(initiative);
+
+    const reactionReady = Number(combatant.reaction_available) !== 0;
+    const reactionBadge = document.createElement("span");
+    reactionBadge.className = "reaction-btn reaction-die readonly-control";
+    reactionBadge.textContent = "R";
+    reactionBadge.classList.toggle("used", !reactionReady);
+    row.appendChild(reactionBadge);
+
+    const name = createCombatantNameElement(combatant);
+    row.appendChild(name);
+
+    if (
+      combatant.kind === "enemy" &&
+      Number(combatant.is_legendary) === 1 &&
+      Number.isInteger(Number(combatant.legendary_actions_count))
+    ) {
+      const legendaryMax = Number(combatant.legendary_actions_count);
+      const currentRemainingRaw = Number(combatant.legendary_actions_remaining);
+      const legendaryRemaining = Number.isInteger(currentRemainingRaw)
+        ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
+        : legendaryMax;
+      const legendaryWrap = document.createElement("div");
+      legendaryWrap.className = "legendary-track";
+      for (let i = 1; i <= legendaryMax; i += 1) {
+        const pip = document.createElement("span");
+        pip.className = "legendary-btn reaction-die readonly-control";
+        pip.textContent = "L";
+        const ready = i <= legendaryRemaining;
+        pip.classList.toggle("used", !ready);
+        legendaryWrap.appendChild(pip);
+      }
+      row.appendChild(legendaryWrap);
+    }
+
+    li.appendChild(row);
+
+    applyConditionStyleReadonly(li, combatant);
+
+    els.playerLiveCombatantList.appendChild(li);
+  }
+}
+
+async function loadPlayerLive() {
+  if (!state.authUser || state.authUser.role === "admin") return;
+  state.playerLiveData = await api("/api/player/live");
+  renderPlayerHome();
+}
+
+function stopPlayerLivePolling() {
+  if (state.playerLivePollTimer) {
+    clearInterval(state.playerLivePollTimer);
+    state.playerLivePollTimer = null;
+  }
+}
+
+function startPlayerLivePolling() {
+  stopPlayerLivePolling();
+  if (!state.authUser || state.authUser.role === "admin") return;
+  state.playerLivePollTimer = setInterval(() => {
+    loadPlayerLive().catch(() => {
+      // keep prior state on transient failures
+    });
+  }, 2000);
+}
+
+async function loadAdminData() {
+  if (state.authUser?.role !== "admin") return;
+  const [users, campaigns] = await Promise.all([
+    api("/api/admin/users"),
+    api("/api/campaigns")
+  ]);
+  state.adminUsers = users;
+  state.campaigns = campaigns;
+
+  if (
+    !Number.isInteger(state.adminMemberCampaignId) ||
+    !state.campaigns.some((campaign) => campaign.id === state.adminMemberCampaignId)
+  ) {
+    state.adminMemberCampaignId = state.campaigns[0]?.id ?? null;
+  }
+
+  if (Number.isInteger(state.adminMemberCampaignId)) {
+    state.adminCampaignMembers = await api(
+      `/api/campaigns/${state.adminMemberCampaignId}/members`
+    );
+  } else {
+    state.adminCampaignMembers = [];
+  }
+}
+
+function renderAdminPage() {
+  if (els.adminUserSearch.value !== state.adminUserSearchQuery) {
+    els.adminUserSearch.value = state.adminUserSearchQuery;
+  }
+  if (els.adminMemberSearch.value !== state.adminMemberSearchQuery) {
+    els.adminMemberSearch.value = state.adminMemberSearchQuery;
+  }
+
+  const userQuery = state.adminUserSearchQuery.trim().toLowerCase();
+  const memberQuery = state.adminMemberSearchQuery.trim().toLowerCase();
+  const filteredUsers = userQuery
+    ? state.adminUsers.filter((user) => {
+      const statusLabel = Number(user.active) === 1 ? "active" : "inactive";
+      return `${user.username} ${user.role} ${statusLabel}`.toLowerCase().includes(userQuery);
+    })
+    : state.adminUsers;
+
+  els.adminUserList.innerHTML = "";
+  if (filteredUsers.length === 0) {
+    els.adminUserList.innerHTML = "<li>No users yet.</li>";
+  } else {
+    for (const user of filteredUsers) {
+      const li = document.createElement("li");
+      const row = document.createElement("div");
+      row.className = "list-row admin-row";
+
+      const label = document.createElement("span");
+      label.className = "admin-row-main";
+      label.textContent = user.username;
+      row.appendChild(label);
+
+      const meta = document.createElement("div");
+      meta.className = "admin-meta";
+      const roleBadge = document.createElement("span");
+      roleBadge.className = "admin-badge";
+      roleBadge.textContent = user.role === "admin" ? "Admin" : "Player";
+      meta.appendChild(roleBadge);
+      const statusBadge = document.createElement("span");
+      statusBadge.className = `admin-badge ${Number(user.active) === 1 ? "admin-badge-active" : "admin-badge-inactive"}`;
+      statusBadge.textContent = Number(user.active) === 1 ? "Active" : "Inactive";
+      meta.appendChild(statusBadge);
+      row.appendChild(meta);
+
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+
+      const resetButton = document.createElement("button");
+      resetButton.type = "button";
+      resetButton.textContent = "Reset PW";
+      resetButton.addEventListener("click", async () => {
+        const password = window.prompt(`New password for ${user.username}:`);
+        if (!password) return;
+        try {
+          await api(`/api/admin/users/${user.id}/reset-password`, {
+            method: "POST",
+            body: JSON.stringify({ password })
+          });
+          setStatus(`Reset password for ${user.username}.`);
+        } catch (error) {
+          setStatus(error.message);
+        }
+      });
+      actions.appendChild(resetButton);
+
+      const toggleButton = document.createElement("button");
+      toggleButton.type = "button";
+      toggleButton.textContent = Number(user.active) === 1 ? "Deactivate" : "Activate";
+      if (Number(user.active) !== 1) toggleButton.classList.add("npc-heal-btn");
+      toggleButton.addEventListener("click", async () => {
+        try {
+          await api(`/api/admin/users/${user.id}/active`, {
+            method: "POST",
+            body: JSON.stringify({ active: Number(user.active) !== 1 })
+          });
+          await loadAdminData();
+          renderAdminPage();
+          setStatus(`${Number(user.active) === 1 ? "Deactivated" : "Activated"} ${user.username}.`);
+        } catch (error) {
+          setStatus(error.message);
+        }
+      });
+      actions.appendChild(toggleButton);
+
+      row.appendChild(actions);
+      li.appendChild(row);
+      els.adminUserList.appendChild(li);
+    }
+  }
+
+  els.adminCampaignList.innerHTML = "";
+  if (state.campaigns.length === 0) {
+    els.adminCampaignList.innerHTML = "<li>No campaigns yet.</li>";
+  } else {
+    for (const campaign of state.campaigns) {
+      const li = document.createElement("li");
+      li.textContent = campaign.name;
+      li.dataset.campaignId = String(campaign.id);
+      if (campaign.id === state.adminMemberCampaignId) li.classList.add("active");
+      li.tabIndex = 0;
+      els.adminCampaignList.appendChild(li);
+    }
+  }
+
+  els.adminMemberUserSelect.innerHTML = "";
+  for (const user of state.adminUsers) {
+    if (Number(user.active) !== 1) continue;
+    if (user.role !== "player") continue;
+    const option = document.createElement("option");
+    option.value = String(user.id);
+    option.textContent = user.username;
+    els.adminMemberUserSelect.appendChild(option);
+  }
+  if (els.adminMemberUserSelect.options.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No active players available";
+    option.disabled = true;
+    option.selected = true;
+    els.adminMemberUserSelect.appendChild(option);
+  }
+
+  els.adminMemberList.innerHTML = "";
+  const filteredMembers = memberQuery
+    ? state.adminCampaignMembers.filter((member) =>
+      `${member.username} ${member.campaign_role}`.toLowerCase().includes(memberQuery)
+    )
+    : state.adminCampaignMembers;
+
+  if (!Number.isInteger(state.adminMemberCampaignId)) {
+    els.adminMemberList.innerHTML = "<li>Select a campaign.</li>";
+  } else if (filteredMembers.length === 0) {
+    els.adminMemberList.innerHTML = "<li>No members for this campaign yet.</li>";
+  } else {
+    for (const member of filteredMembers) {
+      const li = document.createElement("li");
+      const row = document.createElement("div");
+      row.className = "list-row admin-row";
+
+      const label = document.createElement("span");
+      label.className = "admin-row-main";
+      label.textContent = member.username;
+      row.appendChild(label);
+
+      const meta = document.createElement("div");
+      meta.className = "admin-meta";
+      const roleBadge = document.createElement("span");
+      roleBadge.className = "admin-badge";
+      roleBadge.textContent = "Player Access";
+      meta.appendChild(roleBadge);
+      row.appendChild(meta);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "delete-btn";
+      removeButton.textContent = "X";
+      removeButton.addEventListener("click", async () => {
+        if (!Number.isInteger(state.adminMemberCampaignId)) return;
+        try {
+          await api(
+            `/api/campaigns/${state.adminMemberCampaignId}/members/${member.user_id}`,
+            { method: "DELETE" }
+          );
+          await loadAdminData();
+          renderAdminPage();
+          setStatus(`Removed ${member.username} from campaign.`);
+        } catch (error) {
+          setStatus(error.message);
+        }
+      });
+      row.appendChild(removeButton);
+
+      li.appendChild(row);
+      els.adminMemberList.appendChild(li);
+    }
+  }
+
+  const hasSelectedCampaign = Number.isInteger(state.adminMemberCampaignId);
+  els.adminOpenMembershipModalBtn.disabled = !hasSelectedCampaign;
+}
+
+async function ensureAuthenticated() {
+  const me = await api("/api/auth/me");
+  state.authUser = me.user;
+}
+
 async function loadCampaignData() {
   if (!state.selectedCampaignId) {
     state.characters = [];
@@ -1920,6 +2480,7 @@ async function loadCampaignData() {
   ]);
   state.characters = characters;
   state.scenarios = scenarios;
+  await loadCampaignLiveState(state.selectedCampaignId);
 
   if (!state.scenarios.some((s) => s.id === state.selectedScenarioId)) {
     const preferred = state.scenarios.find((scenario) => Number(scenario.is_completed) !== 1);
@@ -2056,8 +2617,15 @@ function bindEvents() {
   els.campaignActionModal.addEventListener("click", (event) => {
     if (event.target === els.campaignActionModal) closeCampaignActionModal();
   });
+  els.adminActionCloseBtn.addEventListener("click", closeAdminActionModal);
+  els.adminActionModal.addEventListener("click", (event) => {
+    if (event.target === els.adminActionModal) closeAdminActionModal();
+  });
   document.querySelectorAll(".campaign-action-cancel").forEach((button) => {
     button.addEventListener("click", closeCampaignActionModal);
+  });
+  document.querySelectorAll(".admin-action-cancel").forEach((button) => {
+    button.addEventListener("click", closeAdminActionModal);
   });
 
   els.addCharacterBtn.addEventListener("click", () => {
@@ -2087,7 +2655,15 @@ function bindEvents() {
   });
 
   els.mainHomeBtn.addEventListener("click", () => {
-    navigateToPage("welcome");
+    if (state.authUser?.role === "admin") {
+      navigateToPage("welcome");
+    } else {
+      navigateToPage("player-home");
+    }
+  });
+
+  els.playerRefreshBtn.addEventListener("click", () => {
+    window.location.reload();
   });
 
   els.mainMonstersBtn.addEventListener("click", async () => {
@@ -2096,6 +2672,148 @@ function bindEvents() {
 
   els.mainAnalyticsBtn.addEventListener("click", () => {
     navigateToPage("analytics");
+  });
+
+  els.userMenuAdminBtn.addEventListener("click", async () => {
+    await navigateToPage("admin");
+  });
+
+  els.userMenuLogoutBtn.addEventListener("click", async () => {
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+    } catch (_error) {
+      // logout should still proceed client-side
+    }
+    state.authUser = null;
+    setLoginStatus("");
+    showPage("login");
+  });
+
+  els.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          username: els.loginUsername.value.trim(),
+          password: els.loginPassword.value
+        })
+      });
+      state.authUser = result.user;
+      setLoginStatus("");
+      els.loginPassword.value = "";
+      if (state.authUser.role === "admin") {
+        await loadMonsters();
+      }
+      const nextPath = window.location.pathname === "/login"
+        ? (state.authUser.role === "admin" ? "/" : "/player")
+        : window.location.pathname;
+      await navigateToPath(nextPath, {
+        replace: true
+      });
+    } catch (error) {
+      setLoginStatus(error.message || "Login failed.");
+    }
+  });
+
+  els.adminCampaignList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const item = target.closest("li[data-campaign-id]");
+    if (!(item instanceof HTMLElement)) return;
+    const campaignId = Number(item.dataset.campaignId);
+    if (!Number.isInteger(campaignId)) return;
+    state.adminMemberCampaignId = campaignId;
+    try {
+      await loadAdminData();
+      renderAdminPage();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.adminCampaignList.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const item = target.closest("li[data-campaign-id]");
+    if (!(item instanceof HTMLElement)) return;
+    event.preventDefault();
+    const campaignId = Number(item.dataset.campaignId);
+    if (!Number.isInteger(campaignId)) return;
+    state.adminMemberCampaignId = campaignId;
+    try {
+      await loadAdminData();
+      renderAdminPage();
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.adminUserSearch.addEventListener("input", () => {
+    state.adminUserSearchQuery = els.adminUserSearch.value || "";
+    renderAdminPage();
+  });
+
+  els.adminMemberSearch.addEventListener("input", () => {
+    state.adminMemberSearchQuery = els.adminMemberSearch.value || "";
+    renderAdminPage();
+  });
+
+  els.adminOpenCreateUserModalBtn.addEventListener("click", () => {
+    openAdminActionModal("create-user");
+  });
+
+  els.adminOpenMembershipModalBtn.addEventListener("click", () => {
+    openAdminActionModal("membership");
+  });
+
+  els.adminCreateUserForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setAdminStatus("");
+    try {
+      await api("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify({
+          username: els.adminNewUsername.value.trim(),
+          password: els.adminNewPassword.value,
+          role: els.adminNewRole.value
+        })
+      });
+      els.adminNewUsername.value = "";
+      els.adminNewPassword.value = "";
+      els.adminNewRole.value = "player";
+      await loadAdminData();
+      renderAdminPage();
+      setAdminStatus("User created.");
+      closeAdminActionModal();
+    } catch (error) {
+      setAdminStatus(error.message || "Failed to create user.");
+      setStatus(error.message);
+    }
+  });
+
+  els.adminMembershipForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const campaignId = Number(state.adminMemberCampaignId);
+    const userId = Number(els.adminMemberUserSelect.value);
+    if (!Number.isInteger(campaignId) || !Number.isInteger(userId)) return;
+    try {
+      await api(`/api/campaigns/${campaignId}/members`, {
+        method: "POST",
+        body: JSON.stringify({
+          userId,
+          role: "player"
+        })
+      });
+      state.adminMemberCampaignId = campaignId;
+      await loadAdminData();
+      renderAdminPage();
+      setStatus("Membership updated.");
+      closeAdminActionModal();
+    } catch (error) {
+      setStatus(error.message);
+    }
   });
 
   els.navHomeBtn.addEventListener("click", async () => {
@@ -2536,13 +3254,48 @@ function bindEvents() {
       setStatus(error.message);
     }
   });
+
+  els.shareScenarioBtn.addEventListener("click", async () => {
+    const scenario = selectedScenario();
+    if (!scenario) return;
+    try {
+      const isSharedCurrent = state.campaignLiveScenarioId === scenario.id;
+      if (isSharedCurrent) {
+        await api(`/api/campaigns/${state.selectedCampaignId}/live/clear`, { method: "POST" });
+      } else {
+        await api(`/api/scenarios/${scenario.id}/share`, { method: "POST" });
+      }
+      await loadCampaignLiveState(state.selectedCampaignId);
+      renderScenarioRunPage();
+      setStatus(
+        isSharedCurrent
+          ? `Stopped sharing encounter: ${scenario.name}`
+          : `Shared encounter with players: ${scenario.name}`
+      );
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
 }
 
 async function init() {
   bindEvents();
   try {
-    await loadMonsters();
-    setMonsterEditorReadOnly(true);
+    await ensureAuthenticated();
+  } catch (error) {
+    if (error.code === "AUTH_REQUIRED") {
+      showPage("login");
+      return;
+    }
+    setLoginStatus(error.message);
+    showPage("login");
+    return;
+  }
+  try {
+    if (state.authUser?.role === "admin") {
+      await loadMonsters();
+      setMonsterEditorReadOnly(true);
+    }
   } catch (error) {
     setStatus(error.message);
   }

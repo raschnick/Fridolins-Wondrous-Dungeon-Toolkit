@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const { db, dbPath, initDb } = require("./db");
 
@@ -6,6 +7,10 @@ initDb();
 
 const app = express();
 const port = process.env.PORT || 3000;
+const SESSION_COOKIE_NAME = "fwdt_session";
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const DEFAULT_ADMIN_USERNAME = "fridolin";
+const DEFAULT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -67,7 +72,7 @@ function listCombatants(scenarioId) {
     .prepare(
       `SELECT
         sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
-        sc.initiative, sc.hp, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
+        sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
         ms.monster_image_data
        FROM scenario_combatants sc
@@ -106,7 +111,7 @@ function getCombatantById(combatantId) {
     .prepare(
       `SELECT
         sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
-        sc.initiative, sc.hp, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
+        sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
         ms.monster_image_data
        FROM scenario_combatants sc
@@ -252,11 +257,390 @@ function parseMonsterPayload(body) {
   return { fields };
 }
 
+function parseCookieHeader(headerValue) {
+  const result = {};
+  const raw = `${headerValue || ""}`;
+  if (!raw) return result;
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!key) continue;
+    result[key] = decodeURIComponent(value);
+  }
+  return result;
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const iterations = 120000;
+  const derived = crypto
+    .pbkdf2Sync(password, salt, iterations, 32, "sha256")
+    .toString("hex");
+  return `pbkdf2$${iterations}$${salt}$${derived}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const parts = `${storedHash || ""}`.split("$");
+  if (parts.length !== 4) return false;
+  if (parts[0] !== "pbkdf2") return false;
+  const iterations = Number(parts[1]);
+  const salt = parts[2];
+  const expectedHex = parts[3];
+  if (!Number.isInteger(iterations) || iterations < 1000) return false;
+  const actualHex = crypto
+    .pbkdf2Sync(password, salt, iterations, 32, "sha256")
+    .toString("hex");
+  const expected = Buffer.from(expectedHex, "hex");
+  const actual = Buffer.from(actualHex, "hex");
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
+
+function hashSessionToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function setAuthCookie(res, token) {
+  const maxAge = Math.trunc(SESSION_TTL_MS / 1000);
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const encoded = encodeURIComponent(token);
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`
+  );
+}
+
+function clearAuthCookie(res) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
+  );
+}
+
+function createSession(userId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashSessionToken(token);
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  db.prepare(
+    "INSERT INTO user_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)"
+  ).run(userId, tokenHash, expiresAt);
+  return token;
+}
+
+function ensureDefaultAdminUser() {
+  const existing = db
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get(DEFAULT_ADMIN_USERNAME);
+  if (existing) return;
+  db.prepare(
+    "INSERT INTO users (username, password_hash, role, active, updated_at) VALUES (?, ?, 'admin', 1, datetime('now'))"
+  ).run(DEFAULT_ADMIN_USERNAME, hashPassword(DEFAULT_ADMIN_PASSWORD));
+}
+
+function loadAuthUser(req, _res, next) {
+  req.authUser = null;
+  const cookies = parseCookieHeader(req.headers.cookie);
+  const sessionToken = cookies[SESSION_COOKIE_NAME];
+  if (!sessionToken) return next();
+  const tokenHash = hashSessionToken(sessionToken);
+  const session = db
+    .prepare(
+      `SELECT
+        us.id AS session_id,
+        us.user_id,
+        u.username,
+        u.role,
+        u.active
+       FROM user_sessions us
+       JOIN users u ON u.id = us.user_id
+       WHERE us.token_hash = ?
+         AND us.expires_at > datetime('now')
+       LIMIT 1`
+    )
+    .get(tokenHash);
+  if (!session || Number(session.active) !== 1) return next();
+  req.authUser = {
+    id: session.user_id,
+    username: session.username,
+    role: session.role,
+    sessionId: session.session_id
+  };
+  return next();
+}
+
+function requireAuth(req, res, next) {
+  if (!req.authUser) {
+    return res.status(401).json({ error: "Authentication required." });
+  }
+  return next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.authUser || req.authUser.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required." });
+  }
+  return next();
+}
+
+function isAdminUser(user) {
+  return Boolean(user && user.role === "admin");
+}
+
+function campaignExists(campaignId) {
+  return Boolean(
+    db.prepare("SELECT 1 FROM campaigns WHERE id = ?").get(campaignId)
+  );
+}
+
+function hasCampaignMembership(userId, campaignId) {
+  return Boolean(
+    db
+      .prepare(
+        "SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?"
+      )
+      .get(campaignId, userId)
+  );
+}
+
+function canAccessCampaign(user, campaignId) {
+  if (isAdminUser(user)) return true;
+  return hasCampaignMembership(user.id, campaignId);
+}
+
+function ensureCampaignAccess(req, res, campaignId) {
+  if (!campaignExists(campaignId)) {
+    badRequest(res, "Campaign not found.");
+    return false;
+  }
+  if (canAccessCampaign(req.authUser, campaignId)) return true;
+  res.status(403).json({ error: "Campaign access denied." });
+  return false;
+}
+
+function ensureScenarioAccess(req, res, scenarioId) {
+  const scenario = getScenario(scenarioId);
+  if (!scenario) {
+    badRequest(res, "Scenario not found.");
+    return null;
+  }
+  if (canAccessCampaign(req.authUser, scenario.campaign_id)) return scenario;
+  res.status(403).json({ error: "Scenario access denied." });
+  return null;
+}
+
+function ensureCombatantAccess(req, res, combatantId) {
+  const row = db
+    .prepare(
+      `SELECT sc.id, sc.scenario_id, cs.campaign_id
+       FROM scenario_combatants sc
+       JOIN combat_scenarios cs ON cs.id = sc.scenario_id
+       WHERE sc.id = ?`
+    )
+    .get(combatantId);
+  if (!row) {
+    badRequest(res, "Combatant not found.");
+    return null;
+  }
+  if (canAccessCampaign(req.authUser, row.campaign_id)) return row;
+  res.status(403).json({ error: "Combatant access denied." });
+  return null;
+}
+
+function getCampaignLiveState(campaignId) {
+  const row = db
+    .prepare(
+      `SELECT
+        cls.campaign_id,
+        cls.shared_scenario_id,
+        cls.updated_at,
+        cs.name AS shared_scenario_name
+       FROM campaign_live_state cls
+       LEFT JOIN combat_scenarios cs ON cs.id = cls.shared_scenario_id
+       WHERE cls.campaign_id = ?`
+    )
+    .get(campaignId);
+  if (!row) {
+    return {
+      campaign_id: campaignId,
+      shared_scenario_id: null,
+      shared_scenario_name: null,
+      updated_at: null
+    };
+  }
+  return row;
+}
+
+ensureDefaultAdminUser();
+app.use(loadAuthUser);
+
+app.post("/api/auth/login", (req, res) => {
+  const username = `${req.body?.username || ""}`.trim();
+  const password = `${req.body?.password || ""}`;
+  if (!username || !password) {
+    return badRequest(res, "Username and password are required.");
+  }
+
+  const user = db
+    .prepare(
+      "SELECT id, username, role, active, password_hash FROM users WHERE username = ? LIMIT 1"
+    )
+    .get(username);
+  if (!user || Number(user.active) !== 1 || !verifyPassword(password, user.password_hash)) {
+    return res.status(401).json({ error: "Invalid username or password." });
+  }
+
+  db.prepare("DELETE FROM user_sessions WHERE expires_at <= datetime('now')").run();
+  const token = createSession(user.id);
+  setAuthCookie(res, token);
+  return res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    }
+  });
+});
+
+app.use("/api", (req, res, next) => {
+  if (req.path === "/auth/login") return next();
+  return requireAuth(req, res, next);
+});
+
+app.use("/api", (req, res, next) => {
+  if (req.method === "GET") return next();
+  if (req.path === "/auth/login") return next();
+  if (req.path === "/auth/logout") return next();
+  if (req.path === "/users/me/change-password") return next();
+  if (isAdminUser(req.authUser)) return next();
+  return res.status(403).json({ error: "Admin access required." });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  res.json({
+    user: {
+      id: req.authUser.id,
+      username: req.authUser.username,
+      role: req.authUser.role
+    }
+  });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const cookies = parseCookieHeader(req.headers.cookie);
+  const sessionToken = cookies[SESSION_COOKIE_NAME];
+  if (sessionToken) {
+    const tokenHash = hashSessionToken(sessionToken);
+    db.prepare("DELETE FROM user_sessions WHERE token_hash = ?").run(tokenHash);
+  }
+  clearAuthCookie(res);
+  res.status(204).send();
+});
+
+app.post("/api/users/me/change-password", (req, res) => {
+  const currentPassword = `${req.body?.currentPassword || ""}`;
+  const newPassword = `${req.body?.newPassword || ""}`;
+  if (!currentPassword || !newPassword) {
+    return badRequest(res, "Current and new password are required.");
+  }
+  if (newPassword.length < 8) {
+    return badRequest(res, "New password must be at least 8 characters.");
+  }
+  const user = db
+    .prepare("SELECT id, password_hash FROM users WHERE id = ?")
+    .get(req.authUser.id);
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: "Current password is incorrect." });
+  }
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
+    hashPassword(newPassword),
+    req.authUser.id
+  );
+  db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(req.authUser.id);
+  clearAuthCookie(res);
+  return res.status(204).send();
+});
+
+app.get("/api/admin/users", requireAdmin, (_req, res) => {
+  const users = db
+    .prepare(
+      "SELECT id, username, role, active, created_at, updated_at FROM users ORDER BY username ASC"
+    )
+    .all();
+  res.json(users);
+});
+
+app.post("/api/admin/users", requireAdmin, (req, res) => {
+  const username = `${req.body?.username || ""}`.trim();
+  const password = `${req.body?.password || ""}`;
+  const role = `${req.body?.role || "player"}`.trim().toLowerCase() === "admin" ? "admin" : "player";
+  if (!username || !password) return badRequest(res, "Username and password are required.");
+  if (password.length < 8) return badRequest(res, "Password must be at least 8 characters.");
+  try {
+    const result = db
+      .prepare(
+        "INSERT INTO users (username, password_hash, role, active, updated_at) VALUES (?, ?, ?, 1, datetime('now'))"
+      )
+      .run(username, hashPassword(password), role);
+    const created = db
+      .prepare("SELECT id, username, role, active, created_at, updated_at FROM users WHERE id = ?")
+      .get(result.lastInsertRowid);
+    return res.status(201).json(created);
+  } catch (error) {
+    if (error.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      return badRequest(res, "Username must be unique.");
+    }
+    throw error;
+  }
+});
+
+app.post("/api/admin/users/:userId/reset-password", requireAdmin, (req, res) => {
+  const userId = asId(req.params.userId);
+  const password = `${req.body?.password || ""}`;
+  if (userId === null) return badRequest(res, "Invalid user id.");
+  if (!password || password.length < 8) {
+    return badRequest(res, "Password must be at least 8 characters.");
+  }
+  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(userId);
+  if (!user) return badRequest(res, "User not found.");
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
+    hashPassword(password),
+    userId
+  );
+  db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId);
+  return res.status(204).send();
+});
+
+app.post("/api/admin/users/:userId/active", requireAdmin, (req, res) => {
+  const userId = asId(req.params.userId);
+  const activeInput = req.body?.active;
+  const active =
+    activeInput === true ||
+    activeInput === 1 ||
+    `${activeInput || ""}`.trim().toLowerCase() === "true" ||
+    `${activeInput || ""}`.trim() === "1";
+  if (userId === null) return badRequest(res, "Invalid user id.");
+  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(userId);
+  if (!user) return badRequest(res, "User not found.");
+  db.prepare("UPDATE users SET active = ?, updated_at = datetime('now') WHERE id = ?").run(
+    active ? 1 : 0,
+    userId
+  );
+  if (!active) {
+    db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId);
+  }
+  return res.status(204).send();
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, dbPath });
 });
 
 app.get("/api/monsters", (_req, res) => {
+  if (!isAdminUser(_req.authUser)) {
+    return res.status(403).json({ error: "Monster library access denied." });
+  }
   const monsters = db
     .prepare(
       `SELECT
@@ -395,9 +779,19 @@ app.delete("/api/monsters/:monsterId", (req, res) => {
 });
 
 app.get("/api/campaigns", (_req, res) => {
-  const campaigns = db
-    .prepare("SELECT id, name, created_at FROM campaigns ORDER BY name ASC")
-    .all();
+  const campaigns = isAdminUser(_req.authUser)
+    ? db
+      .prepare("SELECT id, name, created_at FROM campaigns ORDER BY name ASC")
+      .all()
+    : db
+      .prepare(
+        `SELECT c.id, c.name, c.created_at
+         FROM campaigns c
+         JOIN campaign_members cm ON cm.campaign_id = c.id
+         WHERE cm.user_id = ?
+         ORDER BY c.name ASC`
+      )
+      .all(_req.authUser.id);
   res.json(campaigns);
 });
 
@@ -432,9 +826,161 @@ app.delete("/api/campaigns/:campaignId", (req, res) => {
   res.status(204).send();
 });
 
+app.get("/api/campaigns/:campaignId/members", requireAdmin, (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!campaignExists(campaignId)) return badRequest(res, "Campaign not found.");
+
+  const members = db
+    .prepare(
+      `SELECT
+        u.id AS user_id,
+        u.username,
+        u.role AS user_role,
+        cm.role AS campaign_role,
+        cm.created_at
+       FROM campaign_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.campaign_id = ?
+       ORDER BY u.username ASC`
+    )
+    .all(campaignId);
+  res.json(members);
+});
+
+app.get("/api/campaigns/:campaignId/live", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  res.json(getCampaignLiveState(campaignId));
+});
+
+app.post("/api/campaigns/:campaignId/members", requireAdmin, (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  const userId = asId(req.body?.userId);
+  const role = `${req.body?.role || "player"}`.trim().toLowerCase() === "dm" ? "dm" : "player";
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (userId === null) return badRequest(res, "Invalid user id.");
+  if (!campaignExists(campaignId)) return badRequest(res, "Campaign not found.");
+  const user = db
+    .prepare("SELECT id, active FROM users WHERE id = ?")
+    .get(userId);
+  if (!user) return badRequest(res, "User not found.");
+  if (Number(user.active) !== 1) return badRequest(res, "User is not active.");
+
+  db.prepare(
+    "INSERT OR REPLACE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?, ?, ?, datetime('now'))"
+  ).run(campaignId, userId, role);
+  res.status(204).send();
+});
+
+app.delete("/api/campaigns/:campaignId/members/:userId", requireAdmin, (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  const userId = asId(req.params.userId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (userId === null) return badRequest(res, "Invalid user id.");
+  if (!campaignExists(campaignId)) return badRequest(res, "Campaign not found.");
+
+  db.prepare("DELETE FROM campaign_members WHERE campaign_id = ? AND user_id = ?").run(
+    campaignId,
+    userId
+  );
+  res.status(204).send();
+});
+
+app.post("/api/campaigns/:campaignId/live/clear", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  db.prepare(
+    `INSERT INTO campaign_live_state (campaign_id, shared_scenario_id, updated_at)
+     VALUES (?, NULL, datetime('now'))
+     ON CONFLICT(campaign_id) DO UPDATE SET
+       shared_scenario_id = NULL,
+       updated_at = datetime('now')`
+  ).run(campaignId);
+  res.json(getCampaignLiveState(campaignId));
+});
+
+app.post("/api/scenarios/:scenarioId/share", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  db.prepare(
+    `INSERT INTO campaign_live_state (campaign_id, shared_scenario_id, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(campaign_id) DO UPDATE SET
+       shared_scenario_id = excluded.shared_scenario_id,
+       updated_at = datetime('now')`
+  ).run(scenario.campaign_id, scenario.id);
+
+  res.json(getCampaignLiveState(scenario.campaign_id));
+});
+
+app.get("/api/player/live", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return res.json({ shared: null });
+  }
+
+  const shared = db
+    .prepare(
+      `SELECT
+        cls.campaign_id,
+        cls.shared_scenario_id AS scenario_id,
+        cls.updated_at
+       FROM campaign_live_state cls
+       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
+       WHERE cm.user_id = ?
+         AND cls.shared_scenario_id IS NOT NULL
+       ORDER BY cls.updated_at DESC
+       LIMIT 1`
+    )
+    .get(req.authUser.id);
+
+  if (!shared || !Number.isInteger(shared.scenario_id)) {
+    return res.json({ shared: null });
+  }
+
+  const scenario = getScenario(shared.scenario_id);
+  if (!scenario) return res.json({ shared: null });
+  const combatants = listCombatants(scenario.id);
+  const state = normalizeCombatState(scenario, combatants);
+  const visibleCombatants = combatants.filter((c) => Number(c.player_visible) !== 0);
+  const active = visibleCombatants.find((c) => c.id === state.activeCombatantId) || null;
+
+  return res.json({
+    shared: {
+      campaignId: scenario.campaign_id,
+      scenarioId: scenario.id,
+      name: scenario.name,
+      notes: scenario.notes || "",
+      round: state.round,
+      turnIndex: state.turnIndex,
+      activeCombatantId: state.activeCombatantId,
+      activeCombatantName: active ? active.name : null,
+      combatants: visibleCombatants.map((c) => ({
+        id: c.id,
+        name: c.name,
+        initiative: c.initiative,
+        kind: c.kind,
+        enemy_role: c.enemy_role,
+        character_class: c.character_class,
+        reaction_available: c.reaction_available,
+        is_legendary: c.is_legendary,
+        legendary_actions_count: c.legendary_actions_count,
+        legendary_actions_remaining: c.legendary_actions_remaining,
+        condition_keys: Array.isArray(c.condition_keys) ? c.condition_keys : []
+      }))
+    }
+  });
+});
+
 app.get("/api/campaigns/:campaignId/characters", (req, res) => {
   const campaignId = Number(req.params.campaignId);
   if (!Number.isInteger(campaignId)) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
 
   const characters = db
     .prepare(
@@ -491,6 +1037,7 @@ app.post("/api/campaigns/:campaignId/characters", (req, res) => {
 app.get("/api/campaigns/:campaignId/scenarios", (req, res) => {
   const campaignId = asId(req.params.campaignId);
   if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
 
   const scenarios = db
     .prepare(
@@ -589,8 +1136,8 @@ app.get("/api/scenarios/:scenarioId/combat", (req, res) => {
   const scenarioId = asId(req.params.scenarioId);
   if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
 
-  const scenario = getScenario(scenarioId);
-  if (!scenario) return badRequest(res, "Scenario not found.");
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
 
   ensureScenarioHasCampaignCharacters(scenario);
   const combatants = listCombatants(scenarioId);
@@ -652,8 +1199,8 @@ app.post("/api/scenarios/:scenarioId/combatants", (req, res) => {
     );
   }
 
-  const scenario = getScenario(scenarioId);
-  if (!scenario) return badRequest(res, "Scenario not found.");
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
 
   let name = nameInput;
   let hpFromMonster = null;
@@ -1079,6 +1626,30 @@ app.post("/api/combatants/:combatantId/reaction", (req, res) => {
 
   db.prepare("UPDATE scenario_combatants SET reaction_available = ?, reaction_auto_readied = 0 WHERE id = ?").run(
     available ? 1 : 0,
+    combatantId
+  );
+
+  res.json(getCombatantById(combatantId));
+});
+
+app.post("/api/combatants/:combatantId/player-visible", (req, res) => {
+  const combatantId = asId(req.params.combatantId);
+  if (combatantId === null) return badRequest(res, "Invalid combatant id.");
+
+  const availableRaw = req.body?.visible;
+  let visible = null;
+  if (availableRaw === true || availableRaw === 1 || `${availableRaw}` === "1") {
+    visible = 1;
+  } else if (availableRaw === false || availableRaw === 0 || `${availableRaw}` === "0") {
+    visible = 0;
+  }
+  if (visible === null) return badRequest(res, "visible must be true or false.");
+
+  const accessRow = ensureCombatantAccess(req, res, combatantId);
+  if (!accessRow) return;
+
+  db.prepare("UPDATE scenario_combatants SET player_visible = ? WHERE id = ?").run(
+    visible,
     combatantId
   );
 
