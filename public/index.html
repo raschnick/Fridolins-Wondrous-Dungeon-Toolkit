@@ -19,6 +19,8 @@
         />
         <nav class="main-sections">
           <button id="mainHomeBtn" type="button">Home</button>
+          <button id="mainPlayerInitiativeBtn" type="button" class="hidden">Initiative View</button>
+          <button id="mainPlayerMapBtn" type="button" class="hidden">Map View</button>
           <button id="mainMonstersBtn" type="button">Library</button>
           <button id="mainAnalyticsBtn" type="button">Analytics</button>
         </nav>
@@ -41,6 +43,13 @@
         <button id="navScenarioBtn" type="button" class="hidden">Encounter</button>
       </nav>
 
+      <img
+        id="loginPageLogo"
+        src="/images/logo.png"
+        alt="Fridolins logo"
+        class="login-logo hidden"
+      />
+
       <section id="pageLogin" class="panel page hidden">
         <h2>Login</h2>
         <form id="loginForm" class="stacked-form">
@@ -54,7 +63,15 @@
       <section id="pageWelcome" class="panel page">
         <div class="row between welcome-header">
           <h2>Welcome</h2>
-          <button id="addCampaignBtn" type="button">Create Campaign</button>
+          <button
+            id="addCampaignBtn"
+            type="button"
+            class="add-icon-btn"
+            aria-label="Create Campaign"
+            title="Create Campaign"
+          >
+            <span aria-hidden="true">+</span>
+          </button>
         </div>
         <ul id="welcomeCampaignList" class="list selectable"></ul>
         <div class="app-footer-logo-wrap">
@@ -62,7 +79,7 @@
         </div>
       </section>
 
-      <section id="pagePlayerHome" class="panel page hidden">
+      <section id="pagePlayerHome" class="page hidden">
         <div id="playerWaitingWrap" class="player-waiting">
           <h2 id="playerWaitingTitle" class="player-waiting-title">Waiting for your genius DM to fire up an awesome encounter!</h2>
           <img
@@ -78,7 +95,18 @@
             <h3 id="playerLiveEncounterName"></h3>
             <span id="playerLiveRound" class="hint"></span>
           </div>
-          <ul id="playerLiveCombatantList" class="list"></ul>
+          <div id="playerLiveInitiativeWrap">
+            <ul id="playerLiveCombatantList" class="list"></ul>
+          </div>
+          <div id="playerLiveMapWrap" class="hidden">
+            <p id="playerLiveMapHint" class="hint hidden">No map shared for this encounter.</p>
+            <div id="playerMapViewport" class="player-map-viewport hidden">
+              <div id="playerMapScene" class="player-map-scene">
+                <img id="playerMapImage" class="monster-image hidden" alt="Shared encounter map" />
+                <div id="playerMapTokens" class="player-map-tokens"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -86,7 +114,15 @@
         <div class="panel">
           <div class="row between">
             <h2>Library</h2>
-            <button id="newMonsterBtn" type="button">New Entry</button>
+            <button
+              id="newMonsterBtn"
+              type="button"
+              class="add-icon-btn"
+              aria-label="New Entry"
+              title="New Entry"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
           </div>
           <input
             id="monsterSearchInput"
@@ -111,6 +147,13 @@
               <div class="monster-edit-fields">
                 <label for="monsterName">Name</label>
                 <input id="monsterName" placeholder="Name" required />
+                <label for="monsterSize">Size</label>
+                <select id="monsterSize">
+                  <option value="normal" selected>Normal (1x1)</option>
+                  <option value="large">Large (2x2)</option>
+                  <option value="huge">Huge (3x3)</option>
+                  <option value="gargantuan">Gargantuan (4x4)</option>
+                </select>
                 <label for="monsterIsLegendary">Is Legendary</label>
                 <select id="monsterIsLegendary">
                   <option value="false" selected>False</option>
@@ -161,7 +204,15 @@
                   placeholder="Search users"
                   aria-label="Search users"
                 />
-                <button id="adminOpenCreateUserModalBtn" type="button">Add User</button>
+                <button
+                  id="adminOpenCreateUserModalBtn"
+                  type="button"
+                  class="add-icon-btn"
+                  aria-label="Add User"
+                  title="Add User"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
             </div>
             <ul id="adminUserList" class="list"></ul>
@@ -178,7 +229,15 @@
                   placeholder="Search members"
                   aria-label="Search members"
                 />
-                <button id="adminOpenMembershipModalBtn" type="button">Add User to Campaign</button>
+                <button
+                  id="adminOpenMembershipModalBtn"
+                  type="button"
+                  class="add-icon-btn"
+                  aria-label="Add User to Campaign"
+                  title="Add User to Campaign"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
             </div>
             <ul id="adminCampaignList" class="list selectable admin-campaign-list"></ul>
@@ -199,7 +258,15 @@
           <article class="panel">
             <div class="row between panel-header-actions">
               <h3>Characters</h3>
-              <button id="addCharacterBtn" type="button">Add Character</button>
+              <button
+                id="addCharacterBtn"
+                type="button"
+                class="add-icon-btn"
+                aria-label="Add Character"
+                title="Add Character"
+              >
+                <span aria-hidden="true">+</span>
+              </button>
             </div>
             <ul id="characterList" class="list"></ul>
           </article>
@@ -209,7 +276,15 @@
               <h3>Encounters</h3>
               <div class="row">
                 <button id="viewCompletedScenariosBtn" type="button">Completed Encounters</button>
-                <button id="addScenarioBtn" type="button">Add Encounter</button>
+                <button
+                  id="addScenarioBtn"
+                  type="button"
+                  class="add-icon-btn"
+                  aria-label="Add Encounter"
+                  title="Add Encounter"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
             </div>
             <input
@@ -238,50 +313,35 @@
           <h2>Edit Scenario</h2>
           <div class="row">
             <button id="completeScenarioFromEditBtn" type="button">Complete</button>
-            <button id="goRunFromEditBtn" type="button">Run View</button>
+            <button id="goRunFromEditBtn" type="button">Initiative View</button>
           </div>
         </div>
 
         <form id="editScenarioForm" class="stacked-form">
           <input id="editScenarioName" name="name" type="text" required />
           <textarea id="editScenarioNotes" name="notes" rows="5"></textarea>
-          <button type="submit">Save Scenario</button>
+          <label for="editScenarioMapFile">Encounter Map (optional)</label>
+          <input id="editScenarioMapFile" type="file" accept="image/*" />
+          <div class="row">
+            <button id="clearScenarioMapBtn" type="button">Clear Map</button>
+          </div>
+          <img id="editScenarioMapPreview" class="monster-image hidden" alt="Encounter map preview" />
         </form>
 
         <section class="subpanel">
-          <h3>Encounter Combatants</h3>
-          <p class="hint">Campaign PCs are included by default per scenario.</p>
-          <div class="edit-add-layout">
-            <form id="addEnemyForm" class="stacked-form add-enemy-form">
-              <strong>Add Custom Combatant</strong>
-              <label for="enemyMonsterSelect">Monster Source</label>
-              <select id="enemyMonsterSelect">
-                <option value="">From Library (optional)</option>
-              </select>
-              <label for="enemyRole">Combatant Type</label>
-              <select id="enemyRole">
-                <option value="enemy" selected>Type: Enemy</option>
-                <option value="npc">Type: NPC</option>
-              </select>
-              <label for="enemyName">Name</label>
-              <input id="enemyName" type="text" placeholder="Enemy name" required />
-              <label for="enemyInitiative">Initiative</label>
-              <div class="row">
-                <input id="enemyInitiative" type="number" placeholder="Initiative" required />
-                <button id="rollEnemyInitiativeBtn" type="button">Roll Init</button>
-              </div>
-              <label for="enemyHp">Hit Points</label>
-              <input id="enemyHp" type="number" placeholder="HP (optional)" />
-              <button type="submit">Add Enemy</button>
-            </form>
-            <div class="enemy-preview-panel">
-              <img
-                id="enemyMonsterPreview"
-                class="monster-image hidden"
-                alt="Selected enemy statblock preview"
-              />
-            </div>
+          <div class="row between panel-header-actions">
+            <h3>Encounter Combatants</h3>
+            <button
+              id="openAddCombatantModalBtn"
+              type="button"
+              class="add-icon-btn"
+              aria-label="Add Combatant"
+              title="Add Combatant"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
           </div>
+          <p class="hint">Campaign PCs are included by default per scenario.</p>
           <ul id="combatantEditList" class="list"></ul>
         </section>
       </section>
@@ -307,10 +367,13 @@
         <div class="run-split">
           <div>
             <div class="row between">
-              <h2 id="runScenarioName"></h2>
+              <div class="row run-title-row">
+                <span id="runScenarioSharedDot" class="scenario-shared-dot run-scenario-shared-dot hidden" title="Shared with players"></span>
+                <h2 id="runScenarioName"></h2>
+              </div>
               <div class="row run-header-actions">
-                <span id="shareScenarioStatus" class="share-status share-status-idle">Not shared</span>
                 <button id="shareScenarioBtn" type="button">Share with Players</button>
+                <button id="runMapViewToggleBtn" type="button">Map View</button>
                 <button id="completeScenarioBtn" type="button">Complete</button>
                 <button id="goEditFromRunBtn" type="button">Edit View</button>
               </div>
@@ -322,7 +385,25 @@
               <button id="nextTurnBtn" type="button">Next Turn</button>
               <button id="resetCombatBtn" type="button">Reset to Round 1</button>
             </div>
-            <ul id="runOrderList" class="list"></ul>
+            <div id="runCombatLayout" class="run-combat-layout">
+              <div id="runMapWrap" class="panel hidden">
+                <p id="runMapHint" class="hint">No map saved for this encounter.</p>
+                <div id="runMapTokenSizeControls" class="run-map-token-size-controls">
+                  <label for="runMapTokenSizeInput">Token Size</label>
+                  <input id="runMapTokenSizeInput" type="range" min="24" max="128" step="1" value="44" />
+                  <span id="runMapTokenSizeValue">44</span>
+                </div>
+                <div id="runMapViewport" class="run-map-viewport">
+                  <div id="runMapScene" class="run-map-scene">
+                    <img id="runMapImage" class="monster-image hidden" alt="Encounter map" />
+                    <div id="runMapTokens" class="run-map-tokens"></div>
+                  </div>
+                </div>
+              </div>
+              <div id="runInitiativeWrap">
+                <ul id="runOrderList" class="list"></ul>
+              </div>
+            </div>
           </div>
           <div id="activeMonsterImageWrap" class="panel">
             <h3>NPC Statblock</h3>
@@ -362,7 +443,9 @@
               <option value="Wizard">Wizard</option>
             </select>
             <div class="row">
-              <button type="submit">Add Character</button>
+              <button type="submit" class="add-icon-btn" aria-label="Add Character" title="Add Character">
+                <span aria-hidden="true">+</span>
+              </button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
             </div>
           </form>
@@ -382,7 +465,9 @@
               rows="4"
             ></textarea>
             <div class="row">
-              <button type="submit">Add Scenario</button>
+              <button type="submit" class="add-icon-btn" aria-label="Add Encounter" title="Add Encounter">
+                <span aria-hidden="true">+</span>
+              </button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
             </div>
           </form>
@@ -409,6 +494,13 @@
               placeholder="Entry name"
               required
             />
+            <label for="libraryEntrySize">Size</label>
+            <select id="libraryEntrySize">
+              <option value="normal" selected>Normal (1x1)</option>
+              <option value="large">Large (2x2)</option>
+              <option value="huge">Huge (3x3)</option>
+              <option value="gargantuan">Gargantuan (4x4)</option>
+            </select>
             <label for="libraryEntryLegendary">Is Legendary</label>
             <select id="libraryEntryLegendary">
               <option value="false" selected>False</option>
@@ -429,7 +521,9 @@
               alt="New library entry statblock preview"
             />
             <div class="row">
-              <button type="submit">Create Entry</button>
+              <button type="submit" class="add-icon-btn" aria-label="Create Entry" title="Create Entry">
+                <span aria-hidden="true">+</span>
+              </button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
             </div>
           </form>
@@ -482,8 +576,58 @@
             <label for="adminMemberUserSelect">User</label>
             <select id="adminMemberUserSelect"></select>
             <div class="row">
-              <button type="submit">Add/Update Player Access</button>
+              <button
+                type="submit"
+                class="add-icon-btn"
+                aria-label="Add or Update Player Access"
+                title="Add or Update Player Access"
+              >
+                <span aria-hidden="true">+</span>
+              </button>
               <button class="admin-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="addCombatantModal" class="campaign-action-modal hidden" role="dialog" aria-modal="true">
+        <div class="panel campaign-action-dialog">
+          <div class="row between campaign-action-head">
+            <h3>Add Custom Combatant</h3>
+            <button id="addCombatantCloseBtn" class="delete-btn" type="button">X</button>
+          </div>
+          <form id="addEnemyForm" class="stacked-form add-enemy-form">
+            <label for="enemyMonsterSearchInput">Search Library</label>
+            <input
+              id="enemyMonsterSearchInput"
+              type="search"
+              placeholder="Search monsters or NPCs"
+              aria-label="Search library entries"
+            />
+            <label for="enemyMonsterResults">Monster Source</label>
+            <ul id="enemyMonsterResults" class="add-combatant-library-results"></ul>
+            <label for="enemyRole">Combatant Type</label>
+            <select id="enemyRole">
+              <option value="enemy" selected>Type: Enemy</option>
+              <option value="npc">Type: NPC</option>
+            </select>
+            <label for="enemyName">Name</label>
+            <input id="enemyName" type="text" placeholder="Enemy name" required />
+            <label for="enemyInitiative">Initiative</label>
+            <div class="row">
+              <input id="enemyInitiative" type="number" placeholder="Initiative" required />
+              <button id="rollEnemyInitiativeBtn" type="button">Roll Init</button>
+            </div>
+            <label for="enemyHp">Hit Points</label>
+            <input id="enemyHp" type="number" placeholder="HP (optional)" />
+            <img
+              id="enemyMonsterPreview"
+              class="monster-image hidden"
+              alt="Selected enemy statblock preview"
+            />
+            <div class="row">
+              <button type="submit">Add</button>
+              <button class="add-combatant-cancel" type="button">Cancel</button>
             </div>
           </form>
         </div>

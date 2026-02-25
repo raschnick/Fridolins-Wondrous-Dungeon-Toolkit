@@ -50,6 +50,8 @@ const CHARACTER_CLASSES = new Set([
   "Wizard"
 ]);
 
+const MONSTER_SIZES = new Set(["normal", "large", "huge", "gargantuan"]);
+
 function badRequest(res, message) {
   return res.status(400).json({ error: message });
 }
@@ -62,7 +64,7 @@ function asId(value) {
 function getScenario(scenarioId) {
   return db
     .prepare(
-      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
 }
@@ -74,7 +76,8 @@ function listCombatants(scenarioId) {
         sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
-        ms.monster_image_data
+        ms.monster_image_data,
+        ms.size AS monster_size
        FROM scenario_combatants sc
        LEFT JOIN characters c ON c.id = sc.character_id
        LEFT JOIN monster_statblocks ms ON ms.id = sc.monster_id
@@ -113,7 +116,8 @@ function getCombatantById(combatantId) {
         sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
-        ms.monster_image_data
+        ms.monster_image_data,
+        ms.size AS monster_size
        FROM scenario_combatants sc
        LEFT JOIN characters c ON c.id = sc.character_id
        LEFT JOIN monster_statblocks ms ON ms.id = sc.monster_id
@@ -189,6 +193,11 @@ function normalizeCombatState(scenario, combatants) {
 }
 
 function parseMonsterPayload(body) {
+  const sizeRaw = `${body?.size || ""}`.trim().toLowerCase();
+  const size = sizeRaw || "normal";
+  if (!MONSTER_SIZES.has(size)) {
+    return { error: "Monster size must be normal, large, huge, or gargantuan." };
+  }
   const isLegendaryInput = body?.isLegendary;
   const isLegendary =
     isLegendaryInput === true ||
@@ -203,7 +212,7 @@ function parseMonsterPayload(body) {
 
   const fields = {
     name: `${body?.name || ""}`.trim(),
-    size: `${body?.size || ""}`.trim(),
+    size,
     type: `${body?.type || ""}`.trim(),
     alignment: `${body?.alignment || ""}`.trim(),
     armor_class: `${body?.armorClass || ""}`.trim(),
@@ -388,6 +397,18 @@ function isAdminUser(user) {
   return Boolean(user && user.role === "admin");
 }
 
+function isPlayerAllowedApiRequest(req) {
+  if (!req) return false;
+  const method = `${req.method || ""}`.toUpperCase();
+  const path = `${req.path || ""}`;
+  if (method === "GET" && path === "/auth/me") return true;
+  if (method === "POST" && path === "/auth/logout") return true;
+  if (method === "POST" && path === "/users/me/change-password") return true;
+  if (method === "GET" && path === "/player/live") return true;
+  if (method === "POST" && path === "/player/live/map-token") return true;
+  return false;
+}
+
 function campaignExists(campaignId) {
   return Boolean(
     db.prepare("SELECT 1 FROM campaigns WHERE id = ?").get(campaignId)
@@ -509,12 +530,12 @@ app.use("/api", (req, res, next) => {
 });
 
 app.use("/api", (req, res, next) => {
-  if (req.method === "GET") return next();
   if (req.path === "/auth/login") return next();
-  if (req.path === "/auth/logout") return next();
-  if (req.path === "/users/me/change-password") return next();
   if (isAdminUser(req.authUser)) return next();
-  return res.status(403).json({ error: "Admin access required." });
+  if (isPlayerAllowedApiRequest(req)) return next();
+  return res.status(403).json({
+    error: "Player access restricted to player endpoints."
+  });
 });
 
 app.get("/api/auth/me", (req, res) => {
@@ -956,6 +977,9 @@ app.get("/api/player/live", (req, res) => {
       scenarioId: scenario.id,
       name: scenario.name,
       notes: scenario.notes || "",
+      mapImageData: scenario.map_image_data || "",
+      mapTokensJson: scenario.map_tokens_json || "",
+      mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
       round: state.round,
       turnIndex: state.turnIndex,
       activeCombatantId: state.activeCombatantId,
@@ -966,14 +990,99 @@ app.get("/api/player/live", (req, res) => {
         initiative: c.initiative,
         kind: c.kind,
         enemy_role: c.enemy_role,
+        monster_size: c.monster_size,
         character_class: c.character_class,
         reaction_available: c.reaction_available,
         is_legendary: c.is_legendary,
         legendary_actions_count: c.legendary_actions_count,
         legendary_actions_remaining: c.legendary_actions_remaining,
+        is_defeated: c.kind === "enemy" && Number.isFinite(Number(c.hp)) && Number(c.hp) <= 0 ? 1 : 0,
         condition_keys: Array.isArray(c.condition_keys) ? c.condition_keys : []
       }))
     }
+  });
+});
+
+app.post("/api/player/live/map-token", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return res.status(403).json({ error: "Player endpoint is not available for admin users." });
+  }
+  const scenarioIdInput = asId(req.body?.scenarioId);
+  const combatantId = asId(req.body?.combatantId);
+  const xRaw = Number(req.body?.x);
+  const yRaw = Number(req.body?.y);
+  if (scenarioIdInput === null) return badRequest(res, "Invalid scenario id.");
+  if (combatantId === null) return badRequest(res, "Invalid combatant id.");
+  if (!Number.isFinite(xRaw) || !Number.isFinite(yRaw)) {
+    return badRequest(res, "Invalid token position.");
+  }
+
+  const shared = db
+    .prepare(
+      `SELECT
+        cls.campaign_id,
+        cls.shared_scenario_id AS scenario_id
+       FROM campaign_live_state cls
+       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
+       WHERE cm.user_id = ?
+         AND cls.shared_scenario_id IS NOT NULL
+       ORDER BY cls.updated_at DESC
+       LIMIT 1`
+    )
+    .get(req.authUser.id);
+  if (!shared || !Number.isInteger(shared.scenario_id)) {
+    return res.status(403).json({ error: "No shared encounter available." });
+  }
+  if (shared.scenario_id !== scenarioIdInput) {
+    return res.status(403).json({ error: "Encounter is no longer shared." });
+  }
+
+  const combatant = db
+    .prepare(
+      `SELECT id
+       FROM scenario_combatants
+       WHERE id = ?
+         AND scenario_id = ?
+         AND (kind = 'character' OR player_visible = 1)
+       LIMIT 1`
+    )
+    .get(combatantId, shared.scenario_id);
+  if (!combatant) {
+    return badRequest(res, "Combatant is not movable in this encounter.");
+  }
+
+  const scenario = db
+    .prepare("SELECT map_tokens_json FROM combat_scenarios WHERE id = ?")
+    .get(shared.scenario_id);
+  if (!scenario) return badRequest(res, "Scenario not found.");
+
+  const tokensRaw = `${scenario.map_tokens_json || ""}`.trim();
+  let tokens = {};
+  if (tokensRaw) {
+    try {
+      const parsed = JSON.parse(tokensRaw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        tokens = parsed;
+      }
+    } catch (_error) {
+      tokens = {};
+    }
+  }
+
+  const x = Math.max(-100000, Math.min(100000, Math.round(xRaw * 100) / 100));
+  const y = Math.max(-100000, Math.min(100000, Math.round(yRaw * 100) / 100));
+  tokens[combatantId] = { x, y };
+
+  const mapTokensJson = JSON.stringify(tokens);
+  db.prepare(
+    "UPDATE combat_scenarios SET map_tokens_json = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(mapTokensJson, shared.scenario_id);
+
+  return res.json({
+    scenarioId: shared.scenario_id,
+    combatantId,
+    x,
+    y
   });
 });
 
@@ -1041,7 +1150,7 @@ app.get("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenarios = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
     )
     .all(campaignId);
   res.json(scenarios);
@@ -1072,7 +1181,7 @@ app.post("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenario = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(result.lastInsertRowid);
 
@@ -1083,25 +1192,81 @@ app.put("/api/scenarios/:scenarioId", (req, res) => {
   const scenarioId = asId(req.params.scenarioId);
   const name = `${req.body?.name || ""}`.trim();
   const notes = `${req.body?.notes || ""}`;
+  const mapProvided = Object.prototype.hasOwnProperty.call(req.body || {}, "mapImageData");
+  const mapImageData = `${req.body?.mapImageData || ""}`;
 
   if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
   if (!name) return badRequest(res, "Scenario name is required.");
 
-  const scenarioExists = db
-    .prepare("SELECT 1 FROM combat_scenarios WHERE id = ?")
+  const existing = db
+    .prepare("SELECT id, map_image_data FROM combat_scenarios WHERE id = ?")
     .get(scenarioId);
-  if (!scenarioExists) return badRequest(res, "Scenario not found.");
+  if (!existing) return badRequest(res, "Scenario not found.");
+
+  const finalMap = mapProvided ? mapImageData : existing.map_image_data || "";
 
   db.prepare(
-    "UPDATE combat_scenarios SET name = ?, notes = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(name, notes, scenarioId);
+    "UPDATE combat_scenarios SET name = ?, notes = ?, map_image_data = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(name, notes, finalMap, scenarioId);
 
   const updated = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
   res.json(updated);
+});
+
+app.post("/api/scenarios/:scenarioId/map-tokens", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  const tokensInput = req.body?.tokens;
+  if (!tokensInput || typeof tokensInput !== "object" || Array.isArray(tokensInput)) {
+    return badRequest(res, "tokens must be an object keyed by combatant id.");
+  }
+
+  const normalized = {};
+  for (const [key, value] of Object.entries(tokensInput)) {
+    const combatantId = Number(key);
+    const x = Number(value?.x);
+    const y = Number(value?.y);
+    if (!Number.isInteger(combatantId) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+    normalized[combatantId] = {
+      x: Math.max(-100000, Math.min(100000, Math.round(x * 100) / 100)),
+      y: Math.max(-100000, Math.min(100000, Math.round(y * 100) / 100))
+    };
+  }
+
+  const mapTokensJson = JSON.stringify(normalized);
+  db.prepare(
+    "UPDATE combat_scenarios SET map_tokens_json = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(mapTokensJson, scenarioId);
+
+  res.json({ scenarioId, mapTokensJson });
+});
+
+app.post("/api/scenarios/:scenarioId/map-token-size", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  const tokenSizeRaw = Number(req.body?.tokenSize);
+  if (!Number.isFinite(tokenSizeRaw)) {
+    return badRequest(res, "tokenSize must be a number.");
+  }
+  const tokenSize = Math.max(24, Math.min(128, Math.round(tokenSizeRaw)));
+
+  db.prepare(
+    "UPDATE combat_scenarios SET map_token_size = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(tokenSize, scenarioId);
+
+  res.json({ scenarioId, mapTokenSize: tokenSize });
 });
 
 app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
@@ -1115,21 +1280,40 @@ app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
 
   if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
 
-  const scenarioExists = db
-    .prepare("SELECT 1 FROM combat_scenarios WHERE id = ?")
-    .get(scenarioId);
-  if (!scenarioExists) return badRequest(res, "Scenario not found.");
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
 
   db.prepare(
     "UPDATE combat_scenarios SET is_completed = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(completed ? 1 : 0, scenarioId);
+  if (completed) {
+    db.prepare(
+      `UPDATE campaign_live_state
+       SET shared_scenario_id = NULL,
+           updated_at = datetime('now')
+       WHERE campaign_id = ?
+         AND shared_scenario_id = ?`
+    ).run(scenario.campaign_id, scenarioId);
+  }
 
   const updated = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
   res.json(updated);
+});
+
+app.get("/api/scenarios/:scenarioId", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  const current = getScenario(scenarioId);
+  if (!current) return badRequest(res, "Scenario not found.");
+  return res.json(current);
 });
 
 app.get("/api/scenarios/:scenarioId/combat", (req, res) => {
@@ -1505,12 +1689,39 @@ app.post("/api/scenarios/:scenarioId/combat/next-turn", (req, res) => {
     return badRequest(res, "Add at least one combatant first.");
   }
 
+  const isDefeatedEnemy = (combatant) => {
+    if (combatant.kind !== "enemy") return false;
+    const hp = Number(combatant.hp);
+    return Number.isFinite(hp) && hp <= 0;
+  };
+
+  const isHiddenNonPc = (combatant) => {
+    return combatant.kind !== "character" && Number(combatant.player_visible) === 0;
+  };
+
   const base = normalizeCombatState(scenario, combatants);
-  let nextTurnIndex = base.turnIndex + 1;
+  let nextTurnIndex = base.turnIndex;
   let nextRound = base.round;
-  if (nextTurnIndex >= combatants.length) {
-    nextTurnIndex = 0;
-    nextRound += 1;
+  let foundEligible = false;
+  for (let i = 0; i < combatants.length; i += 1) {
+    nextTurnIndex += 1;
+    if (nextTurnIndex >= combatants.length) {
+      nextTurnIndex = 0;
+      nextRound += 1;
+    }
+    if (!isDefeatedEnemy(combatants[nextTurnIndex]) && !isHiddenNonPc(combatants[nextTurnIndex])) {
+      foundEligible = true;
+      break;
+    }
+  }
+
+  if (!foundEligible) {
+    nextTurnIndex = base.turnIndex + 1;
+    nextRound = base.round;
+    if (nextTurnIndex >= combatants.length) {
+      nextTurnIndex = 0;
+      nextRound += 1;
+    }
   }
 
   db.prepare(

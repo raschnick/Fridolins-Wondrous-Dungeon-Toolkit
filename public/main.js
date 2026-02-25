@@ -10,6 +10,45 @@ const state = {
   draftLibraryEntryImageData: "",
   selectedMonsterId: null,
   draftMonsterImageData: "",
+  draftScenarioMapImageData: "",
+  addCombatantSelectedMonsterId: null,
+  scenarioEditAutoSaveTimer: null,
+  scenarioEditSaveInFlight: false,
+  scenarioEditSavePending: false,
+  runMap: {
+    scenarioId: null,
+    zoom: 1,
+    minZoom: 1,
+    maxZoom: 4,
+    panX: 0,
+    panY: 0,
+    dragging: false,
+    dragMode: "map",
+    dragCombatantId: null,
+    pointerId: null,
+    lastClientX: 0,
+    lastClientY: 0,
+    tokensByScenario: {},
+    saveTimer: null,
+    saveSizeTimer: null
+  },
+  playerMap: {
+    scenarioId: null,
+    mapKey: "",
+    zoom: 1,
+    minZoom: 1,
+    maxZoom: 4,
+    panX: 0,
+    panY: 0,
+    dragging: false,
+    dragMode: "map",
+    dragCombatantId: null,
+    pointerId: null,
+    lastClientX: 0,
+    lastClientY: 0,
+    saveTimer: null,
+    pendingTokenUpdate: null
+  },
   runPreviewEnemyId: null,
   campaigns: [],
   campaignSummaries: {},
@@ -21,6 +60,12 @@ const state = {
   campaignLiveScenarioId: null,
   playerLiveData: null,
   playerLivePollTimer: null,
+  runMapSyncPollTimer: null,
+  playerLiveViewMode: "initiative",
+  scenarioVictoryById: {},
+  pendingVictorySoundById: {},
+  victoryAudioContext: null,
+  victoryAudioUnlocked: false,
   selectedCampaignId: null,
   characters: [],
   scenarios: [],
@@ -37,6 +82,7 @@ const els = {
   status: document.getElementById("status"),
   topNav: document.getElementById("topNav"),
   pageLogin: document.getElementById("pageLogin"),
+  loginPageLogo: document.getElementById("loginPageLogo"),
   pageWelcome: document.getElementById("pageWelcome"),
   pagePlayerHome: document.getElementById("pagePlayerHome"),
   pageMonsters: document.getElementById("pageMonsters"),
@@ -48,6 +94,8 @@ const els = {
   pageScenarioCompletedEdit: document.getElementById("pageScenarioCompletedEdit"),
   pageScenarioRun: document.getElementById("pageScenarioRun"),
   mainHomeBtn: document.getElementById("mainHomeBtn"),
+  mainPlayerInitiativeBtn: document.getElementById("mainPlayerInitiativeBtn"),
+  mainPlayerMapBtn: document.getElementById("mainPlayerMapBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
   userMenu: document.getElementById("userMenu"),
@@ -61,6 +109,13 @@ const els = {
   playerLiveWrap: document.getElementById("playerLiveWrap"),
   playerLiveEncounterName: document.getElementById("playerLiveEncounterName"),
   playerLiveRound: document.getElementById("playerLiveRound"),
+  playerLiveInitiativeWrap: document.getElementById("playerLiveInitiativeWrap"),
+  playerLiveMapWrap: document.getElementById("playerLiveMapWrap"),
+  playerLiveMapHint: document.getElementById("playerLiveMapHint"),
+  playerMapViewport: document.getElementById("playerMapViewport"),
+  playerMapScene: document.getElementById("playerMapScene"),
+  playerMapImage: document.getElementById("playerMapImage"),
+  playerMapTokens: document.getElementById("playerMapTokens"),
   playerLiveCombatantList: document.getElementById("playerLiveCombatantList"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
@@ -79,6 +134,7 @@ const els = {
   monsterSearchInput: document.getElementById("monsterSearchInput"),
   monsterForm: document.getElementById("monsterForm"),
   monsterName: document.getElementById("monsterName"),
+  monsterSize: document.getElementById("monsterSize"),
   monsterIsLegendary: document.getElementById("monsterIsLegendary"),
   monsterLegendaryActionsWrap: document.getElementById("monsterLegendaryActionsWrap"),
   monsterReadonlyView: document.getElementById("monsterReadonlyView"),
@@ -90,6 +146,7 @@ const els = {
   deleteMonsterBtn: document.getElementById("deleteMonsterBtn"),
   createLibraryEntryForm: document.getElementById("createLibraryEntryForm"),
   libraryEntryName: document.getElementById("libraryEntryName"),
+  libraryEntrySize: document.getElementById("libraryEntrySize"),
   libraryEntryLegendary: document.getElementById("libraryEntryLegendary"),
   libraryEntryLegendaryWrap: document.getElementById("libraryEntryLegendaryWrap"),
   libraryEntryImageFile: document.getElementById("libraryEntryImageFile"),
@@ -140,19 +197,38 @@ const els = {
   editScenarioForm: document.getElementById("editScenarioForm"),
   editScenarioName: document.getElementById("editScenarioName"),
   editScenarioNotes: document.getElementById("editScenarioNotes"),
+  editScenarioMapFile: document.getElementById("editScenarioMapFile"),
+  clearScenarioMapBtn: document.getElementById("clearScenarioMapBtn"),
+  editScenarioMapPreview: document.getElementById("editScenarioMapPreview"),
   addEnemyForm: document.getElementById("addEnemyForm"),
   enemyName: document.getElementById("enemyName"),
-  enemyMonsterSelect: document.getElementById("enemyMonsterSelect"),
+  enemyMonsterResults: document.getElementById("enemyMonsterResults"),
   enemyRole: document.getElementById("enemyRole"),
   enemyInitiative: document.getElementById("enemyInitiative"),
   rollEnemyInitiativeBtn: document.getElementById("rollEnemyInitiativeBtn"),
   enemyHp: document.getElementById("enemyHp"),
   enemyMonsterPreview: document.getElementById("enemyMonsterPreview"),
+  openAddCombatantModalBtn: document.getElementById("openAddCombatantModalBtn"),
+  addCombatantModal: document.getElementById("addCombatantModal"),
+  addCombatantCloseBtn: document.getElementById("addCombatantCloseBtn"),
+  enemyMonsterSearchInput: document.getElementById("enemyMonsterSearchInput"),
   combatantEditList: document.getElementById("combatantEditList"),
   runScenarioName: document.getElementById("runScenarioName"),
+  runScenarioSharedDot: document.getElementById("runScenarioSharedDot"),
   runScenarioNotes: document.getElementById("runScenarioNotes"),
   runRound: document.getElementById("runRound"),
-  shareScenarioStatus: document.getElementById("shareScenarioStatus"),
+  runMapViewToggleBtn: document.getElementById("runMapViewToggleBtn"),
+  runCombatLayout: document.getElementById("runCombatLayout"),
+  runMapWrap: document.getElementById("runMapWrap"),
+  runMapHint: document.getElementById("runMapHint"),
+  runMapTokenSizeControls: document.getElementById("runMapTokenSizeControls"),
+  runMapTokenSizeInput: document.getElementById("runMapTokenSizeInput"),
+  runMapTokenSizeValue: document.getElementById("runMapTokenSizeValue"),
+  runMapViewport: document.getElementById("runMapViewport"),
+  runMapScene: document.getElementById("runMapScene"),
+  runMapTokens: document.getElementById("runMapTokens"),
+  runMapImage: document.getElementById("runMapImage"),
+  runInitiativeWrap: document.getElementById("runInitiativeWrap"),
   shareScenarioBtn: document.getElementById("shareScenarioBtn"),
   completeScenarioBtn: document.getElementById("completeScenarioBtn"),
   goEditFromRunBtn: document.getElementById("goEditFromRunBtn"),
@@ -385,6 +461,234 @@ function setLibraryEntryImagePreview(dataUrl) {
   }
 }
 
+function setScenarioMapPreview(dataUrl) {
+  if (dataUrl) {
+    els.editScenarioMapPreview.src = dataUrl;
+    els.editScenarioMapPreview.classList.remove("hidden");
+  } else {
+    els.editScenarioMapPreview.src = "";
+    els.editScenarioMapPreview.classList.add("hidden");
+  }
+}
+
+function scenarioEditPayloadFromForm() {
+  return {
+    name: `${els.editScenarioName.value || ""}`.trim(),
+    notes: `${els.editScenarioNotes.value || ""}`,
+    mapImageData: state.draftScenarioMapImageData || ""
+  };
+}
+
+function scenarioEditHasChanges(scenario, payload) {
+  if (!scenario) return false;
+  return (
+    payload.name !== `${scenario.name || ""}` ||
+    payload.notes !== `${scenario.notes || ""}` ||
+    payload.mapImageData !== `${scenario.map_image_data || ""}`
+  );
+}
+
+async function persistScenarioEditAutoSave({ showStatus = false } = {}) {
+  if (!state.selectedScenarioId) return;
+  const scenario = selectedScenario();
+  if (!scenario) return;
+
+  const payload = scenarioEditPayloadFromForm();
+  if (!payload.name) return;
+  if (!scenarioEditHasChanges(scenario, payload)) return;
+
+  if (state.scenarioEditSaveInFlight) {
+    state.scenarioEditSavePending = true;
+    return;
+  }
+
+  state.scenarioEditSaveInFlight = true;
+  try {
+    const updated = await api(`/api/scenarios/${state.selectedScenarioId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    state.scenarios = state.scenarios.map((s) => (s.id === updated.id ? updated : s));
+    if (showStatus) setStatus("Scenario updated.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    state.scenarioEditSaveInFlight = false;
+    if (state.scenarioEditSavePending) {
+      state.scenarioEditSavePending = false;
+      persistScenarioEditAutoSave({ showStatus: false });
+    }
+  }
+}
+
+function scheduleScenarioEditAutoSave(delayMs = 450) {
+  if (state.scenarioEditAutoSaveTimer) clearTimeout(state.scenarioEditAutoSaveTimer);
+  state.scenarioEditAutoSaveTimer = setTimeout(() => {
+    state.scenarioEditAutoSaveTimer = null;
+    persistScenarioEditAutoSave({ showStatus: false });
+  }, delayMs);
+}
+
+function hasPlayersWonEncounter(combatants) {
+  const enemies = (Array.isArray(combatants) ? combatants : []).filter(
+    (combatant) => combatant.kind === "enemy" && combatant.enemy_role !== "npc"
+  );
+  if (enemies.length === 0) return false;
+  return enemies.every((enemy) => {
+    if (Number(enemy.is_defeated) === 1) return true;
+    const hp = Number(enemy.hp);
+    return Number.isFinite(hp) && hp <= 0;
+  });
+}
+
+async function playVictorySound() {
+  if (!state.victoryAudioUnlocked || !state.victoryAudioContext) return false;
+  const ctx = state.victoryAudioContext;
+  if (ctx.state !== "running") return false;
+
+  const sequence = [
+    { freq: 392.0, at: 0.0, dur: 0.2 },
+    { freq: 523.25, at: 0.22, dur: 0.22 },
+    { freq: 659.25, at: 0.46, dur: 0.24 },
+    { freq: 783.99, at: 0.72, dur: 0.42 }
+  ];
+  const start = ctx.currentTime;
+  sequence.forEach((step) => {
+    const t0 = start + step.at;
+    const t1 = t0 + step.dur;
+
+    // Layered waveform approximates a small brass fanfare without external assets.
+    const oscA = ctx.createOscillator();
+    const oscB = ctx.createOscillator();
+    const oscC = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    oscA.type = "sawtooth";
+    oscB.type = "square";
+    oscC.type = "triangle";
+
+    oscA.frequency.setValueAtTime(step.freq, t0);
+    oscB.frequency.setValueAtTime(step.freq * 1.005, t0);
+    oscC.frequency.setValueAtTime(step.freq * 2, t0);
+
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(1800, t0);
+    filter.Q.setValueAtTime(0.8, t0);
+
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t1);
+
+    oscA.connect(filter);
+    oscB.connect(filter);
+    oscC.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscA.start(t0);
+    oscB.start(t0);
+    oscC.start(t0);
+    oscA.stop(t1 + 0.01);
+    oscB.stop(t1 + 0.01);
+    oscC.stop(t1 + 0.01);
+  });
+  return true;
+}
+
+function launchVictoryConfetti() {
+  const layer = document.createElement("div");
+  layer.className = "victory-confetti-layer";
+  const colors = ["#ff6b6b", "#ffd166", "#06d6a0", "#4cc9f0", "#f72585", "#90be6d"];
+  const count = 150;
+
+  for (let i = 0; i < count; i += 1) {
+    const piece = document.createElement("span");
+    piece.className = "victory-confetti-piece";
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 180 + Math.random() * 380;
+    const dx = Math.cos(angle) * distance;
+    const dy = Math.sin(angle) * distance - 140;
+    piece.style.setProperty("--dx", `${dx}px`);
+    piece.style.setProperty("--dy", `${dy}px`);
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.width = `${5 + Math.random() * 6}px`;
+    piece.style.height = `${7 + Math.random() * 10}px`;
+    piece.style.animationDelay = `${Math.random() * 120}ms`;
+    piece.style.animationDuration = `${1450 + Math.random() * 900}ms`;
+    layer.appendChild(piece);
+  }
+
+  document.body.appendChild(layer);
+  window.setTimeout(() => {
+    layer.remove();
+  }, 3000);
+}
+
+function unlockVictoryAudio() {
+  if (state.victoryAudioUnlocked) {
+    for (const key of Object.keys(state.pendingVictorySoundById)) {
+      if (!state.pendingVictorySoundById[key]) continue;
+      playVictorySound().then((ok) => {
+        if (ok) {
+          delete state.pendingVictorySoundById[key];
+        }
+      }).catch(() => {});
+    }
+    return;
+  }
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  if (!state.victoryAudioContext) {
+    state.victoryAudioContext = new AudioCtx();
+  }
+  state.victoryAudioContext.resume().then(() => {
+    state.victoryAudioUnlocked = state.victoryAudioContext?.state === "running";
+    if (!state.victoryAudioUnlocked) return;
+    for (const key of Object.keys(state.pendingVictorySoundById)) {
+      if (!state.pendingVictorySoundById[key]) continue;
+      playVictorySound().then((ok) => {
+        if (ok) {
+          delete state.pendingVictorySoundById[key];
+        }
+      }).catch(() => {});
+    }
+  }).catch(() => {
+    state.victoryAudioUnlocked = false;
+  });
+}
+
+function maybeCelebrateEncounterWin(scenarioId, combatants) {
+  if (!Number.isInteger(scenarioId)) return;
+  const key = `${state.authUser?.role || "user"}:${scenarioId}`;
+  const wonNow = hasPlayersWonEncounter(combatants);
+  const wonBefore = Boolean(state.scenarioVictoryById[key]);
+
+  if (wonNow && !wonBefore) {
+    state.scenarioVictoryById[key] = true;
+    launchVictoryConfetti();
+    if (state.victoryAudioUnlocked) {
+      playVictorySound().then((ok) => {
+        if (!ok) {
+          state.pendingVictorySoundById[key] = true;
+        }
+      }).catch(() => {
+        state.pendingVictorySoundById[key] = true;
+      });
+    } else {
+      state.pendingVictorySoundById[key] = true;
+    }
+    setStatus("Players won the encounter.");
+    return;
+  }
+
+  state.scenarioVictoryById[key] = wonNow;
+  if (!wonNow) {
+    delete state.pendingVictorySoundById[key];
+  }
+}
+
 function updateMonsterLegendaryFieldsVisibility() {
   const isLegendary = els.monsterIsLegendary.value === "true";
   els.monsterLegendaryActionsWrap.classList.toggle("hidden", !isLegendary);
@@ -399,6 +703,7 @@ function setMonsterEditorReadOnly(readOnly) {
   state.monsterEditorReadOnly = readOnly;
   els.monsterForm.classList.toggle("monster-form-readonly", readOnly);
   els.monsterName.readOnly = readOnly;
+  els.monsterSize.disabled = readOnly;
   els.monsterIsLegendary.disabled = readOnly;
   els.monsterImageFile.disabled = readOnly;
   document
@@ -436,6 +741,15 @@ function appendReadonlyRow(labelText, valueText) {
   els.monsterReadonlyView.appendChild(row);
 }
 
+function formatMonsterSizeLabel(size) {
+  const raw = `${size || "normal"}`.trim().toLowerCase();
+  if (raw === "normal") return "Normal";
+  if (raw === "large") return "Large";
+  if (raw === "huge") return "Huge";
+  if (raw === "gargantuan") return "Gargantuan";
+  return "Normal";
+}
+
 function renderMonsterReadonlyView() {
   if (!els.monsterReadonlyView) return;
   els.monsterReadonlyView.innerHTML = "";
@@ -451,6 +765,7 @@ function renderMonsterReadonlyView() {
   }
 
   appendReadonlyRow("Name", monster.name || "-");
+  appendReadonlyRow("Size", formatMonsterSizeLabel(monster.size));
   if (monster.is_legendary) {
     const count = Number(monster.legendary_actions_count);
     const suffix = Number.isInteger(count) ? ` (${count})` : "";
@@ -509,6 +824,7 @@ function openCampaignActionModal(mode) {
     els.newCampaignName.focus();
   } else if (isLibraryEntry) {
     els.libraryEntryName.value = "";
+    els.libraryEntrySize.value = "normal";
     els.libraryEntryLegendary.value = "false";
     state.draftLibraryEntryImageData = "";
     setLibraryEntryImagePreview("");
@@ -533,6 +849,23 @@ function openCampaignActionModal(mode) {
 function closeCampaignActionModal() {
   state.campaignActionMode = null;
   els.campaignActionModal.classList.add("hidden");
+}
+
+function openAddCombatantModal() {
+  if (!state.selectedScenarioId) return;
+  state.addCombatantSelectedMonsterId = null;
+  els.enemyName.value = "";
+  els.enemyRole.value = "enemy";
+  els.enemyInitiative.value = "";
+  els.enemyHp.value = "";
+  els.enemyMonsterSearchInput.value = "";
+  renderEnemyMonsterOptions("");
+  els.addCombatantModal.classList.remove("hidden");
+  els.enemyMonsterSearchInput.focus();
+}
+
+function closeAddCombatantModal() {
+  els.addCombatantModal.classList.add("hidden");
 }
 
 function dataUrlBytes(dataUrl) {
@@ -650,7 +983,7 @@ function createCombatantNameElement(combatant) {
   wrapper.appendChild(icon);
 
   const text = document.createElement("span");
-  const isHiddenForPlayers = Number(combatant.player_visible) === 0;
+  const isHiddenForPlayers = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
   text.textContent = isHiddenForPlayers ? `(${combatant.name})` : combatant.name;
   wrapper.appendChild(text);
 
@@ -666,7 +999,10 @@ function normalizePathname(pathname) {
 function parseRoute(pathname) {
   const path = normalizePathname(pathname);
   if (path === "/login") return { page: "login" };
-  if (path === "/player") return { page: "player-home" };
+  if (path === "/player" || path === "/player/initiative") {
+    return { page: "player-home", playerMode: "initiative" };
+  }
+  if (path === "/player/map") return { page: "player-home", playerMode: "map" };
   if (path === "/") return { page: "welcome" };
   if (path === "/library") return { page: "monsters" };
   if (path === "/monsters") return { page: "monsters" };
@@ -683,10 +1019,16 @@ function parseRoute(pathname) {
     return { page: "campaign-completed", campaignId: Number(match[1]) };
   }
 
-  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|run)$/);
+  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|initiative|map|run)$/);
   if (match) {
+    const mode = match[3];
     return {
-      page: match[3] === "run" ? "scenario-run" : "scenario-edit",
+      page:
+        mode === "initiative" || mode === "run"
+          ? "scenario-run"
+          : mode === "map"
+            ? "scenario-map"
+            : "scenario-edit",
       campaignId: Number(match[1]),
       scenarioId: Number(match[2])
     };
@@ -703,9 +1045,11 @@ function parseRoute(pathname) {
   return null;
 }
 
-function routePathFor(page, campaignId = null, scenarioId = null) {
+function routePathFor(page, campaignId = null, scenarioId = null, playerMode = null) {
   if (page === "login") return "/login";
-  if (page === "player-home") return "/player";
+  if (page === "player-home") {
+    return playerMode === "map" ? "/player/map" : "/player/initiative";
+  }
   if (page === "welcome") return "/";
   if (page === "monsters") return "/library";
   if (page === "admin") return "/admin";
@@ -717,14 +1061,19 @@ function routePathFor(page, campaignId = null, scenarioId = null) {
     return `/campaigns/${campaignId}/completed`;
   }
   if (
-    (page === "scenario-edit" || page === "scenario-run" || page === "scenario-completed-edit") &&
+    (
+      page === "scenario-edit" ||
+      page === "scenario-run" ||
+      page === "scenario-map" ||
+      page === "scenario-completed-edit"
+    ) &&
     Number.isInteger(campaignId) &&
     Number.isInteger(scenarioId)
   ) {
     if (page === "scenario-completed-edit") {
       return `/campaigns/${campaignId}/scenarios/${scenarioId}/completed/edit`;
     }
-    const mode = page === "scenario-run" ? "run" : "edit";
+    const mode = page === "scenario-run" ? "initiative" : page === "scenario-map" ? "map" : "edit";
     return `/campaigns/${campaignId}/scenarios/${scenarioId}/${mode}`;
   }
   return "/";
@@ -774,6 +1123,7 @@ async function applyRoute(route, { replace = false } = {}) {
   }
 
   if (route.page === "player-home") {
+    state.playerLiveViewMode = route.playerMode === "map" ? "map" : "initiative";
     try {
       await loadPlayerLive();
     } catch (error) {
@@ -782,7 +1132,7 @@ async function applyRoute(route, { replace = false } = {}) {
     if (!isCurrent()) return;
     startPlayerLivePolling();
     showPage("player-home");
-    await syncHistory("/player", { replace });
+    await syncHistory(routePathFor("player-home", null, null, state.playerLiveViewMode), { replace });
     return;
   }
 
@@ -819,7 +1169,8 @@ async function applyRoute(route, { replace = false } = {}) {
       if (!isCurrent()) return;
       startPlayerLivePolling();
       showPage("player-home");
-      await syncHistory("/player", { replace });
+      state.playerLiveViewMode = "initiative";
+      await syncHistory("/player/initiative", { replace });
       return;
     }
     stopPlayerLivePolling();
@@ -906,16 +1257,16 @@ async function applyRoute(route, { replace = false } = {}) {
     );
     return;
   }
-  if (route.page === "scenario-run") {
+  if (route.page === "scenario-run" || route.page === "scenario-map") {
+    showPage(route.page);
     focusPreviewOnActiveNonPc();
     renderScenarioRunPage();
-    showPage("scenario-run");
   } else if (route.page === "scenario-completed-edit") {
-    renderScenarioCompletedEditPage();
     showPage("scenario-completed-edit");
+    renderScenarioCompletedEditPage();
   } else {
-    renderScenarioEditPage();
     showPage("scenario-edit");
+    renderScenarioEditPage();
   }
   await syncHistory(routePathFor(route.page, route.campaignId, route.scenarioId), { replace });
 }
@@ -940,8 +1291,14 @@ function showPage(page) {
   if (page !== "player-home") {
     stopPlayerLivePolling();
   }
-  document.body.classList.toggle("page-run", page === "scenario-run");
+  if (page !== "scenario-map") {
+    stopRunMapSyncPolling();
+  }
+  document.body.classList.toggle("page-login", page === "login");
+  document.body.classList.toggle("page-player", page === "player-home");
+  document.body.classList.toggle("page-run", page === "scenario-run" || page === "scenario-map");
   els.pageLogin.classList.toggle("hidden", page !== "login");
+  els.loginPageLogo.classList.toggle("hidden", page !== "login");
   const hideTopNav = page === "login" || (state.authUser?.role !== "admin");
   els.topNav.classList.toggle("hidden", hideTopNav);
   els.pageWelcome.classList.toggle("hidden", page !== "welcome");
@@ -953,14 +1310,17 @@ function showPage(page) {
   els.pageCampaignCompleted.classList.toggle("hidden", page !== "campaign-completed");
   els.pageScenarioEdit.classList.toggle("hidden", page !== "scenario-edit");
   els.pageScenarioCompletedEdit.classList.toggle("hidden", page !== "scenario-completed-edit");
-  els.pageScenarioRun.classList.toggle("hidden", page !== "scenario-run");
+  els.pageScenarioRun.classList.toggle("hidden", !(page === "scenario-run" || page === "scenario-map"));
   renderMainSections();
   renderNav();
 }
 
 function renderMainSections() {
   const isAuthed = Boolean(state.authUser);
-  els.mainHomeBtn.classList.toggle("hidden", !isAuthed);
+  const isPlayer = isAuthed && state.authUser?.role !== "admin";
+  els.mainHomeBtn.classList.toggle("hidden", !isAuthed || isPlayer);
+  els.mainPlayerInitiativeBtn.classList.toggle("hidden", !isPlayer);
+  els.mainPlayerMapBtn.classList.toggle("hidden", !isPlayer);
   els.userMenu.classList.toggle("hidden", !isAuthed);
   const showLibrary = isAuthed && state.authUser?.role === "admin";
   const showAnalytics = isAuthed && state.authUser?.role === "admin";
@@ -978,8 +1338,18 @@ function renderMainSections() {
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
     state.page === "scenario-completed-edit" ||
-    state.page === "scenario-run";
+    state.page === "scenario-run" ||
+    state.page === "scenario-map";
   els.mainHomeBtn.classList.toggle("active", inHome);
+  const inPlayerHome = state.page === "player-home";
+  els.mainPlayerInitiativeBtn.classList.toggle(
+    "active",
+    inPlayerHome && state.playerLiveViewMode !== "map"
+  );
+  els.mainPlayerMapBtn.classList.toggle(
+    "active",
+    inPlayerHome && state.playerLiveViewMode === "map"
+  );
   els.mainMonstersBtn.classList.toggle("active", state.page === "monsters");
   els.mainAnalyticsBtn.classList.toggle("active", state.page === "analytics");
 }
@@ -995,7 +1365,8 @@ function renderNav() {
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
     state.page === "scenario-completed-edit" ||
-    state.page === "scenario-run";
+    state.page === "scenario-run" ||
+    state.page === "scenario-map";
 
   const inMonsters = state.page === "monsters";
   const inAnalytics = state.page === "analytics";
@@ -1026,7 +1397,8 @@ function renderNav() {
       state.page === "campaign-completed" ||
       state.page === "scenario-edit" ||
       state.page === "scenario-completed-edit" ||
-      state.page === "scenario-run"
+      state.page === "scenario-run" ||
+      state.page === "scenario-map"
     );
   els.navCampaignBtn.classList.toggle("hidden", !showCampaignCrumb);
   els.navSepCampaign.classList.toggle("hidden", !showCampaignCrumb);
@@ -1038,7 +1410,7 @@ function renderNav() {
   const showScenarioCrumb =
     inHomePath &&
     Boolean(scenario) &&
-    (state.page === "scenario-edit" || state.page === "scenario-run");
+    (state.page === "scenario-edit" || state.page === "scenario-run" || state.page === "scenario-map");
   const showCompletedScenarioCrumb =
     inHomePath &&
     Boolean(scenario) &&
@@ -1050,6 +1422,7 @@ function renderNav() {
     els.navScenarioBtn.disabled =
       state.page === "scenario-edit" ||
       state.page === "scenario-run" ||
+      state.page === "scenario-map" ||
       state.page === "scenario-completed-edit";
   }
 }
@@ -1128,6 +1501,7 @@ function clearMonsterForm() {
   state.selectedMonsterId = null;
   state.draftMonsterImageData = "";
   els.monsterForm.reset();
+  els.monsterSize.value = "normal";
   els.monsterIsLegendary.value = "false";
   const defaultLegendary = document.querySelector(
     'input[name="monsterLegendaryActionsCount"][value="3"]'
@@ -1142,6 +1516,10 @@ function clearMonsterForm() {
 
 function fillMonsterForm(monster) {
   els.monsterName.value = monster.name;
+  const sizeValue = `${monster.size || "normal"}`.trim().toLowerCase();
+  els.monsterSize.value = ["normal", "large", "huge", "gargantuan"].includes(sizeValue)
+    ? sizeValue
+    : "normal";
   els.monsterIsLegendary.value = monster.is_legendary ? "true" : "false";
   const currentLegendary = document.querySelector(
     `input[name="monsterLegendaryActionsCount"][value="${monster.legendary_actions_count || 3}"]`
@@ -1164,6 +1542,7 @@ function monsterFormPayload() {
     : null;
   return {
     name: els.monsterName.value,
+    size: els.monsterSize.value,
     isLegendary,
     legendaryActionsCount,
     monsterImageData: state.draftMonsterImageData || ""
@@ -1225,15 +1604,62 @@ function renderMonsterList() {
   }
 }
 
-function renderEnemyMonsterOptions() {
-  els.enemyMonsterSelect.innerHTML = '<option value="">From Library (optional)</option>';
-  for (const monster of state.monsters) {
-    const option = document.createElement("option");
-    option.value = String(monster.id);
-    option.textContent = monster.name;
-    els.enemyMonsterSelect.appendChild(option);
+function renderEnemyMonsterOptions(searchQuery = "") {
+  const query = (searchQuery || "").trim().toLowerCase();
+  const filtered = query
+    ? state.monsters.filter((monster) => monster.name.toLowerCase().includes(query))
+    : state.monsters;
+  const limited = filtered.slice(0, 5);
+  els.enemyMonsterResults.innerHTML = "";
+
+  if (limited.length === 0) {
+    state.addCombatantSelectedMonsterId = null;
+    setEnemyMonsterPreview("");
+    const empty = document.createElement("li");
+    empty.className = "hint";
+    empty.textContent = "No library matches.";
+    els.enemyMonsterResults.appendChild(empty);
+    return;
   }
-  setEnemyMonsterPreview("");
+
+  if (limited.length === 1) {
+    state.addCombatantSelectedMonsterId = limited[0].id;
+    setEnemyMonsterPreview(limited[0].monster_image_data || "");
+    els.enemyName.value = limited[0].name;
+    if (!els.enemyHp.value.trim()) {
+      const hpMatch = /\d+/.exec(limited[0].hit_points || "");
+      if (hpMatch) els.enemyHp.value = hpMatch[0];
+    }
+  } else if (
+    state.addCombatantSelectedMonsterId
+    && !limited.some((monster) => monster.id === state.addCombatantSelectedMonsterId)
+  ) {
+    state.addCombatantSelectedMonsterId = null;
+    setEnemyMonsterPreview("");
+  }
+
+  for (const monster of limited) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "add-combatant-library-item";
+    if (state.addCombatantSelectedMonsterId === monster.id) {
+      button.classList.add("active");
+    }
+    button.textContent = monster.name;
+    button.addEventListener("click", () => {
+      state.addCombatantSelectedMonsterId = monster.id;
+      setEnemyMonsterPreview(monster.monster_image_data || "");
+      els.enemyName.value = monster.name;
+      if (!els.enemyHp.value.trim()) {
+        const hpMatch = /\d+/.exec(monster.hit_points || "");
+        if (hpMatch) els.enemyHp.value = hpMatch[0];
+      }
+      renderEnemyMonsterOptions(els.enemyMonsterSearchInput.value);
+    });
+    li.appendChild(button);
+    els.enemyMonsterResults.appendChild(li);
+  }
 }
 
 async function loadMonsters() {
@@ -1307,15 +1733,41 @@ function renderScenarios() {
     row.className = "list-row";
 
     const label = document.createElement("span");
-    label.textContent = scenario.name;
+    label.className = "scenario-label";
+    const nameText = document.createElement("span");
+    nameText.textContent = scenario.name;
+    if (state.campaignLiveScenarioId === scenario.id) {
+      const sharedDot = document.createElement("span");
+      sharedDot.className = "scenario-shared-dot";
+      sharedDot.title = "Shared with players";
+      label.appendChild(sharedDot);
+    }
+    label.appendChild(nameText);
     row.appendChild(label);
 
     const actions = document.createElement("div");
     actions.className = "row-actions";
 
+    const mapButton = document.createElement("button");
+    mapButton.type = "button";
+    mapButton.className = "encounter-action-btn";
+    mapButton.title = "Map";
+    mapButton.setAttribute("aria-label", "Map");
+    mapButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-map" aria-hidden="true"></span>';
+    mapButton.addEventListener("click", async () => {
+      await navigateToPage("scenario-map", {
+        campaignId: state.selectedCampaignId,
+        scenarioId: scenario.id
+      });
+    });
+    actions.appendChild(mapButton);
+
     const runButton = document.createElement("button");
     runButton.type = "button";
-    runButton.textContent = "Run";
+    runButton.className = "encounter-action-btn";
+    runButton.title = "Initiative";
+    runButton.setAttribute("aria-label", "Initiative");
+    runButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-initiative" aria-hidden="true"></span>';
     runButton.addEventListener("click", async () => {
       await navigateToPage("scenario-run", {
         campaignId: state.selectedCampaignId,
@@ -1326,7 +1778,10 @@ function renderScenarios() {
 
     const editButton = document.createElement("button");
     editButton.type = "button";
-    editButton.textContent = "Edit";
+    editButton.className = "encounter-action-btn";
+    editButton.title = "Edit";
+    editButton.setAttribute("aria-label", "Edit");
+    editButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-edit" aria-hidden="true"></span>';
     editButton.addEventListener("click", async () => {
       await navigateToPage("scenario-edit", {
         campaignId: state.selectedCampaignId,
@@ -1458,7 +1913,7 @@ function attachInitiativeBlurUpdate(input, combatant) {
       });
       await safeLoadCombatState();
       if (state.page === "scenario-edit") renderScenarioEditPage();
-      if (state.page === "scenario-run") renderScenarioRunPage();
+      if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
     } catch (error) {
       setStatus(error.message);
     }
@@ -1482,7 +1937,7 @@ function attachEnemyHpBlurUpdate(input, combatant) {
       });
       await safeLoadCombatState();
       if (state.page === "scenario-edit") renderScenarioEditPage();
-      if (state.page === "scenario-run") renderScenarioRunPage();
+      if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
     } catch (error) {
       setStatus(error.message);
     }
@@ -1531,7 +1986,7 @@ function setupRunQuickEditInput(input) {
 
 function rerenderCurrentScenarioPage() {
   if (state.page === "scenario-edit") renderScenarioEditPage();
-  if (state.page === "scenario-run") renderScenarioRunPage();
+  if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
 }
 
 function focusPreviewOnActiveNonPc() {
@@ -1539,6 +1994,273 @@ function focusPreviewOnActiveNonPc() {
   if (active && active.kind === "enemy") {
     state.runPreviewEnemyId = active.id;
   }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function combatantTokenSizeScale(combatant) {
+  const size = `${combatant?.monster_size || "normal"}`.trim().toLowerCase();
+  if (size === "large") return 2;
+  if (size === "huge") return 3;
+  if (size === "gargantuan") return 4;
+  return 1;
+}
+
+function mapNaturalSize() {
+  const image = els.runMapImage;
+  if (!image || !image.naturalWidth || !image.naturalHeight) {
+    return { width: 1200, height: 800 };
+  }
+  return { width: image.naturalWidth, height: image.naturalHeight };
+}
+
+function getScenarioTokenPositions(scenarioId) {
+  if (!state.runMap.tokensByScenario[scenarioId]) {
+    state.runMap.tokensByScenario[scenarioId] = {};
+  }
+  return state.runMap.tokensByScenario[scenarioId];
+}
+
+function scenarioMapTokenSize(scenario) {
+  const raw = Number(scenario?.map_token_size);
+  if (!Number.isFinite(raw)) return 44;
+  return clamp(Math.round(raw), 24, 128);
+}
+
+function setRunMapTokenSizeUI(size) {
+  const finalSize = clamp(Math.round(Number(size) || 44), 24, 128);
+  if (els.runMapTokenSizeInput) els.runMapTokenSizeInput.value = String(finalSize);
+  if (els.runMapTokenSizeValue) els.runMapTokenSizeValue.textContent = String(finalSize);
+  if (els.runMapViewport) els.runMapViewport.style.setProperty("--map-token-size", `${finalSize}px`);
+}
+
+function setPlayerMapTokenSize(size) {
+  const finalSize = clamp(Math.round(Number(size) || 44), 24, 128);
+  if (els.playerMapViewport) els.playerMapViewport.style.setProperty("--map-token-size", `${finalSize}px`);
+}
+
+async function persistRunMapTokenSize(scenarioId, tokenSize) {
+  try {
+    const result = await api(`/api/scenarios/${scenarioId}/map-token-size`, {
+      method: "POST",
+      body: JSON.stringify({ tokenSize })
+    });
+    const saved = clamp(Math.round(Number(result?.mapTokenSize) || tokenSize), 24, 128);
+    state.scenarios = state.scenarios.map((scenario) =>
+      scenario.id === scenarioId
+        ? { ...scenario, map_token_size: saved }
+        : scenario
+    );
+    setRunMapTokenSizeUI(saved);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function scheduleRunMapTokenSizeSave(scenarioId, tokenSize) {
+  if (!Number.isInteger(scenarioId)) return;
+  if (state.runMap.saveSizeTimer) clearTimeout(state.runMap.saveSizeTimer);
+  state.runMap.saveSizeTimer = setTimeout(() => {
+    state.runMap.saveSizeTimer = null;
+    persistRunMapTokenSize(scenarioId, tokenSize);
+  }, 180);
+}
+
+function hydrateRunMapTokensFromScenario(scenario) {
+  if (!scenario || !Number.isInteger(scenario.id)) return;
+  if (state.runMap.tokensByScenario[scenario.id]) return;
+
+  const raw = `${scenario.map_tokens_json || ""}`.trim();
+  if (!raw) {
+    state.runMap.tokensByScenario[scenario.id] = {};
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      state.runMap.tokensByScenario[scenario.id] = {};
+      return;
+    }
+    const normalized = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const combatantId = Number(key);
+      const x = Number(value?.x);
+      const y = Number(value?.y);
+      if (!Number.isInteger(combatantId) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+      normalized[combatantId] = { x, y };
+    }
+    state.runMap.tokensByScenario[scenario.id] = normalized;
+  } catch (_error) {
+    state.runMap.tokensByScenario[scenario.id] = {};
+  }
+}
+
+async function persistRunMapTokens(scenarioId) {
+  const positions = getScenarioTokenPositions(scenarioId);
+  try {
+    const result = await api(`/api/scenarios/${scenarioId}/map-tokens`, {
+      method: "POST",
+      body: JSON.stringify({ tokens: positions })
+    });
+    const mapTokensJson = `${result?.mapTokensJson || ""}`;
+    state.scenarios = state.scenarios.map((scenario) =>
+      scenario.id === scenarioId
+        ? { ...scenario, map_tokens_json: mapTokensJson }
+        : scenario
+    );
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function scheduleRunMapTokensSave(scenarioId) {
+  if (!Number.isInteger(scenarioId)) return;
+  if (state.runMap.saveTimer) clearTimeout(state.runMap.saveTimer);
+  state.runMap.saveTimer = setTimeout(() => {
+    state.runMap.saveTimer = null;
+    persistRunMapTokens(scenarioId);
+  }, 220);
+}
+
+function ensureMapTokensForCombatants(scenarioId, combatants) {
+  const positions = getScenarioTokenPositions(scenarioId);
+  const { width, height } = mapNaturalSize();
+  let index = 0;
+  for (const combatant of combatants) {
+    const isHidden = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
+    if (isHidden) continue;
+    if (!positions[combatant.id]) {
+      const col = index % 8;
+      const row = Math.floor(index / 8);
+      positions[combatant.id] = {
+        x: 72 + col * 78,
+        y: 72 + row * 78
+      };
+    }
+    positions[combatant.id].x = clamp(positions[combatant.id].x, 20, width - 20);
+    positions[combatant.id].y = clamp(positions[combatant.id].y, 20, height - 20);
+    index += 1;
+  }
+}
+
+function renderRunMapTokens(scenarioId, combatants) {
+  if (!els.runMapTokens) return;
+  els.runMapTokens.innerHTML = "";
+  const positions = getScenarioTokenPositions(scenarioId);
+  const { width, height } = mapNaturalSize();
+  ensureMapTokensForCombatants(scenarioId, combatants);
+
+  for (const combatant of combatants) {
+    const isHidden = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
+    if (isHidden) continue;
+    const pos = positions[combatant.id];
+    if (!pos) continue;
+
+    const token = document.createElement("button");
+    token.type = "button";
+    token.className = "run-map-token";
+    if (combatant.kind === "character") {
+      token.classList.add("token-pc");
+    } else if (combatant.enemy_role === "npc") {
+      token.classList.add("token-npc");
+    } else {
+      token.classList.add("token-enemy");
+    }
+    token.title = combatant.name;
+    token.style.left = `${clamp(pos.x, 20, width - 20)}px`;
+    token.style.top = `${clamp(pos.y, 20, height - 20)}px`;
+    token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
+    token.dataset.combatantId = String(combatant.id);
+    if (combatant.id === state.combat.activeCombatantId) {
+      token.classList.add("is-active");
+    }
+
+    const icon = document.createElement("img");
+    icon.className = "run-map-token-icon";
+    icon.alt = combatant.name;
+    const fallbackSrc = combatantIconFallbackSrc(combatant);
+    icon.src = combatantIconSrc(combatant);
+    icon.addEventListener("error", () => {
+      if (!icon.src.endsWith(fallbackSrc)) {
+        icon.src = fallbackSrc;
+      }
+    });
+    token.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.className = "run-map-token-name";
+    label.textContent = combatant.name;
+    token.appendChild(label);
+
+    token.addEventListener("pointerdown", (event) => {
+      if (state.page !== "scenario-map") return;
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      state.runMap.dragging = true;
+      state.runMap.dragMode = "token";
+      state.runMap.dragCombatantId = combatant.id;
+      state.runMap.pointerId = event.pointerId;
+      state.runMap.lastClientX = event.clientX;
+      state.runMap.lastClientY = event.clientY;
+      if (els.runMapViewport) els.runMapViewport.setPointerCapture(event.pointerId);
+      token.classList.add("is-dragging");
+      if (els.runMapViewport) els.runMapViewport.classList.add("is-dragging");
+    });
+
+    els.runMapTokens.appendChild(token);
+  }
+}
+
+function applyRunMapTransform() {
+  const viewport = els.runMapViewport;
+  const image = els.runMapImage;
+  const scene = els.runMapScene;
+  if (!viewport || !image || !scene || image.classList.contains("hidden")) return;
+  if (!image.naturalWidth || !image.naturalHeight) return;
+
+  const viewportWidth = viewport.clientWidth;
+  const viewportHeight = viewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return;
+
+  const baseScale = Math.min(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight);
+  const totalScale = baseScale * state.runMap.zoom;
+  const scaledWidth = image.naturalWidth * totalScale;
+  const scaledHeight = image.naturalHeight * totalScale;
+
+  if (scaledWidth <= viewportWidth) {
+    state.runMap.panX = (viewportWidth - scaledWidth) / 2;
+  } else {
+    const minX = viewportWidth - scaledWidth;
+    state.runMap.panX = clamp(state.runMap.panX, minX, 0);
+  }
+
+  if (scaledHeight <= viewportHeight) {
+    state.runMap.panY = (viewportHeight - scaledHeight) / 2;
+  } else {
+    const minY = viewportHeight - scaledHeight;
+    state.runMap.panY = clamp(state.runMap.panY, minY, 0);
+  }
+
+  scene.style.width = `${image.naturalWidth}px`;
+  scene.style.height = `${image.naturalHeight}px`;
+  scene.style.transformOrigin = "top left";
+  scene.style.transform = `translate(${state.runMap.panX}px, ${state.runMap.panY}px) scale(${totalScale})`;
+}
+
+function resetRunMapViewForScenario(scenarioId) {
+  state.runMap.scenarioId = scenarioId;
+  state.runMap.zoom = 1;
+  state.runMap.panX = 0;
+  state.runMap.panY = 0;
+  state.runMap.dragging = false;
+  state.runMap.dragMode = "map";
+  state.runMap.dragCombatantId = null;
+  state.runMap.pointerId = null;
+  applyRunMapTransform();
 }
 
 function activeCombatant() {
@@ -1682,6 +2404,9 @@ function renderScenarioEditPage() {
 
   els.editScenarioName.value = scenario.name;
   els.editScenarioNotes.value = scenario.notes || "";
+  state.draftScenarioMapImageData = scenario.map_image_data || "";
+  setScenarioMapPreview(state.draftScenarioMapImageData);
+  if (els.editScenarioMapFile) els.editScenarioMapFile.value = "";
   els.combatantEditList.innerHTML = "";
 
   if (state.combat.combatants.length === 0) {
@@ -1691,11 +2416,23 @@ function renderScenarioEditPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
-    if (Number(combatant.player_visible) === 0) {
+    if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
       li.classList.add("combatant-hidden-for-players");
     }
     const row = document.createElement("div");
     row.className = "combatant-row";
+    const right = document.createElement("div");
+    right.className = "edit-combatant-right";
+
+    const initiative = document.createElement("input");
+    initiative.type = "text";
+    initiative.className = "edit-order-init";
+    initiative.value = String(combatant.initiative);
+    initiative.required = true;
+    initiative.placeholder = "00";
+    initiative.maxLength = 2;
+    row.appendChild(initiative);
+    attachInitiativeBlurUpdate(initiative, combatant);
 
     const name = createCombatantNameElement(combatant);
     if (combatant.kind === "enemy") {
@@ -1707,33 +2444,23 @@ function renderScenarioEditPage() {
       });
     }
     row.appendChild(name);
-    row.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioEditPage));
-
-    const initiative = document.createElement("input");
-    initiative.type = "text";
-    initiative.value = String(combatant.initiative);
-    initiative.required = true;
-    initiative.placeholder = "Init";
-    const initPrefix = document.createElement("span");
-    initPrefix.className = "field-prefix";
-    initPrefix.textContent = "Init";
-    row.appendChild(initPrefix);
-    row.appendChild(initiative);
-    attachInitiativeBlurUpdate(initiative, combatant);
+    if (combatant.kind !== "character") {
+      right.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioEditPage));
+    }
 
     const conditionSelect = createConditionSelect(combatant);
-    row.appendChild(conditionSelect);
+    right.appendChild(conditionSelect);
 
     if (combatant.kind === "enemy") {
       const hpPrefix = document.createElement("span");
       hpPrefix.className = "field-prefix";
       hpPrefix.textContent = "HP";
-      row.appendChild(hpPrefix);
+      right.appendChild(hpPrefix);
       const hp = document.createElement("input");
       hp.type = "number";
       hp.value = combatant.hp == null ? "" : String(combatant.hp);
       hp.placeholder = "HP";
-      row.appendChild(hp);
+      right.appendChild(hp);
       attachEnemyHpBlurUpdate(hp, combatant);
     }
 
@@ -1753,7 +2480,8 @@ function renderScenarioEditPage() {
         setStatus(error.message);
       }
     });
-    row.appendChild(remove);
+    right.appendChild(remove);
+    row.appendChild(right);
 
     li.appendChild(row);
     applyConditionStyle(li, combatant);
@@ -1825,18 +2553,60 @@ function renderScenarioRunPage() {
   const scenario = selectedScenario();
   if (!scenario) return;
 
+  const isMapView = state.page === "scenario-map";
+  const hasMap = Boolean(scenario.map_image_data);
+  const mapTokenSize = scenarioMapTokenSize(scenario);
+  hydrateRunMapTokensFromScenario(scenario);
+  els.runMapViewToggleBtn.classList.toggle("hidden", state.authUser?.role !== "admin");
+  els.runMapViewToggleBtn.textContent = isMapView ? "Initiative View" : "Map View";
+  els.runMapWrap.classList.toggle("hidden", !isMapView);
+  els.runCombatLayout.classList.toggle("run-map-mode", isMapView);
+  els.pageScenarioRun.classList.toggle("scenario-map-layout", isMapView);
+  els.activeMonsterImageWrap.classList.toggle("hidden", isMapView);
+  if (isMapView) {
+    startRunMapSyncPolling();
+  } else {
+    stopRunMapSyncPolling();
+  }
+  if (isMapView && hasMap) {
+    const shouldResetMap =
+      state.runMap.scenarioId !== scenario.id || els.runMapImage.src !== scenario.map_image_data;
+    els.runMapImage.src = scenario.map_image_data;
+    els.runMapImage.classList.remove("hidden");
+    els.runMapHint.classList.add("hidden");
+    els.runMapTokenSizeControls.classList.remove("hidden");
+    setRunMapTokenSizeUI(mapTokenSize);
+    if (shouldResetMap) resetRunMapViewForScenario(scenario.id);
+    renderRunMapTokens(scenario.id, state.combat.combatants);
+    applyRunMapTransform();
+  } else if (isMapView && !hasMap) {
+    els.runMapImage.src = "";
+    els.runMapImage.classList.add("hidden");
+    els.runMapHint.classList.remove("hidden");
+    els.runMapTokenSizeControls.classList.add("hidden");
+    if (els.runMapTokens) els.runMapTokens.innerHTML = "";
+    state.runMap.scenarioId = null;
+    state.runMap.dragging = false;
+    state.runMap.pointerId = null;
+  } else {
+    els.runMapImage.src = "";
+    els.runMapImage.classList.add("hidden");
+    els.runMapHint.classList.add("hidden");
+    els.runMapTokenSizeControls.classList.add("hidden");
+    if (els.runMapTokens) els.runMapTokens.innerHTML = "";
+    state.runMap.dragging = false;
+    state.runMap.pointerId = null;
+  }
+
   els.runScenarioName.textContent = scenario.name;
   els.runScenarioNotes.textContent = scenario.notes || "No notes yet.";
   if (state.authUser?.role === "admin") {
     const isSharedCurrent = state.campaignLiveScenarioId === scenario.id;
+    els.runScenarioSharedDot.classList.toggle("hidden", !isSharedCurrent);
     els.shareScenarioBtn.classList.remove("hidden");
-    els.shareScenarioStatus.classList.remove("hidden");
-    els.shareScenarioStatus.textContent = isSharedCurrent ? "Sharing" : "Not shared";
-    els.shareScenarioStatus.classList.toggle("share-status-live", isSharedCurrent);
-    els.shareScenarioStatus.classList.toggle("share-status-idle", !isSharedCurrent);
     els.shareScenarioBtn.textContent = isSharedCurrent ? "Stop Sharing" : "Share";
   } else {
-    els.shareScenarioStatus.classList.add("hidden");
+    els.runScenarioSharedDot.classList.add("hidden");
     els.shareScenarioBtn.classList.add("hidden");
   }
   if (Number(scenario.is_completed) === 1) {
@@ -1888,7 +2658,7 @@ function renderScenarioRunPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
-    if (Number(combatant.player_visible) === 0) {
+    if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
       li.classList.add("combatant-hidden-for-players");
     }
     if (combatant.kind === "character") {
@@ -1910,6 +2680,8 @@ function renderScenarioRunPage() {
     }
     const row = document.createElement("div");
     row.className = "combatant-row";
+    const mainLine = document.createElement("div");
+    mainLine.className = "combatant-line-main";
     const right = document.createElement("div");
     right.className = "combatant-right";
 
@@ -1933,7 +2705,7 @@ function renderScenarioRunPage() {
     initiative.value = String(combatant.initiative);
     initiative.placeholder = "Init";
     setupRunQuickEditInput(initiative);
-    row.appendChild(initiative);
+    mainLine.appendChild(initiative);
     attachInitiativeBlurUpdate(initiative, combatant);
 
     const reactionReady = Number(combatant.reaction_available) !== 0;
@@ -1956,7 +2728,7 @@ function renderScenarioRunPage() {
         setStatus(error.message);
       }
     });
-    row.appendChild(reactionButton);
+    mainLine.appendChild(reactionButton);
 
     let legendaryWrap = null;
     if (
@@ -1998,14 +2770,26 @@ function renderScenarioRunPage() {
         legendaryWrap.appendChild(pip);
       }
     }
-    row.appendChild(name);
-    if (legendaryWrap) row.appendChild(legendaryWrap);
+    mainLine.appendChild(name);
+    if (legendaryWrap) mainLine.appendChild(legendaryWrap);
+    row.appendChild(mainLine);
 
-    right.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioRunPage));
+    let visibilityToggle = null;
+    if (combatant.kind !== "character") {
+      visibilityToggle = createPlayerVisibilityToggle(combatant, renderScenarioRunPage);
+    }
     const conditionSelect = createConditionSelect(combatant);
-    right.appendChild(conditionSelect);
+
+    if (isMapView && visibilityToggle) {
+      visibilityToggle.classList.add("combatant-visibility-inline");
+      row.appendChild(visibilityToggle);
+    } else if (visibilityToggle) {
+      right.appendChild(visibilityToggle);
+    }
 
     if (combatant.kind === "enemy") {
+      right.appendChild(conditionSelect);
+
       const hpPrefix = document.createElement("span");
       hpPrefix.className = "field-prefix";
       hpPrefix.textContent = "HP";
@@ -2075,9 +2859,16 @@ function renderScenarioRunPage() {
         }
       });
       right.appendChild(damage);
+    } else if (isMapView) {
+      conditionSelect.classList.add("map-character-condition-inline");
+      mainLine.appendChild(conditionSelect);
+    } else {
+      right.appendChild(conditionSelect);
     }
 
-    row.appendChild(right);
+    if (!(isMapView && combatant.kind === "character")) {
+      row.appendChild(right);
+    }
 
     if (combatant.id === state.combat.activeCombatantId) {
       li.classList.add("turn-active");
@@ -2086,6 +2877,10 @@ function renderScenarioRunPage() {
     li.appendChild(row);
     applyConditionStyle(li, combatant);
     els.runOrderList.appendChild(li);
+  }
+
+  if (state.authUser?.role === "admin" && (state.page === "scenario-run" || state.page === "scenario-map")) {
+    maybeCelebrateEncounterWin(state.selectedScenarioId, state.combat.combatants);
   }
 }
 
@@ -2155,6 +2950,11 @@ function renderPlayerHome() {
   els.playerLiveWrap.classList.toggle("hidden", !hasShared);
   if (!hasShared) return;
 
+  const isMapMode = state.playerLiveViewMode === "map";
+  els.playerLiveWrap.classList.toggle("player-map-mode", isMapMode);
+  els.playerLiveInitiativeWrap.classList.remove("hidden");
+  els.playerLiveMapWrap.classList.toggle("hidden", !isMapMode);
+
   els.playerLiveEncounterName.textContent = shared.name || "Shared Encounter";
   els.playerLiveRound.textContent = `Round ${shared.round ?? 1}`;
   els.playerLiveCombatantList.innerHTML = "";
@@ -2177,6 +2977,9 @@ function renderPlayerHome() {
     const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
     if (keys.includes("down")) {
       li.classList.add("run-down");
+    }
+    if (combatant.kind === "enemy" && Number(combatant.is_defeated) === 1) {
+      li.classList.add("run-defeated");
     }
     if (combatant.id === shared.activeCombatantId) {
       li.classList.add("turn-active");
@@ -2229,6 +3032,224 @@ function renderPlayerHome() {
 
     els.playerLiveCombatantList.appendChild(li);
   }
+
+  if (isMapMode) {
+    const mapImageData = `${shared.mapImageData || ""}`;
+    const mapTokensJson = `${shared.mapTokensJson || ""}`;
+    setPlayerMapTokenSize(shared.mapTokenSize);
+    renderPlayerLiveMap(
+      shared.scenarioId,
+      mapImageData,
+      mapTokensJson,
+      combatants,
+      shared.activeCombatantId
+    );
+  }
+
+  if (state.authUser?.role !== "admin" && state.page === "player-home") {
+    maybeCelebrateEncounterWin(shared.scenarioId, combatants);
+  }
+}
+
+function parseMapTokensJson(raw) {
+  const text = `${raw || ""}`.trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const normalized = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const combatantId = Number(key);
+      const x = Number(value?.x);
+      const y = Number(value?.y);
+      if (!Number.isInteger(combatantId) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+      normalized[combatantId] = { x, y };
+    }
+    return normalized;
+  } catch (_error) {
+    return {};
+  }
+}
+
+function resetPlayerMapViewForScenario(scenarioId, mapKey) {
+  state.playerMap.scenarioId = Number.isInteger(scenarioId) ? scenarioId : null;
+  state.playerMap.mapKey = `${mapKey || ""}`;
+  state.playerMap.zoom = 1;
+  state.playerMap.panX = 0;
+  state.playerMap.panY = 0;
+  state.playerMap.dragging = false;
+  state.playerMap.dragMode = "map";
+  state.playerMap.dragCombatantId = null;
+  state.playerMap.pointerId = null;
+  if (state.playerMap.saveTimer) {
+    clearTimeout(state.playerMap.saveTimer);
+    state.playerMap.saveTimer = null;
+  }
+  state.playerMap.pendingTokenUpdate = null;
+  if (els.playerMapViewport) {
+    els.playerMapViewport.classList.remove("is-dragging");
+  }
+  applyPlayerMapTransform();
+}
+
+async function persistPlayerMapTokenPosition(scenarioId, combatantId, x, y) {
+  if (!Number.isInteger(scenarioId) || !Number.isInteger(combatantId)) return;
+  try {
+    await api("/api/player/live/map-token", {
+      method: "POST",
+      body: JSON.stringify({ scenarioId, combatantId, x, y })
+    });
+  } catch (_error) {
+    // Keep local drag smooth even on transient network/API failures.
+  }
+}
+
+function schedulePlayerMapTokenSave(scenarioId, combatantId, x, y) {
+  if (!Number.isInteger(scenarioId) || !Number.isInteger(combatantId)) return;
+  state.playerMap.pendingTokenUpdate = { scenarioId, combatantId, x, y };
+  if (state.playerMap.saveTimer) clearTimeout(state.playerMap.saveTimer);
+  state.playerMap.saveTimer = setTimeout(() => {
+    state.playerMap.saveTimer = null;
+    const pending = state.playerMap.pendingTokenUpdate;
+    state.playerMap.pendingTokenUpdate = null;
+    if (!pending) return;
+    persistPlayerMapTokenPosition(
+      pending.scenarioId,
+      pending.combatantId,
+      pending.x,
+      pending.y
+    );
+  }, 120);
+}
+
+function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants, activeCombatantId) {
+  const hasMap = Boolean(mapImageData);
+  els.playerLiveMapHint.classList.toggle("hidden", hasMap);
+  els.playerMapViewport.classList.toggle("hidden", !hasMap);
+  if (!hasMap) {
+    state.playerMap.dragging = false;
+    state.playerMap.dragMode = "map";
+    state.playerMap.dragCombatantId = null;
+    state.playerMap.pointerId = null;
+    state.playerMap.scenarioId = null;
+    state.playerMap.mapKey = "";
+    if (state.playerMap.saveTimer) {
+      clearTimeout(state.playerMap.saveTimer);
+      state.playerMap.saveTimer = null;
+    }
+    state.playerMap.pendingTokenUpdate = null;
+    if (els.playerMapViewport) {
+      els.playerMapViewport.classList.remove("is-dragging");
+    }
+    els.playerMapImage.src = "";
+    els.playerMapImage.classList.add("hidden");
+    els.playerMapTokens.innerHTML = "";
+    return;
+  }
+
+  const nextScenarioId = Number.isInteger(Number(scenarioId)) ? Number(scenarioId) : null;
+  const nextMapKey = `${mapImageData || ""}`;
+  if (state.playerMap.scenarioId !== nextScenarioId || state.playerMap.mapKey !== nextMapKey) {
+    resetPlayerMapViewForScenario(nextScenarioId, nextMapKey);
+  }
+
+  els.playerMapImage.src = mapImageData;
+  els.playerMapImage.classList.remove("hidden");
+
+  const positions = parseMapTokensJson(mapTokensJson);
+  els.playerMapTokens.innerHTML = "";
+  for (const combatant of combatants) {
+    const pos = positions[combatant.id];
+    if (!pos) continue;
+    const token = document.createElement("span");
+    token.className = "player-map-token";
+    if (combatant.kind === "character") {
+      token.classList.add("token-pc");
+    } else if (combatant.enemy_role === "npc") {
+      token.classList.add("token-npc");
+    } else {
+      token.classList.add("token-enemy");
+    }
+    token.title = combatant.name;
+    token.style.left = `${pos.x}px`;
+    token.style.top = `${pos.y}px`;
+    token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
+    token.dataset.combatantId = String(combatant.id);
+    if (combatant.id === activeCombatantId) {
+      token.classList.add("is-active");
+    }
+
+    const icon = document.createElement("img");
+    icon.className = "player-map-token-icon";
+    icon.alt = combatant.name;
+    const fallbackSrc = combatantIconFallbackSrc(combatant);
+    icon.src = combatantIconSrc(combatant);
+    icon.addEventListener("error", () => {
+      if (!icon.src.endsWith(fallbackSrc)) {
+        icon.src = fallbackSrc;
+      }
+    });
+    token.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.className = "player-map-token-name";
+    label.textContent = combatant.name;
+    token.appendChild(label);
+
+    token.addEventListener("pointerdown", (event) => {
+      if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stopPlayerLivePolling();
+      state.playerMap.dragging = true;
+      state.playerMap.dragMode = "token";
+      state.playerMap.dragCombatantId = combatant.id;
+      state.playerMap.pointerId = event.pointerId;
+      state.playerMap.lastClientX = event.clientX;
+      state.playerMap.lastClientY = event.clientY;
+      if (els.playerMapViewport) {
+        els.playerMapViewport.classList.add("is-dragging");
+        els.playerMapViewport.setPointerCapture(event.pointerId);
+      }
+      token.classList.add("is-dragging");
+    });
+
+    els.playerMapTokens.appendChild(token);
+  }
+  applyPlayerMapTransform();
+}
+
+function applyPlayerMapTransform() {
+  if (!els.playerMapViewport || !els.playerMapScene || !els.playerMapImage) return;
+  if (els.playerMapImage.classList.contains("hidden")) return;
+  const viewportWidth = els.playerMapViewport.clientWidth;
+  const viewportHeight = els.playerMapViewport.clientHeight;
+  const naturalWidth = els.playerMapImage.naturalWidth;
+  const naturalHeight = els.playerMapImage.naturalHeight;
+  if (!viewportWidth || !viewportHeight || !naturalWidth || !naturalHeight) return;
+
+  const baseScale = Math.min(viewportWidth / naturalWidth, viewportHeight / naturalHeight);
+  const totalScale = baseScale * state.playerMap.zoom;
+  const scaledWidth = naturalWidth * totalScale;
+  const scaledHeight = naturalHeight * totalScale;
+
+  if (scaledWidth <= viewportWidth) {
+    state.playerMap.panX = (viewportWidth - scaledWidth) / 2;
+  } else {
+    const minX = viewportWidth - scaledWidth;
+    state.playerMap.panX = clamp(state.playerMap.panX, minX, 0);
+  }
+
+  if (scaledHeight <= viewportHeight) {
+    state.playerMap.panY = (viewportHeight - scaledHeight) / 2;
+  } else {
+    const minY = viewportHeight - scaledHeight;
+    state.playerMap.panY = clamp(state.playerMap.panY, minY, 0);
+  }
+
+  els.playerMapScene.style.transformOrigin = "top left";
+  els.playerMapScene.style.transform = `translate(${state.playerMap.panX}px, ${state.playerMap.panY}px) scale(${totalScale})`;
 }
 
 async function loadPlayerLive() {
@@ -2242,6 +3263,46 @@ function stopPlayerLivePolling() {
     clearInterval(state.playerLivePollTimer);
     state.playerLivePollTimer = null;
   }
+}
+
+function stopRunMapSyncPolling() {
+  if (state.runMapSyncPollTimer) {
+    clearInterval(state.runMapSyncPollTimer);
+    state.runMapSyncPollTimer = null;
+  }
+}
+
+function startRunMapSyncPolling() {
+  stopRunMapSyncPolling();
+  state.runMapSyncPollTimer = setInterval(async () => {
+    if (state.page !== "scenario-map") return;
+    if (!state.selectedScenarioId) return;
+    if (state.runMap.dragging) return;
+    try {
+      const latest = await api(`/api/scenarios/${state.selectedScenarioId}`);
+      if (state.page !== "scenario-map" || state.selectedScenarioId !== latest.id) return;
+      const current = selectedScenario();
+      if (!current) return;
+      if (`${latest.map_tokens_json || ""}` === `${current.map_tokens_json || ""}`) return;
+
+      state.scenarios = state.scenarios.map((scenario) =>
+        scenario.id === latest.id
+          ? {
+            ...scenario,
+            map_tokens_json: latest.map_tokens_json,
+            map_token_size: latest.map_token_size
+          }
+          : scenario
+      );
+      delete state.runMap.tokensByScenario[latest.id];
+      const refreshed = selectedScenario();
+      if (!refreshed) return;
+      hydrateRunMapTokensFromScenario(refreshed);
+      renderRunMapTokens(latest.id, state.combat.combatants);
+    } catch (_error) {
+      // Ignore transient polling errors.
+    }
+  }, 1000);
 }
 
 function startPlayerLivePolling() {
@@ -2519,6 +3580,12 @@ async function safeLoadCombatState() {
 }
 
 function bindEvents() {
+  const unlockAudio = () => {
+    unlockVictoryAudio();
+  };
+  window.addEventListener("pointerdown", unlockAudio, { once: true });
+  window.addEventListener("keydown", unlockAudio, { once: true });
+
   window.addEventListener("popstate", async () => {
     await navigateToPath(window.location.pathname, { replace: true });
   });
@@ -2536,11 +3603,20 @@ function bindEvents() {
       closeCampaignActionModal();
       return;
     }
+    if (event.key === "Escape" && !els.addCombatantModal.classList.contains("hidden")) {
+      closeAddCombatantModal();
+      return;
+    }
     if (!els.imageModal.classList.contains("hidden")) return;
     if (!els.campaignActionModal.classList.contains("hidden")) return;
+    if (!els.addCombatantModal.classList.contains("hidden")) return;
 
     const key = event.key.toLowerCase();
     const target = event.target;
+    // Keep browser/system shortcuts like Cmd+R / Cmd+Shift+R working.
+    if (event.metaKey || event.ctrlKey) {
+      return;
+    }
     if (
       target instanceof HTMLElement &&
       (target.tagName === "INPUT" ||
@@ -2558,7 +3634,7 @@ function bindEvents() {
         return;
       }
       if (!state.selectedScenarioId) return;
-      if (state.page === "scenario-run") {
+      if (state.page === "scenario-run" || state.page === "scenario-map") {
         event.preventDefault();
         const scenario = selectedScenario();
         if (Number(scenario?.is_completed) === 1) {
@@ -2582,7 +3658,7 @@ function bindEvents() {
       return;
     }
 
-    if (state.page !== "scenario-run") return;
+    if (state.page !== "scenario-run" && state.page !== "scenario-map") return;
     if (!["n", "b", "r", "l"].includes(key)) return;
     if (key === "n" && els.nextTurnBtn.disabled) return;
     if (key === "b" && els.revokeTurnBtn.disabled) return;
@@ -2612,6 +3688,10 @@ function bindEvents() {
   els.enemyMonsterPreview.addEventListener("click", () => {
     if (!els.enemyMonsterPreview.src) return;
     openImageModal(els.enemyMonsterPreview.src);
+  });
+  els.editScenarioMapPreview.addEventListener("click", () => {
+    if (!els.editScenarioMapPreview.src) return;
+    openImageModal(els.editScenarioMapPreview.src);
   });
   els.campaignActionCloseBtn.addEventListener("click", closeCampaignActionModal);
   els.campaignActionModal.addEventListener("click", (event) => {
@@ -2658,12 +3738,31 @@ function bindEvents() {
     if (state.authUser?.role === "admin") {
       navigateToPage("welcome");
     } else {
-      navigateToPage("player-home");
+      navigateToPath("/player/initiative");
     }
+  });
+  els.mainPlayerInitiativeBtn.addEventListener("click", async () => {
+    await navigateToPath("/player/initiative");
+  });
+  els.mainPlayerMapBtn.addEventListener("click", async () => {
+    await navigateToPath("/player/map");
   });
 
   els.playerRefreshBtn.addEventListener("click", () => {
     window.location.reload();
+  });
+
+  els.playerMapImage.addEventListener("load", () => {
+    if (!els.playerMapScene || !els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return;
+    els.playerMapScene.style.width = `${els.playerMapImage.naturalWidth}px`;
+    els.playerMapScene.style.height = `${els.playerMapImage.naturalHeight}px`;
+    applyPlayerMapTransform();
+  });
+
+  window.addEventListener("resize", () => {
+    if (state.page === "player-home" && state.playerLiveViewMode === "map") {
+      applyPlayerMapTransform();
+    }
   });
 
   els.mainMonstersBtn.addEventListener("click", async () => {
@@ -2835,8 +3934,8 @@ function bindEvents() {
 
   els.navScenarioBtn.addEventListener("click", async () => {
     if (!state.selectedScenarioId) return;
-    if (state.lastScenarioPage === "scenario-run") {
-      await navigateToPage("scenario-run", {
+    if (state.lastScenarioPage === "scenario-run" || state.lastScenarioPage === "scenario-map") {
+      await navigateToPage(state.lastScenarioPage, {
         campaignId: state.selectedCampaignId,
         scenarioId: state.selectedScenarioId
       });
@@ -2884,6 +3983,17 @@ function bindEvents() {
     state.monsterSearchQuery = els.monsterSearchInput.value || "";
     renderMonsterList();
   });
+  els.openAddCombatantModalBtn.addEventListener("click", openAddCombatantModal);
+  els.addCombatantCloseBtn.addEventListener("click", closeAddCombatantModal);
+  els.addCombatantModal.addEventListener("click", (event) => {
+    if (event.target === els.addCombatantModal) closeAddCombatantModal();
+  });
+  document.querySelectorAll(".add-combatant-cancel").forEach((button) => {
+    button.addEventListener("click", closeAddCombatantModal);
+  });
+  els.enemyMonsterSearchInput.addEventListener("input", () => {
+    renderEnemyMonsterOptions(els.enemyMonsterSearchInput.value);
+  });
 
   els.scenarioSearchInput.addEventListener("input", () => {
     state.scenarioSearchQuery = els.scenarioSearchInput.value || "";
@@ -2891,7 +4001,34 @@ function bindEvents() {
   });
 
   document.addEventListener("paste", async (event) => {
-    if (state.page !== "monsters") return;
+    if (state.page !== "monsters" && state.page !== "scenario-edit") return;
+    if (state.page === "scenario-edit") {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const items = event.clipboardData?.items || [];
+      const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      try {
+        state.draftScenarioMapImageData = await readFileAsDataUrl(file);
+        setScenarioMapPreview(state.draftScenarioMapImageData);
+        scheduleScenarioEditAutoSave(80);
+        setStatus("Pasted encounter map.");
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
     if (
       !els.campaignActionModal.classList.contains("hidden") &&
       state.campaignActionMode === "library-entry"
@@ -2924,22 +4061,6 @@ function bindEvents() {
       setStatus("Pasted statblock screenshot.");
     } catch (error) {
       setStatus(error.message);
-    }
-  });
-
-  els.enemyMonsterSelect.addEventListener("change", () => {
-    const id = Number(els.enemyMonsterSelect.value);
-    if (!Number.isFinite(id)) {
-      setEnemyMonsterPreview("");
-      return;
-    }
-    const monster = state.monsters.find((m) => m.id === id);
-    if (!monster) return;
-    setEnemyMonsterPreview(monster.monster_image_data || "");
-    if (!els.enemyName.value.trim()) els.enemyName.value = monster.name;
-    if (!els.enemyHp.value.trim()) {
-      const hpMatch = /\d+/.exec(monster.hit_points || "");
-      if (hpMatch) els.enemyHp.value = hpMatch[0];
     }
   });
 
@@ -2996,6 +4117,7 @@ function bindEvents() {
         method: "POST",
         body: JSON.stringify({
           name: els.libraryEntryName.value.trim(),
+          size: els.libraryEntrySize.value,
           isLegendary,
           legendaryActionsCount,
           monsterImageData: state.draftLibraryEntryImageData || ""
@@ -3113,21 +4235,39 @@ function bindEvents() {
 
   els.editScenarioForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!state.selectedScenarioId) return;
+    await persistScenarioEditAutoSave({ showStatus: true });
+  });
+
+  els.editScenarioName.addEventListener("input", () => {
+    scheduleScenarioEditAutoSave(420);
+  });
+  els.editScenarioNotes.addEventListener("input", () => {
+    scheduleScenarioEditAutoSave(420);
+  });
+  els.editScenarioName.addEventListener("blur", () => {
+    scheduleScenarioEditAutoSave(0);
+  });
+  els.editScenarioNotes.addEventListener("blur", () => {
+    scheduleScenarioEditAutoSave(0);
+  });
+
+  els.editScenarioMapFile.addEventListener("change", async () => {
+    const file = els.editScenarioMapFile.files?.[0];
+    if (!file) return;
     try {
-      const updated = await api(`/api/scenarios/${state.selectedScenarioId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          name: els.editScenarioName.value,
-          notes: els.editScenarioNotes.value
-        })
-      });
-      state.scenarios = state.scenarios.map((s) => (s.id === updated.id ? updated : s));
-      renderScenarioEditPage();
-      setStatus("Scenario updated.");
+      state.draftScenarioMapImageData = await readFileAsDataUrl(file);
+      setScenarioMapPreview(state.draftScenarioMapImageData);
+      scheduleScenarioEditAutoSave(80);
     } catch (error) {
       setStatus(error.message);
     }
+  });
+
+  els.clearScenarioMapBtn.addEventListener("click", () => {
+    state.draftScenarioMapImageData = "";
+    setScenarioMapPreview("");
+    if (els.editScenarioMapFile) els.editScenarioMapFile.value = "";
+    scheduleScenarioEditAutoSave(80);
   });
 
   els.goRunFromEditBtn.addEventListener("click", async () => {
@@ -3174,20 +4314,20 @@ function bindEvents() {
         body: JSON.stringify({
           kind: "enemy",
           enemyRole: els.enemyRole.value === "npc" ? "npc" : "enemy",
-          monsterId: els.enemyMonsterSelect.value
-            ? Number(els.enemyMonsterSelect.value)
-            : null,
+          monsterId: state.addCombatantSelectedMonsterId,
           name: els.enemyName.value,
           initiative: Number(els.enemyInitiative.value),
           hp: els.enemyHp.value === "" ? null : Number(els.enemyHp.value)
         })
       });
       els.enemyName.value = "";
-      els.enemyMonsterSelect.value = "";
+      state.addCombatantSelectedMonsterId = null;
       els.enemyRole.value = "enemy";
       els.enemyInitiative.value = "";
       els.enemyHp.value = "";
+      els.enemyMonsterSearchInput.value = "";
       setEnemyMonsterPreview("");
+      closeAddCombatantModal();
       await safeLoadCombatState();
       renderScenarioEditPage();
       setStatus("Combatant added.");
@@ -3203,7 +4343,7 @@ function bindEvents() {
         method: "POST"
       });
       focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = "scenario-run";
+      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
       setStatus(error.message);
@@ -3217,7 +4357,7 @@ function bindEvents() {
         method: "POST"
       });
       focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = "scenario-run";
+      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
       setStatus(error.message);
@@ -3240,7 +4380,7 @@ function bindEvents() {
         method: "POST"
       });
       focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = "scenario-run";
+      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
       setStatus(error.message);
@@ -3275,6 +4415,294 @@ function bindEvents() {
     } catch (error) {
       setStatus(error.message);
     }
+  });
+
+  els.runMapViewToggleBtn.addEventListener("click", async () => {
+    const scenario = selectedScenario();
+    if (!scenario) return;
+    if (state.page !== "scenario-map" && !scenario.map_image_data) {
+      setStatus("Save a map in Edit View first.");
+      return;
+    }
+    const targetPage = state.page === "scenario-map" ? "scenario-run" : "scenario-map";
+    await navigateToPage(targetPage, {
+      campaignId: state.selectedCampaignId,
+      scenarioId: state.selectedScenarioId
+    });
+  });
+
+  const onRunMapTokenSizeChange = () => {
+    const scenario = selectedScenario();
+    if (!scenario || state.page !== "scenario-map") return;
+    const nextSize = clamp(Math.round(Number(els.runMapTokenSizeInput.value) || 44), 24, 128);
+    setRunMapTokenSizeUI(nextSize);
+    scheduleRunMapTokenSizeSave(scenario.id, nextSize);
+  };
+  els.runMapTokenSizeInput.addEventListener("input", onRunMapTokenSizeChange);
+  els.runMapTokenSizeInput.addEventListener("change", onRunMapTokenSizeChange);
+
+  if (els.runMapImage) {
+    els.runMapImage.addEventListener("load", () => {
+      if (state.page !== "scenario-map") return;
+      if (state.selectedScenarioId) {
+        renderRunMapTokens(state.selectedScenarioId, state.combat.combatants);
+      }
+      applyRunMapTransform();
+    });
+  }
+
+  if (els.runMapViewport) {
+    els.runMapViewport.addEventListener(
+      "wheel",
+      (event) => {
+        if (state.page !== "scenario-map" || els.runMapImage.classList.contains("hidden")) return;
+        event.preventDefault();
+        if (!els.runMapImage.naturalWidth || !els.runMapImage.naturalHeight) return;
+
+        const rect = els.runMapViewport.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+
+        const viewportWidth = els.runMapViewport.clientWidth;
+        const viewportHeight = els.runMapViewport.clientHeight;
+        if (viewportWidth <= 0 || viewportHeight <= 0) return;
+        const baseScale = Math.min(
+          viewportWidth / els.runMapImage.naturalWidth,
+          viewportHeight / els.runMapImage.naturalHeight
+        );
+
+        const prevZoom = state.runMap.zoom;
+        const nextZoom = clamp(
+          prevZoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12),
+          state.runMap.minZoom,
+          state.runMap.maxZoom
+        );
+        if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+
+        const prevTotalScale = baseScale * prevZoom;
+        const nextTotalScale = baseScale * nextZoom;
+        const imageX = (pointerX - state.runMap.panX) / prevTotalScale;
+        const imageY = (pointerY - state.runMap.panY) / prevTotalScale;
+
+        state.runMap.zoom = nextZoom;
+        state.runMap.panX = pointerX - imageX * nextTotalScale;
+        state.runMap.panY = pointerY - imageY * nextTotalScale;
+        applyRunMapTransform();
+      },
+      { passive: false }
+    );
+
+    els.runMapViewport.addEventListener("pointerdown", (event) => {
+      if (state.page !== "scenario-map" || els.runMapImage.classList.contains("hidden")) return;
+      if (event.button !== 0) return;
+      state.runMap.dragging = true;
+      state.runMap.dragMode = "map";
+      state.runMap.dragCombatantId = null;
+      state.runMap.pointerId = event.pointerId;
+      state.runMap.lastClientX = event.clientX;
+      state.runMap.lastClientY = event.clientY;
+      els.runMapViewport.classList.add("is-dragging");
+      els.runMapViewport.setPointerCapture(event.pointerId);
+    });
+
+    els.runMapViewport.addEventListener("pointermove", (event) => {
+      if (!state.runMap.dragging || state.runMap.pointerId !== event.pointerId) return;
+      const dx = event.clientX - state.runMap.lastClientX;
+      const dy = event.clientY - state.runMap.lastClientY;
+      state.runMap.lastClientX = event.clientX;
+      state.runMap.lastClientY = event.clientY;
+      if (state.runMap.dragMode === "token" && state.runMap.scenarioId != null) {
+        const scenarioId = state.runMap.scenarioId;
+        const combatantId = state.runMap.dragCombatantId;
+        if (combatantId != null) {
+          const positions = getScenarioTokenPositions(scenarioId);
+          const current = positions[combatantId];
+          if (current) {
+            const image = els.runMapImage;
+            const viewportWidth = els.runMapViewport.clientWidth;
+            const viewportHeight = els.runMapViewport.clientHeight;
+            if (image.naturalWidth && image.naturalHeight && viewportWidth > 0 && viewportHeight > 0) {
+              const baseScale = Math.min(
+                viewportWidth / image.naturalWidth,
+                viewportHeight / image.naturalHeight
+              );
+              const totalScale = baseScale * state.runMap.zoom;
+              const deltaImageX = dx / totalScale;
+              const deltaImageY = dy / totalScale;
+              current.x += deltaImageX;
+              current.y += deltaImageY;
+              current.x = clamp(current.x, 20, image.naturalWidth - 20);
+              current.y = clamp(current.y, 20, image.naturalHeight - 20);
+              const tokenEl = els.runMapTokens?.querySelector(
+                `.run-map-token[data-combatant-id="${combatantId}"]`
+              );
+              if (tokenEl instanceof HTMLElement) {
+                tokenEl.style.left = `${current.x}px`;
+                tokenEl.style.top = `${current.y}px`;
+              }
+              scheduleRunMapTokensSave(scenarioId);
+            }
+          }
+        }
+        return;
+      }
+      state.runMap.panX += dx;
+      state.runMap.panY += dy;
+      applyRunMapTransform();
+    });
+
+    const endMapDrag = (event) => {
+      if (!state.runMap.dragging || state.runMap.pointerId !== event.pointerId) return;
+      state.runMap.dragging = false;
+      state.runMap.dragMode = "map";
+      state.runMap.dragCombatantId = null;
+      state.runMap.pointerId = null;
+      els.runMapViewport.classList.remove("is-dragging");
+      els.runMapTokens?.querySelectorAll(".run-map-token.is-dragging").forEach((token) => {
+        token.classList.remove("is-dragging");
+      });
+      if (state.runMap.scenarioId != null) {
+        scheduleRunMapTokensSave(state.runMap.scenarioId);
+      }
+    };
+
+    els.runMapViewport.addEventListener("pointerup", endMapDrag);
+    els.runMapViewport.addEventListener("pointercancel", endMapDrag);
+  }
+
+  if (els.playerMapViewport) {
+    els.playerMapViewport.addEventListener(
+      "wheel",
+      (event) => {
+        if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+        if (els.playerMapImage.classList.contains("hidden")) return;
+        event.preventDefault();
+        if (!els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return;
+
+        const rect = els.playerMapViewport.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        const viewportWidth = els.playerMapViewport.clientWidth;
+        const viewportHeight = els.playerMapViewport.clientHeight;
+        if (viewportWidth <= 0 || viewportHeight <= 0) return;
+
+        const baseScale = Math.min(
+          viewportWidth / els.playerMapImage.naturalWidth,
+          viewportHeight / els.playerMapImage.naturalHeight
+        );
+        const prevZoom = state.playerMap.zoom;
+        const nextZoom = clamp(
+          prevZoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12),
+          state.playerMap.minZoom,
+          state.playerMap.maxZoom
+        );
+        if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+
+        const prevTotalScale = baseScale * prevZoom;
+        const nextTotalScale = baseScale * nextZoom;
+        const imageX = (pointerX - state.playerMap.panX) / prevTotalScale;
+        const imageY = (pointerY - state.playerMap.panY) / prevTotalScale;
+
+        state.playerMap.zoom = nextZoom;
+        state.playerMap.panX = pointerX - imageX * nextTotalScale;
+        state.playerMap.panY = pointerY - imageY * nextTotalScale;
+        applyPlayerMapTransform();
+      },
+      { passive: false }
+    );
+
+    els.playerMapViewport.addEventListener("pointerdown", (event) => {
+      if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+      if (els.playerMapImage.classList.contains("hidden")) return;
+      if (event.button !== 0) return;
+      stopPlayerLivePolling();
+      state.playerMap.dragging = true;
+      state.playerMap.dragMode = "map";
+      state.playerMap.dragCombatantId = null;
+      state.playerMap.pointerId = event.pointerId;
+      state.playerMap.lastClientX = event.clientX;
+      state.playerMap.lastClientY = event.clientY;
+      els.playerMapViewport.classList.add("is-dragging");
+      els.playerMapViewport.setPointerCapture(event.pointerId);
+    });
+
+    els.playerMapViewport.addEventListener("pointermove", (event) => {
+      if (!state.playerMap.dragging || state.playerMap.pointerId !== event.pointerId) return;
+      const dx = event.clientX - state.playerMap.lastClientX;
+      const dy = event.clientY - state.playerMap.lastClientY;
+      state.playerMap.lastClientX = event.clientX;
+      state.playerMap.lastClientY = event.clientY;
+      if (
+        state.playerMap.dragMode === "token" &&
+        Number.isInteger(state.playerMap.dragCombatantId) &&
+        state.playerMap.scenarioId != null
+      ) {
+        const tokenEl = els.playerMapTokens?.querySelector(
+          `.player-map-token[data-combatant-id="${state.playerMap.dragCombatantId}"]`
+        );
+        if (tokenEl instanceof HTMLElement) {
+          const currentX = Number.parseFloat(tokenEl.style.left || "0");
+          const currentY = Number.parseFloat(tokenEl.style.top || "0");
+          const viewportWidth = els.playerMapViewport.clientWidth;
+          const viewportHeight = els.playerMapViewport.clientHeight;
+          const naturalWidth = els.playerMapImage.naturalWidth;
+          const naturalHeight = els.playerMapImage.naturalHeight;
+          if (viewportWidth > 0 && viewportHeight > 0 && naturalWidth > 0 && naturalHeight > 0) {
+            const baseScale = Math.min(viewportWidth / naturalWidth, viewportHeight / naturalHeight);
+            const totalScale = baseScale * state.playerMap.zoom;
+            const nextX = clamp(currentX + dx / totalScale, 20, naturalWidth - 20);
+            const nextY = clamp(currentY + dy / totalScale, 20, naturalHeight - 20);
+            tokenEl.style.left = `${nextX}px`;
+            tokenEl.style.top = `${nextY}px`;
+            schedulePlayerMapTokenSave(
+              state.playerMap.scenarioId,
+              state.playerMap.dragCombatantId,
+              nextX,
+              nextY
+            );
+          }
+        }
+        return;
+      }
+      state.playerMap.panX += dx;
+      state.playerMap.panY += dy;
+      applyPlayerMapTransform();
+    });
+
+    const endPlayerMapDrag = (event) => {
+      if (!state.playerMap.dragging || state.playerMap.pointerId !== event.pointerId) return;
+      state.playerMap.dragging = false;
+      state.playerMap.dragMode = "map";
+      state.playerMap.dragCombatantId = null;
+      state.playerMap.pointerId = null;
+      els.playerMapViewport.classList.remove("is-dragging");
+      els.playerMapTokens?.querySelectorAll(".player-map-token.is-dragging").forEach((token) => {
+        token.classList.remove("is-dragging");
+      });
+      const pending = state.playerMap.pendingTokenUpdate;
+      if (pending) {
+        state.playerMap.pendingTokenUpdate = null;
+        if (state.playerMap.saveTimer) {
+          clearTimeout(state.playerMap.saveTimer);
+          state.playerMap.saveTimer = null;
+        }
+        persistPlayerMapTokenPosition(
+          pending.scenarioId,
+          pending.combatantId,
+          pending.x,
+          pending.y
+        );
+      }
+      if (state.page === "player-home" && state.authUser?.role !== "admin") {
+        startPlayerLivePolling();
+      }
+    };
+    els.playerMapViewport.addEventListener("pointerup", endPlayerMapDrag);
+    els.playerMapViewport.addEventListener("pointercancel", endPlayerMapDrag);
+  }
+
+  window.addEventListener("resize", () => {
+    if (state.page === "scenario-map") applyRunMapTransform();
   });
 }
 

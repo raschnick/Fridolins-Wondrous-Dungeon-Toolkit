@@ -79,6 +79,9 @@ function initDb() {
       campaign_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       notes TEXT NOT NULL DEFAULT '',
+      map_image_data TEXT NOT NULL DEFAULT '',
+      map_tokens_json TEXT NOT NULL DEFAULT '',
+      map_token_size INTEGER NOT NULL DEFAULT 44,
       is_completed INTEGER NOT NULL DEFAULT 0,
       current_round INTEGER NOT NULL DEFAULT 1,
       current_turn_index INTEGER NOT NULL DEFAULT 0,
@@ -191,9 +194,28 @@ function initDb() {
       "ALTER TABLE combat_scenarios ADD COLUMN is_completed INTEGER NOT NULL DEFAULT 0"
     );
   }
+  if (!scenarioColumns.includes("map_image_data")) {
+    db.exec(
+      "ALTER TABLE combat_scenarios ADD COLUMN map_image_data TEXT NOT NULL DEFAULT ''"
+    );
+  }
+  if (!scenarioColumns.includes("map_tokens_json")) {
+    db.exec(
+      "ALTER TABLE combat_scenarios ADD COLUMN map_tokens_json TEXT NOT NULL DEFAULT ''"
+    );
+  }
+  if (!scenarioColumns.includes("map_token_size")) {
+    db.exec(
+      "ALTER TABLE combat_scenarios ADD COLUMN map_token_size INTEGER NOT NULL DEFAULT 44"
+    );
+  }
   db.exec(
     "UPDATE combat_scenarios SET is_completed = 0 WHERE is_completed NOT IN (0, 1) OR is_completed IS NULL"
   );
+  db.exec("UPDATE combat_scenarios SET map_image_data = '' WHERE map_image_data IS NULL");
+  db.exec("UPDATE combat_scenarios SET map_tokens_json = '' WHERE map_tokens_json IS NULL");
+  db.exec("UPDATE combat_scenarios SET map_token_size = 44 WHERE map_token_size IS NULL");
+  db.exec("UPDATE combat_scenarios SET map_token_size = 44 WHERE map_token_size < 24 OR map_token_size > 128");
 
   const userColumns = db
     .prepare("PRAGMA table_info(users)")
@@ -372,12 +394,24 @@ function initDb() {
   if (!monsterColumns.includes("monster_image_data")) {
     db.exec("ALTER TABLE monster_statblocks ADD COLUMN monster_image_data TEXT NOT NULL DEFAULT ''");
   }
+  if (!monsterColumns.includes("size")) {
+    db.exec("ALTER TABLE monster_statblocks ADD COLUMN size TEXT NOT NULL DEFAULT 'normal'");
+  }
   if (!monsterColumns.includes("is_legendary")) {
     db.exec("ALTER TABLE monster_statblocks ADD COLUMN is_legendary INTEGER NOT NULL DEFAULT 0");
   }
   if (!monsterColumns.includes("legendary_actions_count")) {
     db.exec("ALTER TABLE monster_statblocks ADD COLUMN legendary_actions_count INTEGER");
   }
+  db.exec(
+    "UPDATE monster_statblocks SET size = 'normal' WHERE size IS NULL OR trim(size) = ''"
+  );
+  db.exec(
+    "UPDATE monster_statblocks SET size = lower(trim(size))"
+  );
+  db.exec(
+    "UPDATE monster_statblocks SET size = 'normal' WHERE size NOT IN ('normal', 'large', 'huge', 'gargantuan')"
+  );
   db.exec("UPDATE monster_statblocks SET is_legendary = 0 WHERE is_legendary IS NULL");
   db.exec(
     "UPDATE monster_statblocks SET legendary_actions_count = NULL WHERE is_legendary = 0 OR legendary_actions_count NOT BETWEEN 2 AND 4"
