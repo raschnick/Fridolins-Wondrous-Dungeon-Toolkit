@@ -73,13 +73,17 @@ function listCombatants(scenarioId) {
   const combatants = db
     .prepare(
       `SELECT
-        sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
+        sc.id, sc.scenario_id, sc.kind, CASE WHEN sc.enemy_role = 'npc' THEN 'ally' ELSE sc.enemy_role END AS enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
+        cu.profile_image_data AS claimed_profile_image_data,
         ms.monster_image_data,
+        ms.token_image_data AS monster_token_image_data,
         ms.size AS monster_size
        FROM scenario_combatants sc
        LEFT JOIN characters c ON c.id = sc.character_id
+       LEFT JOIN character_claims cc ON cc.character_id = sc.character_id
+       LEFT JOIN users cu ON cu.id = cc.user_id
        LEFT JOIN monster_statblocks ms ON ms.id = sc.monster_id
        WHERE sc.scenario_id = ?
        ORDER BY sc.initiative DESC, sc.id ASC`
@@ -113,13 +117,17 @@ function getCombatantById(combatantId) {
   const combatant = db
     .prepare(
       `SELECT
-        sc.id, sc.scenario_id, sc.kind, sc.enemy_role, sc.character_id, sc.monster_id, sc.name,
+        sc.id, sc.scenario_id, sc.kind, CASE WHEN sc.enemy_role = 'npc' THEN 'ally' ELSE sc.enemy_role END AS enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
+        cu.profile_image_data AS claimed_profile_image_data,
         ms.monster_image_data,
+        ms.token_image_data AS monster_token_image_data,
         ms.size AS monster_size
        FROM scenario_combatants sc
        LEFT JOIN characters c ON c.id = sc.character_id
+       LEFT JOIN character_claims cc ON cc.character_id = sc.character_id
+       LEFT JOIN users cu ON cu.id = cc.user_id
        LEFT JOIN monster_statblocks ms ON ms.id = sc.monster_id
        WHERE sc.id = ?`
     )
@@ -225,6 +233,7 @@ function parseMonsterPayload(body) {
     traits: `${body?.traits || ""}`.trim(),
     actions: `${body?.actions || ""}`.trim(),
     monster_image_data: `${body?.monsterImageData || ""}`.trim(),
+    token_image_data: `${body?.tokenImageData || ""}`.trim(),
     is_legendary: isLegendary ? 1 : 0,
     legendary_actions_count: isLegendary ? legendaryActionsCount : null,
     source: `${body?.source || ""}`.trim() || "Custom",
@@ -361,7 +370,8 @@ function loadAuthUser(req, _res, next) {
         us.user_id,
         u.username,
         u.role,
-        u.active
+        u.active,
+        u.profile_image_data
        FROM user_sessions us
        JOIN users u ON u.id = us.user_id
        WHERE us.token_hash = ?
@@ -374,6 +384,7 @@ function loadAuthUser(req, _res, next) {
     id: session.user_id,
     username: session.username,
     role: session.role,
+    profileImageData: session.profile_image_data || "",
     sessionId: session.session_id
   };
   return next();
@@ -404,6 +415,11 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "GET" && path === "/auth/me") return true;
   if (method === "POST" && path === "/auth/logout") return true;
   if (method === "POST" && path === "/users/me/change-password") return true;
+  if (method === "POST" && path === "/users/me/username") return true;
+  if (method === "GET" && path === "/users/me/settings") return true;
+  if (method === "POST" && path === "/users/me/profile-image") return true;
+  if (method === "POST" && path === "/users/me/claim-character") return true;
+  if (method === "POST" && path === "/users/me/unclaim-character") return true;
   if (method === "GET" && path === "/player/live") return true;
   if (method === "POST" && path === "/player/live/map-token") return true;
   return false;
@@ -505,7 +521,7 @@ app.post("/api/auth/login", (req, res) => {
 
   const user = db
     .prepare(
-      "SELECT id, username, role, active, password_hash FROM users WHERE username = ? LIMIT 1"
+      "SELECT id, username, role, active, password_hash, profile_image_data FROM users WHERE username = ? LIMIT 1"
     )
     .get(username);
   if (!user || Number(user.active) !== 1 || !verifyPassword(password, user.password_hash)) {
@@ -519,7 +535,8 @@ app.post("/api/auth/login", (req, res) => {
     user: {
       id: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      profileImageData: user.profile_image_data || ""
     }
   });
 });
@@ -543,7 +560,8 @@ app.get("/api/auth/me", (req, res) => {
     user: {
       id: req.authUser.id,
       username: req.authUser.username,
-      role: req.authUser.role
+      role: req.authUser.role,
+      profileImageData: req.authUser.profileImageData || ""
     }
   });
 });
@@ -560,19 +578,12 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.post("/api/users/me/change-password", (req, res) => {
-  const currentPassword = `${req.body?.currentPassword || ""}`;
   const newPassword = `${req.body?.newPassword || ""}`;
-  if (!currentPassword || !newPassword) {
-    return badRequest(res, "Current and new password are required.");
+  if (req.body?.newPassword === undefined) {
+    return badRequest(res, "New password is required.");
   }
-  if (newPassword.length < 8) {
-    return badRequest(res, "New password must be at least 8 characters.");
-  }
-  const user = db
-    .prepare("SELECT id, password_hash FROM users WHERE id = ?")
-    .get(req.authUser.id);
-  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
-    return res.status(401).json({ error: "Current password is incorrect." });
+  if (!newPassword) {
+    return badRequest(res, "New password is required.");
   }
   db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
     hashPassword(newPassword),
@@ -580,6 +591,121 @@ app.post("/api/users/me/change-password", (req, res) => {
   );
   db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(req.authUser.id);
   clearAuthCookie(res);
+  return res.status(204).send();
+});
+
+app.get("/api/users/me/settings", (req, res) => {
+  const user = db
+    .prepare("SELECT id, username, role, profile_image_data FROM users WHERE id = ?")
+    .get(req.authUser.id);
+  if (!user) return res.status(404).json({ error: "User not found." });
+
+  let characters = [];
+  if (!isAdminUser(req.authUser)) {
+    characters = db
+      .prepare(
+        `SELECT
+          ch.id,
+          ch.name,
+          ch.class_name,
+          ch.campaign_id,
+          cp.name AS campaign_name,
+          cc.user_id AS claimed_user_id,
+          cu.username AS claimed_by_username
+         FROM characters ch
+         JOIN campaigns cp ON cp.id = ch.campaign_id
+         JOIN campaign_members cm ON cm.campaign_id = ch.campaign_id AND cm.user_id = ?
+         LEFT JOIN character_claims cc ON cc.character_id = ch.id
+         LEFT JOIN users cu ON cu.id = cc.user_id
+         ORDER BY cp.name ASC, ch.name ASC`
+      )
+      .all(req.authUser.id);
+  }
+
+  return res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      profileImageData: user.profile_image_data || ""
+    },
+    characters
+  });
+});
+
+app.post("/api/users/me/username", (req, res) => {
+  const username = `${req.body?.username || ""}`.trim();
+  if (!username) return badRequest(res, "Username is required.");
+  if (username.length < 3) return badRequest(res, "Username must be at least 3 characters.");
+  if (username.length > 64) return badRequest(res, "Username is too long.");
+  try {
+    db.prepare("UPDATE users SET username = ?, updated_at = datetime('now') WHERE id = ?").run(
+      username,
+      req.authUser.id
+    );
+  } catch (error) {
+    if (error.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      return badRequest(res, "Username must be unique.");
+    }
+    throw error;
+  }
+  db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(req.authUser.id);
+  clearAuthCookie(res);
+  return res.status(204).send();
+});
+
+app.post("/api/users/me/profile-image", (req, res) => {
+  const profileImageData = `${req.body?.profileImageData || ""}`.trim();
+  if (profileImageData.length > 10_000_000) {
+    return badRequest(res, "Profile image is too large.");
+  }
+  db.prepare(
+    "UPDATE users SET profile_image_data = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(profileImageData, req.authUser.id);
+  return res.status(204).send();
+});
+
+app.post("/api/users/me/claim-character", (req, res) => {
+  const characterId = asId(req.body?.characterId);
+  if (characterId === null) return badRequest(res, "Invalid character id.");
+  if (isAdminUser(req.authUser)) return badRequest(res, "Admins can't claim player characters.");
+
+  const character = db
+    .prepare(
+      `SELECT ch.id
+       FROM characters ch
+       JOIN campaign_members cm ON cm.campaign_id = ch.campaign_id AND cm.user_id = ?
+       WHERE ch.id = ?
+       LIMIT 1`
+    )
+    .get(req.authUser.id, characterId);
+  if (!character) return badRequest(res, "Character not found in your campaigns.");
+
+  const existing = db
+    .prepare("SELECT user_id FROM character_claims WHERE character_id = ?")
+    .get(characterId);
+  if (existing && Number(existing.user_id) !== req.authUser.id) {
+    return badRequest(res, "Character is already claimed by another player.");
+  }
+
+  db.prepare(
+    `INSERT INTO character_claims (character_id, user_id, created_at, updated_at)
+     VALUES (?, ?, datetime('now'), datetime('now'))
+     ON CONFLICT(character_id) DO UPDATE SET
+       user_id = excluded.user_id,
+       updated_at = datetime('now')`
+  ).run(characterId, req.authUser.id);
+
+  return res.status(204).send();
+});
+
+app.post("/api/users/me/unclaim-character", (req, res) => {
+  const characterId = asId(req.body?.characterId);
+  if (characterId === null) return badRequest(res, "Invalid character id.");
+  db.prepare("DELETE FROM character_claims WHERE character_id = ? AND user_id = ?").run(
+    characterId,
+    req.authUser.id
+  );
   return res.status(204).send();
 });
 
@@ -597,7 +723,6 @@ app.post("/api/admin/users", requireAdmin, (req, res) => {
   const password = `${req.body?.password || ""}`;
   const role = `${req.body?.role || "player"}`.trim().toLowerCase() === "admin" ? "admin" : "player";
   if (!username || !password) return badRequest(res, "Username and password are required.");
-  if (password.length < 8) return badRequest(res, "Password must be at least 8 characters.");
   try {
     const result = db
       .prepare(
@@ -620,9 +745,7 @@ app.post("/api/admin/users/:userId/reset-password", requireAdmin, (req, res) => 
   const userId = asId(req.params.userId);
   const password = `${req.body?.password || ""}`;
   if (userId === null) return badRequest(res, "Invalid user id.");
-  if (!password || password.length < 8) {
-    return badRequest(res, "Password must be at least 8 characters.");
-  }
+  if (req.body?.password === undefined || !password) return badRequest(res, "Password is required.");
   const user = db.prepare("SELECT id FROM users WHERE id = ?").get(userId);
   if (!user) return badRequest(res, "User not found.");
   db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
@@ -668,7 +791,7 @@ app.get("/api/monsters", (_req, res) => {
         id, name, size, type, alignment, armor_class, hit_points, speed,
         str_score, dex_score, con_score, int_score, wis_score, cha_score,
         challenge_rating, proficiency_bonus, senses, languages,
-        traits, actions, monster_image_data, is_legendary, legendary_actions_count, source, created_at, updated_at
+        traits, actions, monster_image_data, token_image_data, is_legendary, legendary_actions_count, source, created_at, updated_at
        FROM monster_statblocks
        ORDER BY name ASC`
     )
@@ -687,8 +810,8 @@ app.post("/api/monsters", (req, res) => {
         `INSERT INTO monster_statblocks (
           name, size, type, alignment, armor_class, hit_points, speed,
           str_score, dex_score, con_score, int_score, wis_score, cha_score,
-          challenge_rating, proficiency_bonus, senses, languages, traits, actions, monster_image_data, is_legendary, legendary_actions_count, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          challenge_rating, proficiency_bonus, senses, languages, traits, actions, monster_image_data, token_image_data, is_legendary, legendary_actions_count, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         m.name,
@@ -711,6 +834,7 @@ app.post("/api/monsters", (req, res) => {
         m.traits,
         m.actions,
         m.monster_image_data,
+        m.token_image_data,
         m.is_legendary,
         m.legendary_actions_count,
         m.source
@@ -746,7 +870,7 @@ app.put("/api/monsters/:monsterId", (req, res) => {
       `UPDATE monster_statblocks
        SET name = ?, size = ?, type = ?, alignment = ?, armor_class = ?, hit_points = ?, speed = ?,
            str_score = ?, dex_score = ?, con_score = ?, int_score = ?, wis_score = ?, cha_score = ?,
-           challenge_rating = ?, proficiency_bonus = ?, senses = ?, languages = ?, traits = ?, actions = ?, monster_image_data = ?, is_legendary = ?, legendary_actions_count = ?, source = ?,
+           challenge_rating = ?, proficiency_bonus = ?, senses = ?, languages = ?, traits = ?, actions = ?, monster_image_data = ?, token_image_data = ?, is_legendary = ?, legendary_actions_count = ?, source = ?,
            updated_at = datetime('now')
        WHERE id = ?`
     ).run(
@@ -770,6 +894,7 @@ app.put("/api/monsters/:monsterId", (req, res) => {
       m.traits,
       m.actions,
       m.monster_image_data,
+      m.token_image_data,
       m.is_legendary,
       m.legendary_actions_count,
       m.source,
@@ -909,6 +1034,50 @@ app.delete("/api/campaigns/:campaignId/members/:userId", requireAdmin, (req, res
   res.status(204).send();
 });
 
+app.get("/api/admin/campaigns/:campaignId/character-claims", requireAdmin, (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!campaignExists(campaignId)) return badRequest(res, "Campaign not found.");
+
+  const claims = db
+    .prepare(
+      `SELECT
+        ch.id AS character_id,
+        ch.name AS character_name,
+        ch.class_name,
+        u.id AS user_id,
+        u.username,
+        cc.updated_at
+       FROM character_claims cc
+       JOIN characters ch ON ch.id = cc.character_id
+       JOIN users u ON u.id = cc.user_id
+       WHERE ch.campaign_id = ?
+       ORDER BY ch.name ASC`
+    )
+    .all(campaignId);
+  res.json(claims);
+});
+
+app.delete(
+  "/api/admin/campaigns/:campaignId/character-claims/:characterId",
+  requireAdmin,
+  (req, res) => {
+    const campaignId = asId(req.params.campaignId);
+    const characterId = asId(req.params.characterId);
+    if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+    if (characterId === null) return badRequest(res, "Invalid character id.");
+    if (!campaignExists(campaignId)) return badRequest(res, "Campaign not found.");
+
+    const character = db
+      .prepare("SELECT id FROM characters WHERE id = ? AND campaign_id = ?")
+      .get(characterId, campaignId);
+    if (!character) return badRequest(res, "Character not found in campaign.");
+
+    db.prepare("DELETE FROM character_claims WHERE character_id = ?").run(characterId);
+    return res.status(204).send();
+  }
+);
+
 app.post("/api/campaigns/:campaignId/live/clear", (req, res) => {
   const campaignId = asId(req.params.campaignId);
   if (campaignId === null) return badRequest(res, "Invalid campaign id.");
@@ -991,6 +1160,8 @@ app.get("/api/player/live", (req, res) => {
         kind: c.kind,
         enemy_role: c.enemy_role,
         monster_size: c.monster_size,
+        monster_token_image_data: c.monster_token_image_data || "",
+        claimed_profile_image_data: c.claimed_profile_image_data || "",
         character_class: c.character_class,
         reaction_available: c.reaction_available,
         is_legendary: c.is_legendary,
@@ -1339,7 +1510,7 @@ app.post("/api/scenarios/:scenarioId/combatants", (req, res) => {
   const scenarioId = asId(req.params.scenarioId);
   const kind = `${req.body?.kind || ""}`.trim();
   const enemyRoleInput = `${req.body?.enemyRole || ""}`.trim().toLowerCase();
-  const enemyRole = enemyRoleInput === "npc" ? "npc" : "enemy";
+  const enemyRole = enemyRoleInput === "ally" || enemyRoleInput === "npc" ? "ally" : "enemy";
   const nameInput = `${req.body?.name || ""}`.trim();
   const monsterId = req.body?.monsterId == null ? null : asId(req.body.monsterId);
   const initiative = Number(req.body?.initiative);
@@ -1416,7 +1587,7 @@ app.post("/api/scenarios/:scenarioId/combatants", (req, res) => {
       : null;
   const isLegendary =
     Boolean(legendaryFromMonster) ||
-    (enemyRole === "npc" && isLegendaryRequested);
+    (enemyRole === "ally" && isLegendaryRequested);
   const finalLegendaryActionsCount = isLegendary
     ? requestedLegendaryCount ?? monsterLegendaryCount
     : null;

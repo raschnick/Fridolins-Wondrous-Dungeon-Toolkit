@@ -25,8 +25,12 @@
           <button id="mainAnalyticsBtn" type="button">Analytics</button>
         </nav>
         <div id="userMenu" class="user-menu hidden">
-          <span id="userMenuName" class="user-menu-name"></span>
+          <span id="userMenuName" class="user-menu-name">
+            <span id="userMenuNameText"></span>
+            <img id="userMenuAvatar" class="user-menu-avatar hidden" alt="Player token" />
+          </span>
           <div class="user-menu-popover">
+            <button id="userMenuSettingsBtn" type="button">Settings</button>
             <button id="userMenuAdminBtn" type="button">Admin</button>
             <button id="userMenuLogoutBtn" type="button">Logout</button>
           </div>
@@ -110,6 +114,58 @@
         </div>
       </section>
 
+      <section id="pageSettings" class="panel page hidden">
+        <h2>User Settings</h2>
+        <section id="settingsProfileSection" class="subpanel">
+          <h3>Profile Image</h3>
+          <img id="settingsProfileImagePreview" class="monster-image hidden" alt="Profile image preview" />
+          <input id="settingsProfileImageFile" type="file" accept="image/*" />
+          <div class="row">
+            <button id="saveSettingsProfileImageBtn" type="button">Save Image</button>
+            <button id="clearSettingsProfileImageBtn" type="button">Remove Image</button>
+          </div>
+        </section>
+        <section id="settingsAccountSection" class="subpanel">
+          <h3>Account Name</h3>
+          <label for="settingsUsernameInput">Username</label>
+          <div class="row">
+            <input
+              id="settingsUsernameInput"
+              type="text"
+              placeholder="Username"
+              minlength="3"
+              maxlength="64"
+              required
+            />
+            <button id="saveSettingsUsernameBtn" type="button">Save Name</button>
+          </div>
+        </section>
+        <section id="settingsPasswordSection" class="subpanel">
+          <h3>Change Password</h3>
+          <label for="settingsNewPasswordInput">New Password</label>
+          <input
+            id="settingsNewPasswordInput"
+            type="password"
+            placeholder="New password"
+            autocomplete="new-password"
+          />
+          <label for="settingsConfirmPasswordInput">Confirm New Password</label>
+          <div class="row settings-password-row">
+            <input
+              id="settingsConfirmPasswordInput"
+              type="password"
+              placeholder="Confirm new password"
+              autocomplete="new-password"
+            />
+            <button id="saveSettingsPasswordBtn" type="button">Save Password</button>
+          </div>
+        </section>
+        <section id="settingsClaimSection" class="subpanel">
+          <h3>Claim Player Character</h3>
+          <p class="hint">Claim one of your campaign characters to use your profile image on its map token.</p>
+          <ul id="settingsClaimList" class="list"></ul>
+        </section>
+      </section>
       <section id="pageMonsters" class="page hidden">
         <div class="panel">
           <div class="row between">
@@ -165,9 +221,16 @@
                   <label><input type="radio" name="monsterLegendaryActionsCount" value="3" checked />3</label>
                   <label><input type="radio" name="monsterLegendaryActionsCount" value="4" />4</label>
                 </fieldset>
-                <label for="monsterImageFile">Statblock Screenshot</label>
-                <input id="monsterImageFile" type="file" accept="image/*" />
-                <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
+                <div id="monsterStatblockImageGroup" class="paste-target-group">
+                  <label for="monsterImageFile">Statblock Screenshot</label>
+                  <input id="monsterImageFile" type="file" accept="image/*" />
+                  <p class="hint">Click here then Cmd/Ctrl+V to paste statblock.</p>
+                </div>
+                <div id="monsterTokenImageGroup" class="paste-target-group">
+                  <label for="monsterTokenImageFile">Token Image (optional)</label>
+                  <input id="monsterTokenImageFile" type="file" accept="image/*" />
+                  <p class="hint">Click here then Cmd/Ctrl+V to paste token image.</p>
+                </div>
                 <div class="row monster-form-actions">
                   <button id="saveMonsterBtn" type="submit">Save</button>
                   <button id="deleteMonsterBtn" class="delete-btn" type="button">Delete</button>
@@ -175,6 +238,7 @@
               </div>
               <div id="monsterReadonlyView" class="monster-readonly-view"></div>
               <img id="monsterImagePreview" class="monster-image hidden" alt="Monster statblock preview" />
+              <img id="monsterTokenImagePreview" class="monster-image hidden" alt="Monster token preview" />
             </form>
           </article>
         </section>
@@ -242,6 +306,8 @@
             </div>
             <ul id="adminCampaignList" class="list selectable admin-campaign-list"></ul>
             <ul id="adminMemberList" class="list"></ul>
+            <h3>Claimed PCs</h3>
+            <ul id="adminClaimList" class="list"></ul>
           </article>
         </section>
       </section>
@@ -406,7 +472,7 @@
             </div>
           </div>
           <div id="activeMonsterImageWrap" class="panel">
-            <h3>NPC Statblock</h3>
+            <h3>Combatant Statblock</h3>
             <p id="activeMonsterImageHint" class="hint">No enemy statblock selected.</p>
             <img id="activeMonsterImage" class="monster-image hidden" alt="Enemy statblock" />
           </div>
@@ -512,13 +578,25 @@
               <label><input type="radio" name="libraryLegendaryActionsCount" value="3" checked />3</label>
               <label><input type="radio" name="libraryLegendaryActionsCount" value="4" />4</label>
             </fieldset>
-            <label for="libraryEntryImageFile">Statblock Screenshot</label>
-            <input id="libraryEntryImageFile" type="file" accept="image/*" />
-            <p class="hint">Tip: paste screenshot directly here with Cmd+V.</p>
+            <div id="libraryEntryStatblockImageGroup" class="paste-target-group">
+              <label for="libraryEntryImageFile">Statblock Screenshot</label>
+              <input id="libraryEntryImageFile" type="file" accept="image/*" />
+              <p class="hint">Click here then Cmd/Ctrl+V to paste statblock.</p>
+            </div>
+            <div id="libraryEntryTokenImageGroup" class="paste-target-group">
+              <label for="libraryEntryTokenImageFile">Token Image (optional)</label>
+              <input id="libraryEntryTokenImageFile" type="file" accept="image/*" />
+              <p class="hint">Click here then Cmd/Ctrl+V to paste token image.</p>
+            </div>
             <img
               id="libraryEntryImagePreview"
               class="monster-image hidden"
               alt="New library entry statblock preview"
+            />
+            <img
+              id="libraryEntryTokenImagePreview"
+              class="monster-image hidden"
+              alt="New library entry token preview"
             />
             <div class="row">
               <button type="submit" class="add-icon-btn" aria-label="Create Entry" title="Create Entry">
@@ -608,8 +686,8 @@
             <ul id="enemyMonsterResults" class="add-combatant-library-results"></ul>
             <label for="enemyRole">Combatant Type</label>
             <select id="enemyRole">
-              <option value="enemy" selected>Type: Enemy</option>
-              <option value="npc">Type: NPC</option>
+              <option value="enemy" selected>Enemy</option>
+              <option value="ally">Ally</option>
             </select>
             <label for="enemyName">Name</label>
             <input id="enemyName" type="text" placeholder="Enemy name" required />

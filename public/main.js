@@ -8,9 +8,14 @@ const state = {
   scenarioSearchQuery: "",
   monsterEditorReadOnly: true,
   draftLibraryEntryImageData: "",
+  draftLibraryEntryTokenImageData: "",
+  libraryEntryPasteTarget: "statblock",
   selectedMonsterId: null,
   draftMonsterImageData: "",
+  draftMonsterTokenImageData: "",
+  monsterPasteTarget: "statblock",
   draftScenarioMapImageData: "",
+  draftSettingsProfileImageData: "",
   addCombatantSelectedMonsterId: null,
   scenarioEditAutoSaveTimer: null,
   scenarioEditSaveInFlight: false,
@@ -55,10 +60,12 @@ const state = {
   adminUsers: [],
   adminMemberCampaignId: null,
   adminCampaignMembers: [],
+  adminCampaignClaims: [],
   adminUserSearchQuery: "",
   adminMemberSearchQuery: "",
   campaignLiveScenarioId: null,
   playerLiveData: null,
+  userSettings: null,
   playerLivePollTimer: null,
   runMapSyncPollTimer: null,
   playerLiveViewMode: "initiative",
@@ -86,6 +93,7 @@ const els = {
   loginPageLogo: document.getElementById("loginPageLogo"),
   pageWelcome: document.getElementById("pageWelcome"),
   pagePlayerHome: document.getElementById("pagePlayerHome"),
+  pageSettings: document.getElementById("pageSettings"),
   pageMonsters: document.getElementById("pageMonsters"),
   pageAnalytics: document.getElementById("pageAnalytics"),
   pageAdmin: document.getElementById("pageAdmin"),
@@ -101,6 +109,9 @@ const els = {
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
   userMenu: document.getElementById("userMenu"),
   userMenuName: document.getElementById("userMenuName"),
+  userMenuNameText: document.getElementById("userMenuNameText"),
+  userMenuAvatar: document.getElementById("userMenuAvatar"),
+  userMenuSettingsBtn: document.getElementById("userMenuSettingsBtn"),
   userMenuAdminBtn: document.getElementById("userMenuAdminBtn"),
   userMenuLogoutBtn: document.getElementById("userMenuLogoutBtn"),
   playerWaitingWrap: document.getElementById("playerWaitingWrap"),
@@ -118,6 +129,17 @@ const els = {
   playerMapImage: document.getElementById("playerMapImage"),
   playerMapTokens: document.getElementById("playerMapTokens"),
   playerLiveCombatantList: document.getElementById("playerLiveCombatantList"),
+  settingsProfileImagePreview: document.getElementById("settingsProfileImagePreview"),
+  settingsProfileImageFile: document.getElementById("settingsProfileImageFile"),
+  settingsUsernameInput: document.getElementById("settingsUsernameInput"),
+  saveSettingsUsernameBtn: document.getElementById("saveSettingsUsernameBtn"),
+  settingsNewPasswordInput: document.getElementById("settingsNewPasswordInput"),
+  settingsConfirmPasswordInput: document.getElementById("settingsConfirmPasswordInput"),
+  saveSettingsPasswordBtn: document.getElementById("saveSettingsPasswordBtn"),
+  saveSettingsProfileImageBtn: document.getElementById("saveSettingsProfileImageBtn"),
+  clearSettingsProfileImageBtn: document.getElementById("clearSettingsProfileImageBtn"),
+  settingsClaimSection: document.getElementById("settingsClaimSection"),
+  settingsClaimList: document.getElementById("settingsClaimList"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
@@ -141,6 +163,10 @@ const els = {
   monsterReadonlyView: document.getElementById("monsterReadonlyView"),
   monsterImageFile: document.getElementById("monsterImageFile"),
   monsterImagePreview: document.getElementById("monsterImagePreview"),
+  monsterTokenImageFile: document.getElementById("monsterTokenImageFile"),
+  monsterTokenImagePreview: document.getElementById("monsterTokenImagePreview"),
+  monsterStatblockImageGroup: document.getElementById("monsterStatblockImageGroup"),
+  monsterTokenImageGroup: document.getElementById("monsterTokenImageGroup"),
   editMonsterBtn: document.getElementById("editMonsterBtn"),
   saveMonsterBtn: document.getElementById("saveMonsterBtn"),
   newMonsterBtn: document.getElementById("newMonsterBtn"),
@@ -152,6 +178,10 @@ const els = {
   libraryEntryLegendaryWrap: document.getElementById("libraryEntryLegendaryWrap"),
   libraryEntryImageFile: document.getElementById("libraryEntryImageFile"),
   libraryEntryImagePreview: document.getElementById("libraryEntryImagePreview"),
+  libraryEntryTokenImageFile: document.getElementById("libraryEntryTokenImageFile"),
+  libraryEntryTokenImagePreview: document.getElementById("libraryEntryTokenImagePreview"),
+  libraryEntryStatblockImageGroup: document.getElementById("libraryEntryStatblockImageGroup"),
+  libraryEntryTokenImageGroup: document.getElementById("libraryEntryTokenImageGroup"),
   createCampaignModalForm: document.getElementById("createCampaignModalForm"),
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
@@ -171,6 +201,7 @@ const els = {
   adminMemberUserSelect: document.getElementById("adminMemberUserSelect"),
   adminMemberSearch: document.getElementById("adminMemberSearch"),
   adminMemberList: document.getElementById("adminMemberList"),
+  adminClaimList: document.getElementById("adminClaimList"),
   adminActionModal: document.getElementById("adminActionModal"),
   adminActionTitle: document.getElementById("adminActionTitle"),
   adminActionCloseBtn: document.getElementById("adminActionCloseBtn"),
@@ -442,6 +473,16 @@ function setMonsterImagePreview(dataUrl) {
   }
 }
 
+function setMonsterTokenImagePreview(dataUrl) {
+  if (dataUrl) {
+    els.monsterTokenImagePreview.src = dataUrl;
+    els.monsterTokenImagePreview.classList.remove("hidden");
+  } else {
+    els.monsterTokenImagePreview.src = "";
+    els.monsterTokenImagePreview.classList.add("hidden");
+  }
+}
+
 function setEnemyMonsterPreview(dataUrl) {
   if (dataUrl) {
     els.enemyMonsterPreview.src = dataUrl;
@@ -459,6 +500,26 @@ function setLibraryEntryImagePreview(dataUrl) {
   } else {
     els.libraryEntryImagePreview.src = "";
     els.libraryEntryImagePreview.classList.add("hidden");
+  }
+}
+
+function setLibraryEntryTokenImagePreview(dataUrl) {
+  if (dataUrl) {
+    els.libraryEntryTokenImagePreview.src = dataUrl;
+    els.libraryEntryTokenImagePreview.classList.remove("hidden");
+  } else {
+    els.libraryEntryTokenImagePreview.src = "";
+    els.libraryEntryTokenImagePreview.classList.add("hidden");
+  }
+}
+
+function setSettingsProfileImagePreview(dataUrl) {
+  if (dataUrl) {
+    els.settingsProfileImagePreview.src = dataUrl;
+    els.settingsProfileImagePreview.classList.remove("hidden");
+  } else {
+    els.settingsProfileImagePreview.src = "";
+    els.settingsProfileImagePreview.classList.add("hidden");
   }
 }
 
@@ -532,7 +593,7 @@ function scheduleScenarioEditAutoSave(delayMs = 450) {
 
 function hasPlayersWonEncounter(combatants, { visibleOnly = false } = {}) {
   const enemies = (Array.isArray(combatants) ? combatants : []).filter((combatant) => {
-    if (combatant.kind !== "enemy" || combatant.enemy_role === "npc") return false;
+    if (combatant.kind !== "enemy" || isAllyCombatant(combatant)) return false;
     if (!visibleOnly) return true;
     if (combatant.player_visible == null) return true;
     return Number(combatant.player_visible) !== 0;
@@ -685,6 +746,21 @@ function updateLibraryEntryLegendaryFieldsVisibility() {
   els.libraryEntryLegendaryWrap.classList.toggle("hidden", !isLegendary);
 }
 
+function setMonsterPasteTarget(target) {
+  state.monsterPasteTarget = target === "token" ? "token" : "statblock";
+  els.monsterStatblockImageGroup?.classList.toggle("active", state.monsterPasteTarget === "statblock");
+  els.monsterTokenImageGroup?.classList.toggle("active", state.monsterPasteTarget === "token");
+}
+
+function setLibraryEntryPasteTarget(target) {
+  state.libraryEntryPasteTarget = target === "token" ? "token" : "statblock";
+  els.libraryEntryStatblockImageGroup?.classList.toggle(
+    "active",
+    state.libraryEntryPasteTarget === "statblock"
+  );
+  els.libraryEntryTokenImageGroup?.classList.toggle("active", state.libraryEntryPasteTarget === "token");
+}
+
 function setMonsterEditorReadOnly(readOnly) {
   state.monsterEditorReadOnly = readOnly;
   els.monsterForm.classList.toggle("monster-form-readonly", readOnly);
@@ -692,6 +768,7 @@ function setMonsterEditorReadOnly(readOnly) {
   els.monsterSize.disabled = readOnly;
   els.monsterIsLegendary.disabled = readOnly;
   els.monsterImageFile.disabled = readOnly;
+  els.monsterTokenImageFile.disabled = readOnly;
   document
     .querySelectorAll('input[name="monsterLegendaryActionsCount"]')
     .forEach((input) => {
@@ -713,7 +790,7 @@ function cancelMonsterEditorChanges() {
   setMonsterEditorReadOnly(true);
 }
 
-function appendReadonlyRow(labelText, valueText) {
+function appendReadonlyRow(parent, labelText, valueText) {
   const row = document.createElement("div");
   row.className = "monster-readonly-row";
   const label = document.createElement("span");
@@ -724,7 +801,7 @@ function appendReadonlyRow(labelText, valueText) {
   value.className = "monster-readonly-value";
   value.textContent = valueText;
   row.appendChild(value);
-  els.monsterReadonlyView.appendChild(row);
+  parent.appendChild(row);
 }
 
 function formatMonsterSizeLabel(size) {
@@ -750,15 +827,38 @@ function renderMonsterReadonlyView() {
     return;
   }
 
-  appendReadonlyRow("Name", monster.name || "-");
-  appendReadonlyRow("Size", formatMonsterSizeLabel(monster.size));
+  const top = document.createElement("div");
+  top.className = "monster-readonly-top";
+
+  const meta = document.createElement("div");
+  meta.className = "monster-readonly-meta";
+  appendReadonlyRow(meta, "Name", monster.name || "-");
+  appendReadonlyRow(meta, "Size", formatMonsterSizeLabel(monster.size));
   if (monster.is_legendary) {
     const count = Number(monster.legendary_actions_count);
     const suffix = Number.isInteger(count) ? ` (${count})` : "";
-    appendReadonlyRow("Legendary", `Yes${suffix}`);
+    appendReadonlyRow(meta, "Legendary", `Yes${suffix}`);
   } else {
-    appendReadonlyRow("Legendary", "No");
+    appendReadonlyRow(meta, "Legendary", "No");
   }
+  top.appendChild(meta);
+
+  const token = document.createElement("img");
+  token.className = "monster-readonly-token";
+  token.alt = `${monster.name || "Monster"} token`;
+  const fallbackSrc = "/icons/enemy.svg";
+  token.src = monster.token_image_data || "/icons/enemy.png";
+  token.style.cursor = "zoom-in";
+  token.addEventListener("error", () => {
+    if (!token.src.endsWith(fallbackSrc)) token.src = fallbackSrc;
+  });
+  token.addEventListener("click", () => {
+    if (!token.src) return;
+    openImageModal(token.src);
+  });
+  top.appendChild(token);
+
+  els.monsterReadonlyView.appendChild(top);
 }
 
 function toggleMonsterEditorMode() {
@@ -813,8 +913,12 @@ function openCampaignActionModal(mode) {
     els.libraryEntrySize.value = "normal";
     els.libraryEntryLegendary.value = "false";
     state.draftLibraryEntryImageData = "";
+    state.draftLibraryEntryTokenImageData = "";
+    setLibraryEntryPasteTarget("statblock");
     setLibraryEntryImagePreview("");
+    setLibraryEntryTokenImagePreview("");
     els.libraryEntryImageFile.value = "";
+    els.libraryEntryTokenImageFile.value = "";
     const defaultLegendary = document.querySelector(
       'input[name="libraryLegendaryActionsCount"][value="3"]'
     );
@@ -927,9 +1031,17 @@ function selectedMonster() {
   return state.monsters.find((m) => m.id === state.selectedMonsterId) || null;
 }
 
+function isAllyEnemyRole(enemyRole) {
+  return enemyRole === "ally" || enemyRole === "npc";
+}
+
+function isAllyCombatant(combatant) {
+  return combatant?.kind === "enemy" && isAllyEnemyRole(combatant.enemy_role);
+}
+
 function combatantKindLabel(combatant) {
   if (combatant.kind === "character") return "PC";
-  return combatant.enemy_role === "npc" ? "NPC" : "Enemy";
+  return isAllyCombatant(combatant) ? "Ally" : "Enemy";
 }
 
 function slugifyClassName(name) {
@@ -940,16 +1052,32 @@ function combatantIconSrc(combatant) {
   if (combatant.kind === "character") {
     return `/icons/classes/${slugifyClassName(combatant.character_class)}.png`;
   }
-  return combatant.enemy_role === "npc"
+  return isAllyCombatant(combatant)
     ? "/icons/npc.png"
     : "/icons/enemy.png";
 }
 
 function combatantIconFallbackSrc(combatant) {
   if (combatant.kind === "character") return "/icons/pc.svg";
-  return combatant.enemy_role === "npc"
+  return isAllyCombatant(combatant)
     ? "/icons/npc.svg"
     : "/icons/enemy.svg";
+}
+
+function combatantTokenIconSrc(combatant) {
+  if (combatant.kind === "character" && combatant.claimed_profile_image_data) {
+    return combatant.claimed_profile_image_data;
+  }
+  if (combatant.kind === "enemy" && combatant.monster_token_image_data) {
+    return combatant.monster_token_image_data;
+  }
+  return combatantIconSrc(combatant);
+}
+
+function combatantUsesPortraitToken(combatant) {
+  if (combatant.kind === "character" && combatant.claimed_profile_image_data) return true;
+  if (combatant.kind === "enemy" && combatant.monster_token_image_data) return true;
+  return false;
 }
 
 function createCombatantNameElement(combatant) {
@@ -982,9 +1110,33 @@ function normalizePathname(pathname) {
   return cleaned === "" ? "/" : cleaned;
 }
 
+function playerAvatarFallbackSrc(username = "") {
+  const classSlugs = [
+    "artificer",
+    "barbarian",
+    "bard",
+    "cleric",
+    "druid",
+    "fighter",
+    "monk",
+    "paladin",
+    "rogue",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ];
+  let hash = 0;
+  for (let i = 0; i < username.length; i += 1) {
+    hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % classSlugs.length;
+  return `/icons/classes/${classSlugs[index]}.png`;
+}
+
 function parseRoute(pathname) {
   const path = normalizePathname(pathname);
   if (path === "/login") return { page: "login" };
+  if (path === "/settings") return { page: "settings" };
   if (path === "/player" || path === "/player/initiative") {
     return { page: "player-home", playerMode: "initiative" };
   }
@@ -1036,6 +1188,7 @@ function routePathFor(page, campaignId = null, scenarioId = null, playerMode = n
   if (page === "player-home") {
     return playerMode === "map" ? "/player/map" : "/player/initiative";
   }
+  if (page === "settings") return "/settings";
   if (page === "welcome") return "/";
   if (page === "monsters") return "/library";
   if (page === "admin") return "/admin";
@@ -1105,6 +1258,19 @@ async function applyRoute(route, { replace = false } = {}) {
     if (!isCurrent()) return;
     showPage("monsters");
     await syncHistory("/library", { replace });
+    return;
+  }
+
+  if (route.page === "settings") {
+    try {
+      await loadUserSettings();
+      renderSettingsPage();
+    } catch (error) {
+      setStatus(error.message);
+    }
+    if (!isCurrent()) return;
+    showPage("settings");
+    await syncHistory("/settings", { replace });
     return;
   }
 
@@ -1289,6 +1455,7 @@ function showPage(page) {
   els.topNav.classList.toggle("hidden", hideTopNav);
   els.pageWelcome.classList.toggle("hidden", page !== "welcome");
   els.pagePlayerHome.classList.toggle("hidden", page !== "player-home");
+  els.pageSettings.classList.toggle("hidden", page !== "settings");
   els.pageMonsters.classList.toggle("hidden", page !== "monsters");
   els.pageAnalytics.classList.toggle("hidden", page !== "analytics");
   els.pageAdmin.classList.toggle("hidden", page !== "admin");
@@ -1314,7 +1481,12 @@ function renderMainSections() {
   els.mainAnalyticsBtn.classList.toggle("hidden", !showAnalytics);
   if (!isAuthed) return;
 
-  els.userMenuName.textContent = state.authUser?.username || "";
+  els.userMenuNameText.textContent = state.authUser?.username || "";
+  els.userMenuAvatar.classList.remove("hidden");
+  const avatarSrc = state.authUser?.profileImageData
+    ? state.authUser.profileImageData
+    : playerAvatarFallbackSrc(state.authUser?.username || "");
+  els.userMenuAvatar.src = avatarSrc;
   els.userMenuAdminBtn.classList.toggle("hidden", state.authUser?.role !== "admin");
 
   const inHome =
@@ -1486,6 +1658,8 @@ function renderWelcomeCampaigns() {
 function clearMonsterForm() {
   state.selectedMonsterId = null;
   state.draftMonsterImageData = "";
+  state.draftMonsterTokenImageData = "";
+  setMonsterPasteTarget("statblock");
   els.monsterForm.reset();
   els.monsterSize.value = "normal";
   els.monsterIsLegendary.value = "false";
@@ -1495,7 +1669,9 @@ function clearMonsterForm() {
   if (defaultLegendary) defaultLegendary.checked = true;
   updateMonsterLegendaryFieldsVisibility();
   setMonsterImagePreview("");
+  setMonsterTokenImagePreview("");
   els.monsterImageFile.value = "";
+  els.monsterTokenImageFile.value = "";
   renderMonsterReadonlyView();
   renderMonsterList();
 }
@@ -1513,8 +1689,12 @@ function fillMonsterForm(monster) {
   if (currentLegendary) currentLegendary.checked = true;
   updateMonsterLegendaryFieldsVisibility();
   state.draftMonsterImageData = monster.monster_image_data || "";
+  state.draftMonsterTokenImageData = monster.token_image_data || "";
+  setMonsterPasteTarget("statblock");
   setMonsterImagePreview(state.draftMonsterImageData);
+  setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
   els.monsterImageFile.value = "";
+  els.monsterTokenImageFile.value = "";
   renderMonsterReadonlyView();
 }
 
@@ -1531,7 +1711,8 @@ function monsterFormPayload() {
     size: els.monsterSize.value,
     isLegendary,
     legendaryActionsCount,
-    monsterImageData: state.draftMonsterImageData || ""
+    monsterImageData: state.draftMonsterImageData || "",
+    tokenImageData: state.draftMonsterTokenImageData || ""
   };
 }
 
@@ -1555,10 +1736,23 @@ function renderMonsterList() {
 
     const label = document.createElement("span");
     label.className = "monster-label";
+    const avatar = document.createElement("img");
+    avatar.className = "monster-list-avatar";
+    const fallbackSrc = "/icons/enemy.svg";
+    avatar.src = monster.token_image_data || "/icons/enemy.png";
+    avatar.alt = `${monster.name} token`;
+    avatar.addEventListener("error", () => {
+      if (!avatar.src.endsWith(fallbackSrc)) avatar.src = fallbackSrc;
+    });
+    label.appendChild(avatar);
+
+    const nameText = document.createElement("span");
+    nameText.textContent = monster.name;
+    label.appendChild(nameText);
+
     const isLegendary = Boolean(monster.is_legendary);
     const legendaryCount = Number(monster.legendary_actions_count);
     if (isLegendary) {
-      label.textContent = monster.name;
       const badge = document.createElement("span");
       badge.className = "legendary-badge";
       badge.textContent = "L";
@@ -1569,8 +1763,6 @@ function renderMonsterList() {
       if (Number.isInteger(legendaryCount)) {
         badge.title = `Legendary (${legendaryCount} actions)`;
       }
-    } else {
-      label.textContent = monster.name;
     }
     row.appendChild(label);
 
@@ -2120,7 +2312,7 @@ function ensureMapTokensForCombatants(scenarioId, combatants) {
     if (isHidden) continue;
     const isEnemyDefeated =
       combatant.kind === "enemy" &&
-      combatant.enemy_role !== "npc" &&
+      !isAllyCombatant(combatant) &&
       Number.isFinite(Number(combatant.hp)) &&
       Number(combatant.hp) <= 0;
     if (isEnemyDefeated) continue;
@@ -2150,7 +2342,7 @@ function renderRunMapTokens(scenarioId, combatants) {
     if (isHidden) continue;
     const isEnemyDefeated =
       combatant.kind === "enemy" &&
-      combatant.enemy_role !== "npc" &&
+      !isAllyCombatant(combatant) &&
       Number.isFinite(Number(combatant.hp)) &&
       Number(combatant.hp) <= 0;
     if (isEnemyDefeated) continue;
@@ -2162,7 +2354,7 @@ function renderRunMapTokens(scenarioId, combatants) {
     token.className = "run-map-token";
     if (combatant.kind === "character") {
       token.classList.add("token-pc");
-    } else if (combatant.enemy_role === "npc") {
+    } else if (isAllyCombatant(combatant)) {
       token.classList.add("token-npc");
     } else {
       token.classList.add("token-enemy");
@@ -2179,8 +2371,11 @@ function renderRunMapTokens(scenarioId, combatants) {
     const icon = document.createElement("img");
     icon.className = "run-map-token-icon";
     icon.alt = combatant.name;
+    if (combatantUsesPortraitToken(combatant)) {
+      icon.classList.add("token-portrait");
+    }
     const fallbackSrc = combatantIconFallbackSrc(combatant);
-    icon.src = combatantIconSrc(combatant);
+    icon.src = combatantTokenIconSrc(combatant);
     icon.addEventListener("error", () => {
       if (!icon.src.endsWith(fallbackSrc)) {
         icon.src = fallbackSrc;
@@ -2651,7 +2846,7 @@ function renderScenarioRunPage() {
   } else if (previewEnemy) {
     els.activeMonsterImageHint.textContent = `${previewEnemy.name} has no statblock image.`;
   } else {
-    els.activeMonsterImageHint.textContent = "No NPC statblock selected.";
+    els.activeMonsterImageHint.textContent = "No combatant statblock selected.";
   }
 
   for (const combatant of state.combat.combatants) {
@@ -2661,7 +2856,7 @@ function renderScenarioRunPage() {
     }
     if (combatant.kind === "character") {
       li.classList.add("run-tone-pc");
-    } else if (combatant.enemy_role === "npc") {
+    } else if (isAllyCombatant(combatant)) {
       li.classList.add("run-tone-npc");
     } else {
       li.classList.add("run-tone-enemy");
@@ -2809,7 +3004,7 @@ function renderScenarioRunPage() {
       heal.type = "button";
       heal.textContent = "Heal";
       heal.classList.add("enemy-heal-btn");
-      if (combatant.enemy_role === "npc") heal.classList.add("npc-heal-btn");
+      if (isAllyCombatant(combatant)) heal.classList.add("npc-heal-btn");
       heal.addEventListener("click", async () => {
         const n = Number(delta.value);
         if (!Number.isFinite(n)) return;
@@ -2841,7 +3036,7 @@ function renderScenarioRunPage() {
       damage.type = "button";
       damage.textContent = "Damage";
       damage.classList.add("enemy-damage-btn");
-      if (combatant.enemy_role === "npc") damage.classList.add("npc-damage-btn");
+      if (isAllyCombatant(combatant)) damage.classList.add("npc-damage-btn");
       damage.addEventListener("click", async () => {
         const n = Number(delta.value);
         if (!Number.isFinite(n)) return;
@@ -2967,7 +3162,7 @@ function renderPlayerHome() {
     const li = document.createElement("li");
     if (combatant.kind === "character") {
       li.classList.add("run-tone-pc");
-    } else if (combatant.enemy_role === "npc") {
+    } else if (isAllyCombatant(combatant)) {
       li.classList.add("run-tone-npc");
     } else {
       li.classList.add("run-tone-enemy");
@@ -3046,6 +3241,84 @@ function renderPlayerHome() {
 
   if (state.authUser?.role !== "admin" && state.page === "player-home") {
     maybeCelebrateEncounterWin(shared.scenarioId, combatants, { visibleOnly: true });
+  }
+}
+
+async function loadUserSettings() {
+  state.userSettings = await api("/api/users/me/settings");
+  state.draftSettingsProfileImageData = state.userSettings?.user?.profileImageData || "";
+  if (state.authUser) {
+    state.authUser.profileImageData = state.userSettings?.user?.profileImageData || "";
+  }
+}
+
+function renderSettingsPage() {
+  if (els.settingsUsernameInput) {
+    els.settingsUsernameInput.value = state.userSettings?.user?.username || "";
+  }
+  if (els.settingsNewPasswordInput) els.settingsNewPasswordInput.value = "";
+  if (els.settingsConfirmPasswordInput) els.settingsConfirmPasswordInput.value = "";
+  setSettingsProfileImagePreview(state.draftSettingsProfileImageData || "");
+  if (els.settingsProfileImageFile) els.settingsProfileImageFile.value = "";
+  els.settingsClaimList.innerHTML = "";
+  const isAdmin = state.authUser?.role === "admin";
+  els.settingsClaimSection.classList.toggle("hidden", isAdmin);
+
+  if (!state.userSettings || !Array.isArray(state.userSettings.characters)) {
+    els.settingsClaimList.innerHTML = "<li>No claimable characters found.</li>";
+    return;
+  }
+  if (isAdmin) return;
+  if (state.userSettings.characters.length === 0) {
+    els.settingsClaimList.innerHTML = "<li>No claimable characters found.</li>";
+    return;
+  }
+
+  for (const character of state.userSettings.characters) {
+    const li = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "list-row";
+
+    const label = document.createElement("span");
+    const campaignName = character.campaign_name || "Campaign";
+    label.textContent = `${campaignName}: ${character.name} (${character.class_name})`;
+    row.appendChild(label);
+
+    const claimedByIdRaw = character.claimed_user_id;
+    const claimedById = claimedByIdRaw == null ? null : Number(claimedByIdRaw);
+    const isClaimed = Number.isInteger(claimedById) && claimedById > 0;
+    const claimedByMe = isClaimed && claimedById === state.authUser?.id;
+
+    const actionBtn = document.createElement("button");
+    actionBtn.type = "button";
+    actionBtn.textContent = claimedByMe ? "Unclaim" : "Claim";
+    if (isClaimed && !claimedByMe) {
+      actionBtn.disabled = true;
+      actionBtn.textContent = `Claimed by ${character.claimed_by_username || "another player"}`;
+    }
+    actionBtn.addEventListener("click", async () => {
+      try {
+        if (claimedByMe) {
+          await api("/api/users/me/unclaim-character", {
+            method: "POST",
+            body: JSON.stringify({ characterId: character.id })
+          });
+        } else {
+          await api("/api/users/me/claim-character", {
+            method: "POST",
+            body: JSON.stringify({ characterId: character.id })
+          });
+        }
+        await loadUserSettings();
+        renderSettingsPage();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+    row.appendChild(actionBtn);
+
+    li.appendChild(row);
+    els.settingsClaimList.appendChild(li);
   }
 }
 
@@ -3159,7 +3432,7 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
   for (const combatant of combatants) {
     const isEnemyDefeated =
       combatant.kind === "enemy" &&
-      combatant.enemy_role !== "npc" &&
+      !isAllyCombatant(combatant) &&
       Number(combatant.is_defeated) === 1;
     if (isEnemyDefeated) continue;
     const pos = positions[combatant.id];
@@ -3168,7 +3441,7 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
     token.className = "player-map-token";
     if (combatant.kind === "character") {
       token.classList.add("token-pc");
-    } else if (combatant.enemy_role === "npc") {
+    } else if (isAllyCombatant(combatant)) {
       token.classList.add("token-npc");
     } else {
       token.classList.add("token-enemy");
@@ -3185,8 +3458,11 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
     const icon = document.createElement("img");
     icon.className = "player-map-token-icon";
     icon.alt = combatant.name;
+    if (combatantUsesPortraitToken(combatant)) {
+      icon.classList.add("token-portrait");
+    }
     const fallbackSrc = combatantIconFallbackSrc(combatant);
-    icon.src = combatantIconSrc(combatant);
+    icon.src = combatantTokenIconSrc(combatant);
     icon.addEventListener("error", () => {
       if (!icon.src.endsWith(fallbackSrc)) {
         icon.src = fallbackSrc;
@@ -3335,11 +3611,15 @@ async function loadAdminData() {
   }
 
   if (Number.isInteger(state.adminMemberCampaignId)) {
-    state.adminCampaignMembers = await api(
-      `/api/campaigns/${state.adminMemberCampaignId}/members`
-    );
+    const [members, claims] = await Promise.all([
+      api(`/api/campaigns/${state.adminMemberCampaignId}/members`),
+      api(`/api/admin/campaigns/${state.adminMemberCampaignId}/character-claims`)
+    ]);
+    state.adminCampaignMembers = members;
+    state.adminCampaignClaims = claims;
   } else {
     state.adminCampaignMembers = [];
+    state.adminCampaignClaims = [];
   }
 }
 
@@ -3519,6 +3799,55 @@ function renderAdminPage() {
     }
   }
 
+  els.adminClaimList.innerHTML = "";
+  if (!Number.isInteger(state.adminMemberCampaignId)) {
+    els.adminClaimList.innerHTML = "<li>Select a campaign.</li>";
+  } else if (!Array.isArray(state.adminCampaignClaims) || state.adminCampaignClaims.length === 0) {
+    els.adminClaimList.innerHTML = "<li>No claimed characters in this campaign.</li>";
+  } else {
+    for (const claim of state.adminCampaignClaims) {
+      const li = document.createElement("li");
+      const row = document.createElement("div");
+      row.className = "list-row admin-row";
+
+      const label = document.createElement("span");
+      label.className = "admin-row-main";
+      label.textContent = `${claim.character_name} (${claim.class_name})`;
+      row.appendChild(label);
+
+      const meta = document.createElement("div");
+      meta.className = "admin-meta";
+      const userBadge = document.createElement("span");
+      userBadge.className = "admin-badge";
+      userBadge.textContent = claim.username;
+      meta.appendChild(userBadge);
+      row.appendChild(meta);
+
+      const unclaimButton = document.createElement("button");
+      unclaimButton.type = "button";
+      unclaimButton.className = "delete-btn";
+      unclaimButton.textContent = "Unclaim";
+      unclaimButton.addEventListener("click", async () => {
+        if (!Number.isInteger(state.adminMemberCampaignId)) return;
+        try {
+          await api(
+            `/api/admin/campaigns/${state.adminMemberCampaignId}/character-claims/${claim.character_id}`,
+            { method: "DELETE" }
+          );
+          await loadAdminData();
+          renderAdminPage();
+          setStatus(`Unclaimed ${claim.character_name}.`);
+        } catch (error) {
+          setStatus(error.message);
+        }
+      });
+      row.appendChild(unclaimButton);
+
+      li.appendChild(row);
+      els.adminClaimList.appendChild(li);
+    }
+  }
+
   const hasSelectedCampaign = Number.isInteger(state.adminMemberCampaignId);
   els.adminOpenMembershipModalBtn.disabled = !hasSelectedCampaign;
 }
@@ -3688,6 +4017,10 @@ function bindEvents() {
     if (!els.activeMonsterImage.src) return;
     openImageModal(els.activeMonsterImage.src);
   });
+  els.monsterImagePreview.addEventListener("click", () => {
+    if (!els.monsterImagePreview.src) return;
+    openImageModal(els.monsterImagePreview.src);
+  });
   els.enemyMonsterPreview.addEventListener("click", () => {
     if (!els.enemyMonsterPreview.src) return;
     openImageModal(els.enemyMonsterPreview.src);
@@ -3776,6 +4109,10 @@ function bindEvents() {
     navigateToPage("analytics");
   });
 
+  els.userMenuSettingsBtn.addEventListener("click", async () => {
+    await navigateToPage("settings");
+  });
+
   els.userMenuAdminBtn.addEventListener("click", async () => {
     await navigateToPage("admin");
   });
@@ -3789,6 +4126,93 @@ function bindEvents() {
     state.authUser = null;
     setLoginStatus("");
     showPage("login");
+  });
+
+  els.saveSettingsUsernameBtn.addEventListener("click", async () => {
+    const nextUsername = `${els.settingsUsernameInput.value || ""}`.trim();
+    if (!nextUsername) {
+      setStatus("Username is required.");
+      return;
+    }
+    try {
+      await api("/api/users/me/username", {
+        method: "POST",
+        body: JSON.stringify({ username: nextUsername })
+      });
+      state.authUser = null;
+      setLoginStatus("Name changed. Please sign in again.");
+      await navigateToPath("/login", { replace: true });
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.saveSettingsPasswordBtn.addEventListener("click", async () => {
+    const newPassword = `${els.settingsNewPasswordInput.value || ""}`;
+    const confirmPassword = `${els.settingsConfirmPasswordInput.value || ""}`;
+    if (!newPassword) {
+      setStatus("New password is required.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatus("New password and confirmation do not match.");
+      return;
+    }
+    try {
+      await api("/api/users/me/change-password", {
+        method: "POST",
+        body: JSON.stringify({ newPassword })
+      });
+      state.authUser = null;
+      setLoginStatus("Password changed. Please sign in again.");
+      await navigateToPath("/login", { replace: true });
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.settingsProfileImageFile.addEventListener("change", async () => {
+    const file = els.settingsProfileImageFile.files?.[0];
+    if (!file) return;
+    try {
+      state.draftSettingsProfileImageData = await readFileAsDataUrl(file);
+      setSettingsProfileImagePreview(state.draftSettingsProfileImageData);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.saveSettingsProfileImageBtn.addEventListener("click", async () => {
+    try {
+      await api("/api/users/me/profile-image", {
+        method: "POST",
+        body: JSON.stringify({
+          profileImageData: state.draftSettingsProfileImageData || ""
+        })
+      });
+      await loadUserSettings();
+      renderSettingsPage();
+      renderMainSections();
+      setStatus("Profile image saved.");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  els.clearSettingsProfileImageBtn.addEventListener("click", async () => {
+    try {
+      state.draftSettingsProfileImageData = "";
+      await api("/api/users/me/profile-image", {
+        method: "POST",
+        body: JSON.stringify({ profileImageData: "" })
+      });
+      await loadUserSettings();
+      renderSettingsPage();
+      renderMainSections();
+      setStatus("Profile image removed.");
+    } catch (error) {
+      setStatus(error.message);
+    }
   });
 
   els.loginForm.addEventListener("submit", async (event) => {
@@ -3961,6 +4385,7 @@ function bindEvents() {
 
   els.monsterImageFile.addEventListener("change", async () => {
     if (state.monsterEditorReadOnly) return;
+    setMonsterPasteTarget("statblock");
     const file = els.monsterImageFile.files?.[0];
     if (!file) return;
     try {
@@ -3971,7 +4396,21 @@ function bindEvents() {
     }
   });
 
+  els.monsterTokenImageFile.addEventListener("change", async () => {
+    if (state.monsterEditorReadOnly) return;
+    setMonsterPasteTarget("token");
+    const file = els.monsterTokenImageFile.files?.[0];
+    if (!file) return;
+    try {
+      state.draftMonsterTokenImageData = await readFileAsDataUrl(file);
+      setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
   els.libraryEntryImageFile.addEventListener("change", async () => {
+    setLibraryEntryPasteTarget("statblock");
     const file = els.libraryEntryImageFile.files?.[0];
     if (!file) return;
     try {
@@ -3982,9 +4421,33 @@ function bindEvents() {
     }
   });
 
+  els.libraryEntryTokenImageFile.addEventListener("change", async () => {
+    setLibraryEntryPasteTarget("token");
+    const file = els.libraryEntryTokenImageFile.files?.[0];
+    if (!file) return;
+    try {
+      state.draftLibraryEntryTokenImageData = await readFileAsDataUrl(file);
+      setLibraryEntryTokenImagePreview(state.draftLibraryEntryTokenImageData);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
   els.monsterSearchInput.addEventListener("input", () => {
     state.monsterSearchQuery = els.monsterSearchInput.value || "";
     renderMonsterList();
+  });
+  els.monsterStatblockImageGroup.addEventListener("click", () => {
+    setMonsterPasteTarget("statblock");
+  });
+  els.monsterTokenImageGroup.addEventListener("click", () => {
+    setMonsterPasteTarget("token");
+  });
+  els.libraryEntryStatblockImageGroup.addEventListener("click", () => {
+    setLibraryEntryPasteTarget("statblock");
+  });
+  els.libraryEntryTokenImageGroup.addEventListener("click", () => {
+    setLibraryEntryPasteTarget("token");
   });
   els.openAddCombatantModalBtn.addEventListener("click", openAddCombatantModal);
   els.addCombatantCloseBtn.addEventListener("click", closeAddCombatantModal);
@@ -4004,7 +4467,25 @@ function bindEvents() {
   });
 
   document.addEventListener("paste", async (event) => {
-    if (state.page !== "monsters" && state.page !== "scenario-edit") return;
+    if (state.page !== "monsters" && state.page !== "scenario-edit" && state.page !== "settings") {
+      return;
+    }
+    if (state.page === "settings") {
+      const items = event.clipboardData?.items || [];
+      const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      try {
+        state.draftSettingsProfileImageData = await readFileAsDataUrl(file);
+        setSettingsProfileImagePreview(state.draftSettingsProfileImageData);
+        setStatus("Pasted profile image.");
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
     if (state.page === "scenario-edit") {
       const target = event.target;
       if (
@@ -4036,6 +4517,8 @@ function bindEvents() {
       !els.campaignActionModal.classList.contains("hidden") &&
       state.campaignActionMode === "library-entry"
     ) {
+      const target = event.target;
+      const targetId = target instanceof HTMLElement ? target.id : "";
       const items = event.clipboardData?.items || [];
       const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
       if (!imageItem) return;
@@ -4043,9 +4526,24 @@ function bindEvents() {
       if (!file) return;
       event.preventDefault();
       try {
-        state.draftLibraryEntryImageData = await readFileAsDataUrl(file);
-        setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
-        setStatus("Pasted statblock screenshot.");
+        const dataUrl = await readFileAsDataUrl(file);
+        const pasteTarget =
+          targetId === "libraryEntryTokenImageFile"
+            ? "token"
+            : targetId === "libraryEntryImageFile"
+              ? "statblock"
+              : state.libraryEntryPasteTarget;
+        if (pasteTarget === "token") {
+          setLibraryEntryPasteTarget("token");
+          state.draftLibraryEntryTokenImageData = dataUrl;
+          setLibraryEntryTokenImagePreview(state.draftLibraryEntryTokenImageData);
+          setStatus("Pasted token image.");
+        } else {
+          setLibraryEntryPasteTarget("statblock");
+          state.draftLibraryEntryImageData = dataUrl;
+          setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
+          setStatus("Pasted statblock screenshot.");
+        }
       } catch (error) {
         setStatus(error.message);
       }
@@ -4059,9 +4557,26 @@ function bindEvents() {
     if (!file) return;
     event.preventDefault();
     try {
-      state.draftMonsterImageData = await readFileAsDataUrl(file);
-      setMonsterImagePreview(state.draftMonsterImageData);
-      setStatus("Pasted statblock screenshot.");
+      const dataUrl = await readFileAsDataUrl(file);
+      const target = event.target;
+      const targetId = target instanceof HTMLElement ? target.id : "";
+      const pasteTarget =
+        targetId === "monsterTokenImageFile"
+          ? "token"
+          : targetId === "monsterImageFile"
+            ? "statblock"
+            : state.monsterPasteTarget;
+      if (pasteTarget === "token") {
+        setMonsterPasteTarget("token");
+        state.draftMonsterTokenImageData = dataUrl;
+        setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
+        setStatus("Pasted token image.");
+      } else {
+        setMonsterPasteTarget("statblock");
+        state.draftMonsterImageData = dataUrl;
+        setMonsterImagePreview(state.draftMonsterImageData);
+        setStatus("Pasted statblock screenshot.");
+      }
     } catch (error) {
       setStatus(error.message);
     }
@@ -4123,7 +4638,8 @@ function bindEvents() {
           size: els.libraryEntrySize.value,
           isLegendary,
           legendaryActionsCount,
-          monsterImageData: state.draftLibraryEntryImageData || ""
+          monsterImageData: state.draftLibraryEntryImageData || "",
+          tokenImageData: state.draftLibraryEntryTokenImageData || ""
         })
       });
       closeCampaignActionModal();
@@ -4316,7 +4832,7 @@ function bindEvents() {
         method: "POST",
         body: JSON.stringify({
           kind: "enemy",
-          enemyRole: els.enemyRole.value === "npc" ? "npc" : "enemy",
+          enemyRole: els.enemyRole.value === "ally" ? "ally" : "enemy",
           monsterId: state.addCombatantSelectedMonsterId,
           name: els.enemyName.value,
           initiative: Number(els.enemyInitiative.value),

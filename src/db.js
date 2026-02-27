@@ -47,6 +47,7 @@ function initDb() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'player',
       active INTEGER NOT NULL DEFAULT 1,
+      profile_image_data TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -64,6 +65,18 @@ function initDb() {
       ON user_sessions (user_id);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires
       ON user_sessions (expires_at);
+
+    CREATE TABLE IF NOT EXISTS character_claims (
+      character_id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_character_claims_user
+      ON character_claims (user_id);
 
     CREATE TABLE IF NOT EXISTS characters (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +178,7 @@ function initDb() {
       traits TEXT NOT NULL DEFAULT '',
       actions TEXT NOT NULL DEFAULT '',
       monster_image_data TEXT NOT NULL DEFAULT '',
+      token_image_data TEXT NOT NULL DEFAULT '',
       is_legendary INTEGER NOT NULL DEFAULT 0,
       legendary_actions_count INTEGER,
       source TEXT NOT NULL DEFAULT '',
@@ -227,8 +241,12 @@ function initDb() {
   if (!userColumns.includes("active")) {
     db.exec("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
   }
+  if (!userColumns.includes("profile_image_data")) {
+    db.exec("ALTER TABLE users ADD COLUMN profile_image_data TEXT NOT NULL DEFAULT ''");
+  }
   db.exec("UPDATE users SET role = 'player' WHERE role IS NULL OR trim(role) = ''");
   db.exec("UPDATE users SET active = 1 WHERE active NOT IN (0, 1) OR active IS NULL");
+  db.exec("UPDATE users SET profile_image_data = '' WHERE profile_image_data IS NULL");
   db.exec("DELETE FROM user_sessions WHERE expires_at <= datetime('now')");
 
   const combatantColumns = db
@@ -250,6 +268,8 @@ function initDb() {
     db.exec("ALTER TABLE scenario_combatants ADD COLUMN enemy_role TEXT NOT NULL DEFAULT 'enemy'");
     db.exec("UPDATE scenario_combatants SET enemy_role = 'enemy' WHERE enemy_role IS NULL OR enemy_role = ''");
   }
+  db.exec("UPDATE scenario_combatants SET enemy_role = 'ally' WHERE enemy_role = 'npc'");
+  db.exec("UPDATE scenario_combatants SET enemy_role = 'enemy' WHERE enemy_role NOT IN ('enemy', 'ally')");
   if (!combatantColumns.includes("player_visible")) {
     db.exec("ALTER TABLE scenario_combatants ADD COLUMN player_visible INTEGER NOT NULL DEFAULT 1");
   }
@@ -360,6 +380,7 @@ function initDb() {
         traits TEXT NOT NULL DEFAULT '',
         actions TEXT NOT NULL DEFAULT '',
         monster_image_data TEXT NOT NULL DEFAULT '',
+        token_image_data TEXT NOT NULL DEFAULT '',
         is_legendary INTEGER NOT NULL DEFAULT 0,
         legendary_actions_count INTEGER,
         source TEXT NOT NULL DEFAULT '',
@@ -370,13 +391,13 @@ function initDb() {
         id, name, size, type, alignment, armor_class, hit_points, speed,
         str_score, dex_score, con_score, int_score, wis_score, cha_score,
         challenge_rating, proficiency_bonus, senses, languages,
-        traits, actions, monster_image_data, is_legendary, legendary_actions_count, source, created_at, updated_at
+        traits, actions, monster_image_data, token_image_data, is_legendary, legendary_actions_count, source, created_at, updated_at
       )
       SELECT
         id, name, size, type, alignment, armor_class, hit_points, speed,
         str_score, dex_score, con_score, int_score, wis_score, cha_score,
         challenge_rating, proficiency_bonus, senses, languages,
-        traits, actions, monster_image_data,
+        traits, actions, monster_image_data, '',
         0,
         NULL,
         source, created_at, updated_at
@@ -393,6 +414,9 @@ function initDb() {
 
   if (!monsterColumns.includes("monster_image_data")) {
     db.exec("ALTER TABLE monster_statblocks ADD COLUMN monster_image_data TEXT NOT NULL DEFAULT ''");
+  }
+  if (!monsterColumns.includes("token_image_data")) {
+    db.exec("ALTER TABLE monster_statblocks ADD COLUMN token_image_data TEXT NOT NULL DEFAULT ''");
   }
   if (!monsterColumns.includes("size")) {
     db.exec("ALTER TABLE monster_statblocks ADD COLUMN size TEXT NOT NULL DEFAULT 'normal'");

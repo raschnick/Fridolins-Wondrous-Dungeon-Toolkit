@@ -123,6 +123,7 @@ body.page-login .header-bar {
 .user-menu-name {
   display: inline-flex;
   align-items: center;
+  gap: 0.38rem;
   min-height: 1.9rem;
   padding: 0;
   border: none;
@@ -132,6 +133,16 @@ body.page-login .header-bar {
   font-size: 0.95rem;
   cursor: default;
   user-select: none;
+}
+
+.user-menu-avatar {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  background: rgba(10, 18, 30, 0.75);
+  object-fit: cover;
+  object-position: center;
+  display: inline-block;
 }
 
 .user-menu-popover {
@@ -413,6 +424,24 @@ body.page-login .header-bar {
   margin-bottom: 0.35rem;
 }
 
+#monsterForm.monster-form-readonly #monsterTokenImagePreview {
+  display: none !important;
+}
+
+.monster-readonly-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.monster-readonly-meta {
+  display: grid;
+  gap: 0.45rem;
+  width: 100%;
+  grid-column: 1;
+}
+
 .monster-readonly-row {
   display: grid;
   gap: 0.16rem;
@@ -426,6 +455,22 @@ body.page-login .header-bar {
 .monster-readonly-value {
   font-size: 0.98rem;
   color: var(--ink);
+}
+
+.monster-readonly-token {
+  grid-column: 2;
+  width: 11rem;
+  height: 11rem;
+  justify-self: center;
+  align-self: start;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid #3b4f66;
+  background: #121b28;
+}
+
+#monsterImagePreview {
+  margin-bottom: 0.9rem;
 }
 
 #deleteMonsterBtn {
@@ -580,6 +625,16 @@ button:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.monster-list-avatar {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid #3b4f66;
+  background: #121b28;
+  flex: 0 0 auto;
 }
 
 .scenario-label {
@@ -1042,6 +1097,15 @@ body.page-player #playerLiveWrap {
   object-fit: contain;
   image-rendering: pixelated;
   pointer-events: none;
+}
+
+.run-map-token-icon.token-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 999px;
+  image-rendering: auto;
 }
 
 .run-map-token-name {
@@ -1528,6 +1592,66 @@ body.page-player #playerLiveWrap {
   cursor: zoom-in;
 }
 
+#monsterTokenImagePreview,
+#libraryEntryTokenImagePreview {
+  max-width: 12rem;
+  max-height: 12rem;
+  object-fit: cover;
+}
+
+.paste-target-group {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem 0.2rem;
+}
+
+.paste-target-group.active {
+  border-color: #4d78b9;
+  background: rgba(66, 109, 176, 0.16);
+}
+
+#settingsProfileSection {
+  position: relative;
+  min-height: 8.6rem;
+  padding-right: 6.8rem;
+}
+
+#settingsPasswordSection {
+  margin-top: 0;
+}
+
+#settingsPasswordSection label {
+  display: block;
+  margin-top: 0.5rem;
+}
+
+#settingsPasswordSection input {
+  margin-top: 0.3rem;
+}
+
+#settingsPasswordSection .settings-password-row {
+  margin-top: 0.55rem;
+}
+
+#settingsAccountSection .row {
+  margin-bottom: 0.75rem;
+}
+
+#settingsProfileSection .row {
+  margin-top: 0.75rem;
+}
+
+#settingsProfileImagePreview {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 4.25rem;
+  height: 4.25rem;
+  max-width: none;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
 .image-modal {
   position: fixed;
   inset: 0;
@@ -1753,6 +1877,15 @@ body.page-player #playerLiveWrap {
   height: calc(var(--token-size-effective) * 0.9);
   object-fit: contain;
   image-rendering: pixelated;
+}
+
+.player-map-token-icon.token-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 999px;
+  image-rendering: auto;
 }
 
 .player-map-token-name {
