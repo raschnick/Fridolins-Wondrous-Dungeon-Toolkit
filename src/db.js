@@ -2,8 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const dataDir = path.join(__dirname, "..", "data");
-const dbPath = path.join(dataDir, "itracker.sqlite");
+const configuredDbPath = process.env.FWDT_DB_PATH
+  ? path.resolve(process.env.FWDT_DB_PATH)
+  : path.join(__dirname, "..", "data", "itracker.sqlite");
+const dbPath = configuredDbPath;
+const dataDir = path.dirname(dbPath);
 
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });

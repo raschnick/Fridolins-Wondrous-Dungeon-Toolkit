@@ -2079,6 +2079,10 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Internal server error." });
 });
 
-app.listen(port, () => {
-  console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
+  });
+}
+
+module.exports = { app };
