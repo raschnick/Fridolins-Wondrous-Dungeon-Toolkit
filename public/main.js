@@ -65,6 +65,7 @@ const state = {
   scenarioVictoryById: {},
   pendingVictorySoundById: {},
   victoryAudioContext: null,
+  victoryAudioElement: null,
   victoryAudioUnlocked: false,
   selectedCampaignId: null,
   characters: [],
@@ -529,10 +530,13 @@ function scheduleScenarioEditAutoSave(delayMs = 450) {
   }, delayMs);
 }
 
-function hasPlayersWonEncounter(combatants) {
-  const enemies = (Array.isArray(combatants) ? combatants : []).filter(
-    (combatant) => combatant.kind === "enemy" && combatant.enemy_role !== "npc"
-  );
+function hasPlayersWonEncounter(combatants, { visibleOnly = false } = {}) {
+  const enemies = (Array.isArray(combatants) ? combatants : []).filter((combatant) => {
+    if (combatant.kind !== "enemy" || combatant.enemy_role === "npc") return false;
+    if (!visibleOnly) return true;
+    if (combatant.player_visible == null) return true;
+    return Number(combatant.player_visible) !== 0;
+  });
   if (enemies.length === 0) return false;
   return enemies.every((enemy) => {
     if (Number(enemy.is_defeated) === 1) return true;
@@ -542,88 +546,51 @@ function hasPlayersWonEncounter(combatants) {
 }
 
 async function playVictorySound() {
-  if (!state.victoryAudioUnlocked || !state.victoryAudioContext) return false;
-  const ctx = state.victoryAudioContext;
-  if (ctx.state !== "running") return false;
-
-  const sequence = [
-    { freq: 392.0, at: 0.0, dur: 0.2 },
-    { freq: 523.25, at: 0.22, dur: 0.22 },
-    { freq: 659.25, at: 0.46, dur: 0.24 },
-    { freq: 783.99, at: 0.72, dur: 0.42 }
-  ];
-  const start = ctx.currentTime;
-  sequence.forEach((step) => {
-    const t0 = start + step.at;
-    const t1 = t0 + step.dur;
-
-    // Layered waveform approximates a small brass fanfare without external assets.
-    const oscA = ctx.createOscillator();
-    const oscB = ctx.createOscillator();
-    const oscC = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-
-    oscA.type = "sawtooth";
-    oscB.type = "square";
-    oscC.type = "triangle";
-
-    oscA.frequency.setValueAtTime(step.freq, t0);
-    oscB.frequency.setValueAtTime(step.freq * 1.005, t0);
-    oscC.frequency.setValueAtTime(step.freq * 2, t0);
-
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(1800, t0);
-    filter.Q.setValueAtTime(0.8, t0);
-
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.09);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t1);
-
-    oscA.connect(filter);
-    oscB.connect(filter);
-    oscC.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-
-    oscA.start(t0);
-    oscB.start(t0);
-    oscC.start(t0);
-    oscA.stop(t1 + 0.01);
-    oscB.stop(t1 + 0.01);
-    oscC.stop(t1 + 0.01);
-  });
-  return true;
+  if (!state.victoryAudioUnlocked) return false;
+  if (!state.victoryAudioElement) {
+    state.victoryAudioElement = new Audio("/sounds/victory_sound.mp3");
+    state.victoryAudioElement.preload = "auto";
+  }
+  state.victoryAudioElement.currentTime = 0;
+  try {
+    await state.victoryAudioElement.play();
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function launchVictoryConfetti() {
   const layer = document.createElement("div");
   layer.className = "victory-confetti-layer";
   const colors = ["#ff6b6b", "#ffd166", "#06d6a0", "#4cc9f0", "#f72585", "#90be6d"];
-  const count = 150;
+  const waves = 4;
+  const countPerWave = 55;
 
-  for (let i = 0; i < count; i += 1) {
-    const piece = document.createElement("span");
-    piece.className = "victory-confetti-piece";
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 180 + Math.random() * 380;
-    const dx = Math.cos(angle) * distance;
-    const dy = Math.sin(angle) * distance - 140;
-    piece.style.setProperty("--dx", `${dx}px`);
-    piece.style.setProperty("--dy", `${dy}px`);
-    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
-    piece.style.width = `${5 + Math.random() * 6}px`;
-    piece.style.height = `${7 + Math.random() * 10}px`;
-    piece.style.animationDelay = `${Math.random() * 120}ms`;
-    piece.style.animationDuration = `${1450 + Math.random() * 900}ms`;
-    layer.appendChild(piece);
+  for (let wave = 0; wave < waves; wave += 1) {
+    const waveDelay = wave * 520;
+    for (let i = 0; i < countPerWave; i += 1) {
+      const piece = document.createElement("span");
+      piece.className = "victory-confetti-piece";
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 180 + Math.random() * 380;
+      const dx = Math.cos(angle) * distance;
+      const dy = Math.sin(angle) * distance - 140;
+      piece.style.setProperty("--dx", `${dx}px`);
+      piece.style.setProperty("--dy", `${dy}px`);
+      piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+      piece.style.width = `${5 + Math.random() * 6}px`;
+      piece.style.height = `${7 + Math.random() * 10}px`;
+      piece.style.animationDelay = `${waveDelay + Math.random() * 120}ms`;
+      piece.style.animationDuration = `${2500 + Math.random() * 700}ms`;
+      layer.appendChild(piece);
+    }
   }
 
   document.body.appendChild(layer);
   window.setTimeout(() => {
     layer.remove();
-  }, 3000);
+  }, 5200);
 }
 
 function unlockVictoryAudio() {
@@ -639,7 +606,18 @@ function unlockVictoryAudio() {
     return;
   }
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
+  if (!AudioCtx) {
+    state.victoryAudioUnlocked = true;
+    for (const key of Object.keys(state.pendingVictorySoundById)) {
+      if (!state.pendingVictorySoundById[key]) continue;
+      playVictorySound().then((ok) => {
+        if (ok) {
+          delete state.pendingVictorySoundById[key];
+        }
+      }).catch(() => {});
+    }
+    return;
+  }
   if (!state.victoryAudioContext) {
     state.victoryAudioContext = new AudioCtx();
   }
@@ -659,10 +637,18 @@ function unlockVictoryAudio() {
   });
 }
 
-function maybeCelebrateEncounterWin(scenarioId, combatants) {
+function maybeCelebrateEncounterWin(scenarioId, combatants, options = {}) {
   if (!Number.isInteger(scenarioId)) return;
   const key = `${state.authUser?.role || "user"}:${scenarioId}`;
-  const wonNow = hasPlayersWonEncounter(combatants);
+  const wonNow = hasPlayersWonEncounter(combatants, options);
+  const hasSeenScenario = Object.prototype.hasOwnProperty.call(state.scenarioVictoryById, key);
+  if (!hasSeenScenario) {
+    state.scenarioVictoryById[key] = wonNow;
+    if (!wonNow) {
+      delete state.pendingVictorySoundById[key];
+    }
+    return;
+  }
   const wonBefore = Boolean(state.scenarioVictoryById[key]);
 
   if (wonNow && !wonBefore) {
@@ -2132,6 +2118,12 @@ function ensureMapTokensForCombatants(scenarioId, combatants) {
   for (const combatant of combatants) {
     const isHidden = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
     if (isHidden) continue;
+    const isEnemyDefeated =
+      combatant.kind === "enemy" &&
+      combatant.enemy_role !== "npc" &&
+      Number.isFinite(Number(combatant.hp)) &&
+      Number(combatant.hp) <= 0;
+    if (isEnemyDefeated) continue;
     if (!positions[combatant.id]) {
       const col = index % 8;
       const row = Math.floor(index / 8);
@@ -2156,6 +2148,12 @@ function renderRunMapTokens(scenarioId, combatants) {
   for (const combatant of combatants) {
     const isHidden = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
     if (isHidden) continue;
+    const isEnemyDefeated =
+      combatant.kind === "enemy" &&
+      combatant.enemy_role !== "npc" &&
+      Number.isFinite(Number(combatant.hp)) &&
+      Number(combatant.hp) <= 0;
+    if (isEnemyDefeated) continue;
     const pos = positions[combatant.id];
     if (!pos) continue;
 
@@ -3047,7 +3045,7 @@ function renderPlayerHome() {
   }
 
   if (state.authUser?.role !== "admin" && state.page === "player-home") {
-    maybeCelebrateEncounterWin(shared.scenarioId, combatants);
+    maybeCelebrateEncounterWin(shared.scenarioId, combatants, { visibleOnly: true });
   }
 }
 
@@ -3159,6 +3157,11 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
   const positions = parseMapTokensJson(mapTokensJson);
   els.playerMapTokens.innerHTML = "";
   for (const combatant of combatants) {
+    const isEnemyDefeated =
+      combatant.kind === "enemy" &&
+      combatant.enemy_role !== "npc" &&
+      Number(combatant.is_defeated) === 1;
+    if (isEnemyDefeated) continue;
     const pos = positions[combatant.id];
     if (!pos) continue;
     const token = document.createElement("span");
