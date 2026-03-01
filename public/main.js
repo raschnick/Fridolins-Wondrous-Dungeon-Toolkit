@@ -69,6 +69,7 @@ const state = {
   playerLivePollTimer: null,
   runMapSyncPollTimer: null,
   playerLiveViewMode: "initiative",
+  loginAweTimer: null,
   scenarioVictoryById: {},
   pendingVictorySoundById: {},
   victoryAudioContext: null,
@@ -311,112 +312,112 @@ const CONDITIONS = [
     label: "Blinded",
     color: "#7b4f4f",
     tip:
-      "While you have the Blinded condition: Can't See. You can't see and automatically fail any ability check that requires sight. Attacks Affected. Attack rolls against you have Advantage, and your attack rolls have Disadvantage."
+      "Can't See. You can't see and automatically fail any ability check that requires sight.\n\nAttacks Affected. Attack rolls against you have Advantage, and your attack rolls have Disadvantage."
   },
   {
     key: "charmed",
     label: "Charmed",
     color: "#b2648d",
     tip:
-      "While you have the Charmed condition: Can't Harm the Charmer. You can't attack the charmer or target the charmer with damaging abilities or magical effects. Social Advantage. The charmer has Advantage on any ability check to interact with you socially."
+      "Can't Harm the Charmer. You can't attack the charmer or target the charmer with damaging abilities or magical effects.\n\nSocial Advantage. The charmer has Advantage on any ability check to interact with you socially."
   },
   {
     key: "deafened",
     label: "Deafened",
     color: "#5b6d7a",
     tip:
-      "While you have the Deafened condition: Can't Hear. You can't hear and automatically fail any ability check that requires hearing."
+      "Can't Hear. You can't hear and automatically fail any ability check that requires hearing."
   },
   {
     key: "exhaustion",
     label: "Exhaustion",
     color: "#9b6a3c",
     tip:
-      "While you have the Exhaustion condition: Exhaustion Levels. This condition is cumulative; each time you receive it, you gain 1 level, and you die if your level is 6. D20 Tests Affected. When you make a D20 Test, the roll is reduced by 2 times your Exhaustion level. Speed Reduced. Your Speed is reduced by 5 times your Exhaustion level. Removing Exhaustion Levels. Finishing a Long Rest removes 1 level; when your level reaches 0, the condition ends."
+      "Exhaustion Levels. This condition is cumulative; each time you receive it, you gain 1 level, and you die if your level is 6.\n\nD20 Tests Affected. When you make a D20 Test, the roll is reduced by 2 times your Exhaustion level.\n\nSpeed Reduced. Your Speed is reduced by 5 times your Exhaustion level.\n\nRemoving Exhaustion Levels. Finishing a Long Rest removes 1 level; when your level reaches 0, the condition ends."
   },
   {
     key: "frightened",
     label: "Frightened",
     color: "#83624a",
     tip:
-      "While you have the Frightened condition: Ability Checks and Attacks Affected. You have Disadvantage on ability checks and attack rolls while the source of fear is within line of sight. Can't Approach. You can't willingly move closer to the source of fear."
+      "Ability Checks and Attacks Affected. You have Disadvantage on ability checks and attack rolls while the source of fear is within line of sight.\n\nCan't Approach. You can't willingly move closer to the source of fear."
   },
   {
     key: "grappled",
     label: "Grappled",
     color: "#6f5443",
     tip:
-      "While you have the Grappled condition: Speed 0. Your Speed is 0 and can't increase. Attacks Affected. You have Disadvantage on attack rolls against any target other than the grappler. Movable. The grappler can drag or carry you when it moves, but every foot of movement costs it 1 extra foot unless you are Tiny or two or more sizes smaller than it."
+      "Speed 0. Your Speed is 0 and can't increase.\n\nAttacks Affected. You have Disadvantage on attack rolls against any target other than the grappler.\n\nMovable. The grappler can drag or carry you when it moves, but every foot of movement costs it 1 extra foot unless you are Tiny or two or more sizes smaller than it."
   },
   {
     key: "incapacitated",
     label: "Incapacitated",
     color: "#56706f",
     tip:
-      "While you have the Incapacitated condition: Inactive. You can't take any action, Bonus Action, or Reaction. No Concentration. Your Concentration is broken. Speechless. You can't speak. Surprised. If you're Incapacitated when you roll Initiative, you have Disadvantage on the roll."
+      "Inactive. You can't take any action, Bonus Action, or Reaction.\n\nNo Concentration. Your Concentration is broken.\n\nSpeechless. You can't speak.\n\nSurprised. If you're Incapacitated when you roll Initiative, you have Disadvantage on the roll."
   },
   {
     key: "concentrated",
     label: "Concentrated",
     color: "#4d6d7f",
     tip:
-      "If you take damage, you must succeed on a Constitution saving throw to maintain Concentration. The DC equals 10 or half the damage taken (round down), whichever number is higher, up to a maximum DC of 30."
+      "If you take damage, you must succeed on a Constitution saving throw to maintain Concentration.\n\nThe DC equals 10 or half the damage taken (round down), whichever number is higher, up to a maximum DC of 30."
   },
   {
     key: "invisible",
     label: "Invisible",
     color: "#6f6f8f",
     tip:
-      "While you have the Invisible condition: Surprise. If you're Invisible when you roll Initiative, you have Advantage on the roll. Concealed. You aren't affected by any effect that requires its target to be seen unless the effect's creator can somehow see you; any equipment you are wearing or carrying is also concealed. Attacks Affected. Attack rolls against you have Disadvantage, and your attack rolls have Advantage; if a creature can somehow see you, you don't gain this benefit against that creature."
+      "Surprise. If you're Invisible when you roll Initiative, you have Advantage on the roll.\n\nConcealed. You aren't affected by any effect that requires its target to be seen unless the effect's creator can somehow see you; any equipment you are wearing or carrying is also concealed.\n\nAttacks Affected. Attack rolls against you have Disadvantage, and your attack rolls have Advantage; if a creature can somehow see you, you don't gain this benefit against that creature."
   },
   {
     key: "paralyzed",
     label: "Paralyzed",
     color: "#6c5a90",
     tip:
-      "While you have the Paralyzed condition: Incapacitated. You have the Incapacitated condition. Speed 0. Your Speed is 0 and can't increase. Saving Throws Affected. You automatically fail Strength and Dexterity saving throws. Attacks Affected. Attack rolls against you have Advantage. Automatic Critical Hits. Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."
+      "Incapacitated. You have the Incapacitated condition.\n\nSpeed 0. Your Speed is 0 and can't increase.\n\nSaving Throws Affected. You automatically fail Strength and Dexterity saving throws.\n\nAttacks Affected. Attack rolls against you have Advantage.\n\nAutomatic Critical Hits. Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."
   },
   {
     key: "petrified",
     label: "Petrified",
     color: "#6f6f6f",
     tip:
-      "While you have the Petrified condition: Turned to Inanimate Substance. You and nonmagical worn/carried objects are transformed into a solid inanimate substance (usually stone); your weight increases tenfold, and you cease aging. Incapacitated. You have the Incapacitated condition. Speed 0. Your Speed is 0 and can't increase. Attacks Affected. Attack rolls against you have Advantage. Saving Throws Affected. You automatically fail Strength and Dexterity saving throws. Resist Damage. You have Resistance to all damage. Poison Immunity. You have Immunity to the Poisoned condition."
+      "Turned to Inanimate Substance. You and nonmagical worn/carried objects are transformed into a solid inanimate substance (usually stone); your weight increases tenfold, and you cease aging.\n\nIncapacitated. You have the Incapacitated condition.\n\nSpeed 0. Your Speed is 0 and can't increase.\n\nAttacks Affected. Attack rolls against you have Advantage.\n\nSaving Throws Affected. You automatically fail Strength and Dexterity saving throws.\n\nResist Damage. You have Resistance to all damage.\n\nPoison Immunity. You have Immunity to the Poisoned condition."
   },
   {
     key: "poisoned",
     label: "Poisoned",
     color: "#4a7d4f",
     tip:
-      "While you have the Poisoned condition: Ability Checks and Attacks Affected. You have Disadvantage on attack rolls and ability checks."
+      "Ability Checks and Attacks Affected. You have Disadvantage on attack rolls and ability checks."
   },
   {
     key: "prone",
     label: "Prone",
     color: "#8c6c52",
     tip:
-      "While you have the Prone condition: Restricted Movement. Your only movement options are to crawl or to spend movement equal to half your Speed (round down) to right yourself and end the condition; if your Speed is 0, you can't right yourself. Attacks Affected. You have Disadvantage on attack rolls. An attack roll against you has Advantage if the attacker is within 5 feet of you; otherwise that attack roll has Disadvantage."
+      "Restricted Movement. Your only movement options are to crawl or to spend movement equal to half your Speed (round down) to right yourself and end the condition; if your Speed is 0, you can't right yourself.\n\nAttacks Affected. You have Disadvantage on attack rolls.\n\nAn attack roll against you has Advantage if the attacker is within 5 feet of you; otherwise that attack roll has Disadvantage."
   },
   {
     key: "restrained",
     label: "Restrained",
     color: "#826944",
     tip:
-      "While you have the Restrained condition: Speed 0. Your Speed is 0 and can't increase. Attacks Affected. Attack rolls against you have Advantage, and your attack rolls have Disadvantage. Saving Throws Affected. You have Disadvantage on Dexterity saving throws."
+      "Speed 0. Your Speed is 0 and can't increase.\n\nAttacks Affected. Attack rolls against you have Advantage, and your attack rolls have Disadvantage.\n\nSaving Throws Affected. You have Disadvantage on Dexterity saving throws."
   },
   {
     key: "stunned",
     label: "Stunned",
     color: "#7c6a85",
     tip:
-      "While you have the Stunned condition: Incapacitated. You have the Incapacitated condition. Saving Throws Affected. You automatically fail Strength and Dexterity saving throws. Attacks Affected. Attack rolls against you have Advantage."
+      "Incapacitated. You have the Incapacitated condition.\n\nSaving Throws Affected. You automatically fail Strength and Dexterity saving throws.\n\nAttacks Affected. Attack rolls against you have Advantage."
   },
   {
     key: "unconscious",
     label: "Unconscious",
     color: "#4f5b7a",
     tip:
-      "While you have the Unconscious condition: Inert. You have the Incapacitated and Prone conditions, and you drop whatever you're holding; when this condition ends, you remain Prone. Speed 0. Your Speed is 0 and can't increase. Attacks Affected. Attack rolls against you have Advantage. Saving Throws Affected. You automatically fail Strength and Dexterity saving throws. Automatic Critical Hits. Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you. Unaware. You're unaware of your surroundings."
+      "Inert. You have the Incapacitated and Prone conditions, and you drop whatever you're holding; when this condition ends, you remain Prone.\n\nSpeed 0. Your Speed is 0 and can't increase.\n\nAttacks Affected. Attack rolls against you have Advantage.\n\nSaving Throws Affected. You automatically fail Strength and Dexterity saving throws.\n\nAutomatic Critical Hits. Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you.\n\nUnaware. You're unaware of your surroundings."
   },
   {
     key: "down",
@@ -458,9 +459,79 @@ function setLoginStatus(message = "") {
   els.loginStatus.textContent = message;
 }
 
+function triggerLoginAweEffect() {
+  if (state.loginAweTimer) {
+    clearTimeout(state.loginAweTimer);
+    state.loginAweTimer = null;
+  }
+  document.body.classList.remove("login-awe-active");
+  // Force reflow so repeated logins can retrigger the effect cleanly.
+  void document.body.offsetWidth;
+  document.body.classList.add("login-awe-active");
+  state.loginAweTimer = setTimeout(() => {
+    document.body.classList.remove("login-awe-active");
+    state.loginAweTimer = null;
+  }, 1800);
+}
+
 function setAdminStatus(message = "") {
   if (!els.adminStatus) return;
   els.adminStatus.textContent = message;
+}
+
+let conditionTooltipEl = null;
+let conditionTooltipChip = null;
+
+function ensureConditionTooltipEl() {
+  if (conditionTooltipEl) return conditionTooltipEl;
+  conditionTooltipEl = document.createElement("div");
+  conditionTooltipEl.className = "condition-tooltip-floating hidden";
+  document.body.appendChild(conditionTooltipEl);
+  return conditionTooltipEl;
+}
+
+function hideConditionTooltip() {
+  if (!conditionTooltipEl) return;
+  conditionTooltipEl.classList.add("hidden");
+  conditionTooltipChip = null;
+}
+
+function positionConditionTooltip(chip) {
+  if (!conditionTooltipEl || conditionTooltipEl.classList.contains("hidden")) return;
+  const chipRect = chip.getBoundingClientRect();
+  const tooltipRect = conditionTooltipEl.getBoundingClientRect();
+  const gap = 8;
+  const margin = 8;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let left = chipRect.left;
+  if (left + tooltipRect.width > viewportWidth - margin) {
+    left = viewportWidth - tooltipRect.width - margin;
+  }
+  if (left < margin) left = margin;
+
+  let top = chipRect.bottom + gap;
+  if (top + tooltipRect.height > viewportHeight - margin) {
+    top = chipRect.top - tooltipRect.height - gap;
+  }
+  if (top < margin) top = margin;
+
+  conditionTooltipEl.style.left = `${Math.round(left)}px`;
+  conditionTooltipEl.style.top = `${Math.round(top)}px`;
+}
+
+function showConditionTooltip(chip) {
+  const tip = `${chip.getAttribute("data-tip") || ""}`.trim();
+  if (!tip) {
+    hideConditionTooltip();
+    return;
+  }
+  const tooltip = ensureConditionTooltipEl();
+  tooltip.textContent = tip;
+  tooltip.classList.remove("hidden");
+  conditionTooltipChip = chip;
+  positionConditionTooltip(chip);
 }
 
 function setMonsterImagePreview(dataUrl) {
@@ -3979,7 +4050,10 @@ function bindEvents() {
         }
       } else if (state.page === "scenario-edit") {
         event.preventDefault();
-        els.goRunFromEditBtn.click();
+        navigateToPage("scenario-map", {
+          campaignId: state.selectedCampaignId,
+          scenarioId: state.selectedScenarioId
+        });
       }
       return;
     }
@@ -4228,6 +4302,7 @@ function bindEvents() {
       state.authUser = result.user;
       setLoginStatus("");
       els.loginPassword.value = "";
+      triggerLoginAweEffect();
       if (state.authUser.role === "admin") {
         await loadMonsters();
       }
@@ -5220,7 +5295,55 @@ function bindEvents() {
     els.playerMapViewport.addEventListener("pointercancel", endPlayerMapDrag);
   }
 
+  document.addEventListener("mouseover", (event) => {
+    const chip = event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    if (!(chip instanceof HTMLElement)) return;
+    showConditionTooltip(chip);
+  });
+
+  document.addEventListener("mouseout", (event) => {
+    if (!conditionTooltipChip) return;
+    const targetChip =
+      event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    if (targetChip !== conditionTooltipChip) return;
+    const relatedChip =
+      event.relatedTarget instanceof Element
+        ? event.relatedTarget.closest(".condition-chip")
+        : null;
+    if (relatedChip === conditionTooltipChip) return;
+    hideConditionTooltip();
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const chip = event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    if (!(chip instanceof HTMLElement)) return;
+    showConditionTooltip(chip);
+  });
+
+  document.addEventListener("focusout", (event) => {
+    if (!conditionTooltipChip) return;
+    const targetChip =
+      event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    if (targetChip !== conditionTooltipChip) return;
+    const relatedChip =
+      event.relatedTarget instanceof Element
+        ? event.relatedTarget.closest(".condition-chip")
+        : null;
+    if (relatedChip === conditionTooltipChip) return;
+    hideConditionTooltip();
+  });
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!conditionTooltipChip) return;
+      positionConditionTooltip(conditionTooltipChip);
+    },
+    true
+  );
+
   window.addEventListener("resize", () => {
+    if (conditionTooltipChip) positionConditionTooltip(conditionTooltipChip);
     if (state.page === "scenario-map") applyRunMapTransform();
   });
 }
