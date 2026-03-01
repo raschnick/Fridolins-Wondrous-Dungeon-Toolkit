@@ -479,6 +479,13 @@ function setAdminStatus(message = "") {
   els.adminStatus.textContent = message;
 }
 
+function closeUserMenuPopover() {
+  els.userMenu?.classList.add("force-closed");
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+}
+
 let conditionTooltipEl = null;
 let conditionTooltipChip = null;
 
@@ -4184,14 +4191,17 @@ function bindEvents() {
   });
 
   els.userMenuSettingsBtn.addEventListener("click", async () => {
+    closeUserMenuPopover();
     await navigateToPage("settings");
   });
 
   els.userMenuAdminBtn.addEventListener("click", async () => {
+    closeUserMenuPopover();
     await navigateToPage("admin");
   });
 
   els.userMenuLogoutBtn.addEventListener("click", async () => {
+    closeUserMenuPopover();
     try {
       await api("/api/auth/logout", { method: "POST" });
     } catch (_error) {
@@ -4200,6 +4210,10 @@ function bindEvents() {
     state.authUser = null;
     setLoginStatus("");
     showPage("login");
+  });
+
+  els.userMenu?.addEventListener("mouseleave", () => {
+    els.userMenu.classList.remove("force-closed");
   });
 
   els.saveSettingsUsernameBtn.addEventListener("click", async () => {

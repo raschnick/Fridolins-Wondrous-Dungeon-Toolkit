@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap");
+
 :root {
   --bg: #10151c;
   --bg-alt: #151c25;
@@ -26,9 +28,17 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Source Sans 3", "Segoe UI", Tahoma, sans-serif;
   background: transparent;
   color: var(--ink);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: "Cinzel", Georgia, "Times New Roman", serif;
+  letter-spacing: 0.02em;
 }
 
 .app {
@@ -340,6 +350,14 @@ body.login-awe-active.page-player #playerLiveWrap {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+.user-menu.force-closed .user-menu-popover,
+.user-menu.force-closed:hover .user-menu-popover,
+.user-menu.force-closed:focus-within .user-menu-popover {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
 }
 
 @media (max-width: 900px) {
