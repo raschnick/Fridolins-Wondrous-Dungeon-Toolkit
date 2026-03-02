@@ -1862,6 +1862,7 @@ app.post("/api/scenarios/:scenarioId/combat/next-turn", (req, res) => {
 
   const isDefeatedEnemy = (combatant) => {
     if (combatant.kind !== "enemy") return false;
+    if (combatant.hp == null || combatant.hp === "") return false;
     const hp = Number(combatant.hp);
     return Number.isFinite(hp) && hp <= 0;
   };
@@ -1937,20 +1938,49 @@ app.post("/api/scenarios/:scenarioId/combat/prev-turn", (req, res) => {
     return badRequest(res, "Add at least one combatant first.");
   }
 
+  const isDefeatedEnemy = (combatant) => {
+    if (combatant.kind !== "enemy") return false;
+    if (combatant.hp == null || combatant.hp === "") return false;
+    const hp = Number(combatant.hp);
+    return Number.isFinite(hp) && hp <= 0;
+  };
+
+  const isHiddenNonPc = (combatant) => {
+    return combatant.kind !== "character" && Number(combatant.player_visible) === 0;
+  };
+
   const base = normalizeCombatState(scenario, combatants);
   const previousActive = combatants[base.turnIndex] || null;
   const previousActiveId = previousActive?.id || null;
-  let nextTurnIndex = base.turnIndex - 1;
+  let nextTurnIndex = base.turnIndex;
   let nextRound = base.round;
+  let foundEligible = false;
 
-  if (nextTurnIndex < 0) {
-    if (base.round <= 1) {
-      nextTurnIndex = 0;
-      nextRound = 1;
-    } else {
-      nextTurnIndex = combatants.length - 1;
-      nextRound -= 1;
+  if (base.round <= 1 && base.turnIndex === 0) {
+    nextTurnIndex = 0;
+    nextRound = 1;
+  } else {
+    for (let i = 0; i < combatants.length; i += 1) {
+      nextTurnIndex -= 1;
+      if (nextTurnIndex < 0) {
+        nextTurnIndex = combatants.length - 1;
+        nextRound -= 1;
+      }
+      if (nextRound < 1) {
+        nextTurnIndex = 0;
+        nextRound = 1;
+        break;
+      }
+      if (!isDefeatedEnemy(combatants[nextTurnIndex]) && !isHiddenNonPc(combatants[nextTurnIndex])) {
+        foundEligible = true;
+        break;
+      }
     }
+  }
+
+  if (!foundEligible && !(base.round <= 1 && base.turnIndex === 0)) {
+    nextTurnIndex = base.turnIndex;
+    nextRound = base.round;
   }
 
   db.prepare(

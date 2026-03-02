@@ -488,6 +488,8 @@ function closeUserMenuPopover() {
 
 let conditionTooltipEl = null;
 let conditionTooltipChip = null;
+const CONDITION_TOOLTIP_NO_LEAD_STYLE = new Set(["down", "concentrated"]);
+let mapStatblockHoverEl = null;
 
 function ensureConditionTooltipEl() {
   if (conditionTooltipEl) return conditionTooltipEl;
@@ -501,6 +503,55 @@ function hideConditionTooltip() {
   if (!conditionTooltipEl) return;
   conditionTooltipEl.classList.add("hidden");
   conditionTooltipChip = null;
+}
+
+function ensureMapStatblockHoverEl() {
+  if (mapStatblockHoverEl) return mapStatblockHoverEl;
+  mapStatblockHoverEl = document.createElement("div");
+  mapStatblockHoverEl.className = "map-statblock-hover hidden";
+  const image = document.createElement("img");
+  image.alt = "Statblock preview";
+  mapStatblockHoverEl.appendChild(image);
+  document.body.appendChild(mapStatblockHoverEl);
+  return mapStatblockHoverEl;
+}
+
+function hideMapStatblockHover() {
+  if (!mapStatblockHoverEl) return;
+  mapStatblockHoverEl.classList.add("hidden");
+  const image = mapStatblockHoverEl.querySelector("img");
+  if (image) image.src = "";
+}
+
+function showMapStatblockHover(src, anchorEl) {
+  if (!src || !anchorEl) return;
+  const popup = ensureMapStatblockHoverEl();
+  const image = popup.querySelector("img");
+  if (!image) return;
+  image.src = src;
+  popup.classList.remove("hidden");
+
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const margin = 10;
+  const desiredWidth = 1040;
+  const maxWidth = Math.min(desiredWidth, window.innerWidth - margin * 2);
+  popup.style.width = `${maxWidth}px`;
+
+  const popupRect = popup.getBoundingClientRect();
+  let left = anchorRect.right + margin;
+  if (left + popupRect.width > window.innerWidth - margin) {
+    left = anchorRect.left - popupRect.width - margin;
+  }
+  if (left < margin) left = margin;
+
+  let top = anchorRect.top;
+  if (top + popupRect.height > window.innerHeight - margin) {
+    top = window.innerHeight - popupRect.height - margin;
+  }
+  if (top < margin) top = margin;
+
+  popup.style.left = `${Math.round(left)}px`;
+  popup.style.top = `${Math.round(top)}px`;
 }
 
 function positionConditionTooltip(chip) {
@@ -528,14 +579,47 @@ function positionConditionTooltip(chip) {
   conditionTooltipEl.style.top = `${Math.round(top)}px`;
 }
 
+function renderConditionTooltipContent(tooltip, tip, options = {}) {
+  const emphasizeLead = options.emphasizeLead !== false;
+  tooltip.replaceChildren();
+  const paragraphs = `${tip || ""}`
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    const line = document.createElement("p");
+    line.className = "condition-tooltip-paragraph";
+
+    const firstDot = paragraph.indexOf(".");
+    if (firstDot > 0 && emphasizeLead) {
+      const lead = paragraph.slice(0, firstDot + 1).trim();
+      const rest = paragraph.slice(firstDot + 1).trim();
+      const leadEl = document.createElement("span");
+      leadEl.className = "condition-tooltip-lead";
+      leadEl.textContent = lead;
+      line.appendChild(leadEl);
+      if (rest) {
+        line.appendChild(document.createTextNode(` ${rest}`));
+      }
+    } else {
+      line.textContent = paragraph;
+    }
+
+    tooltip.appendChild(line);
+  }
+}
+
 function showConditionTooltip(chip) {
   const tip = `${chip.getAttribute("data-tip") || ""}`.trim();
   if (!tip) {
     hideConditionTooltip();
     return;
   }
+  const conditionKey = `${chip.getAttribute("data-condition-key") || ""}`.trim().toLowerCase();
+  const emphasizeLead = !CONDITION_TOOLTIP_NO_LEAD_STYLE.has(conditionKey);
   const tooltip = ensureConditionTooltipEl();
-  tooltip.textContent = tip;
+  renderConditionTooltipContent(tooltip, tip, { emphasizeLead });
   tooltip.classList.remove("hidden");
   conditionTooltipChip = chip;
   positionConditionTooltip(chip);
@@ -1165,8 +1249,11 @@ function createCombatantNameElement(combatant) {
   const icon = document.createElement("img");
   icon.className = "combatant-icon";
   icon.alt = combatantKindLabel(combatant);
+  if (combatantUsesPortraitToken(combatant)) {
+    icon.classList.add("token-portrait");
+  }
   const fallbackSrc = combatantIconFallbackSrc(combatant);
-  icon.src = combatantIconSrc(combatant);
+  icon.src = combatantTokenIconSrc(combatant);
   icon.addEventListener("error", () => {
     if (!icon.src.endsWith(fallbackSrc)) {
       icon.src = fallbackSrc;
@@ -2438,6 +2525,9 @@ function renderRunMapTokens(scenarioId, combatants) {
       token.classList.add("token-enemy");
     }
     token.title = combatant.name;
+    if (combatant.kind === "enemy") {
+      token.title = `${combatant.name} (double-click: statblock)`;
+    }
     token.style.left = `${clamp(pos.x, 20, width - 20)}px`;
     token.style.top = `${clamp(pos.y, 20, height - 20)}px`;
     token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
@@ -2481,6 +2571,14 @@ function renderRunMapTokens(scenarioId, combatants) {
       token.classList.add("is-dragging");
       if (els.runMapViewport) els.runMapViewport.classList.add("is-dragging");
     });
+
+    if (combatant.kind === "enemy") {
+      token.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        inspectCombatantStatblock(combatant);
+      });
+    }
 
     els.runMapTokens.appendChild(token);
   }
@@ -2536,6 +2634,34 @@ function resetRunMapViewForScenario(scenarioId) {
 
 function activeCombatant() {
   return state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId) || null;
+}
+
+function inspectCombatantStatblock(combatant) {
+  if (!combatant || combatant.kind !== "enemy") return;
+  state.runPreviewEnemyId = combatant.id;
+  if (combatant.monster_image_data) {
+    openImageModal(combatant.monster_image_data);
+    return;
+  }
+  setStatus(`${combatant.name} has no statblock image.`);
+}
+
+function pickMapShortcutPreviewCombatant() {
+  const combatants = Array.isArray(state.combat.combatants) ? state.combat.combatants : [];
+  if (combatants.length === 0) return null;
+  const activeIndex = combatants.findIndex((c) => c.id === state.combat.activeCombatantId);
+  const startIndex = activeIndex >= 0 ? activeIndex : 0;
+
+  const isCandidate = (combatant) => combatant.kind === "enemy";
+
+  const active = combatants[startIndex];
+  if (active && isCandidate(active)) return active;
+
+  for (let i = 1; i <= combatants.length; i += 1) {
+    const candidate = combatants[(startIndex + i) % combatants.length];
+    if (isCandidate(candidate)) return candidate;
+  }
+  return null;
 }
 
 async function toggleActiveCombatantReaction() {
@@ -2652,9 +2778,11 @@ function applyConditionStyle(li, combatant) {
     chip.className = "condition-chip";
     chip.textContent = condition.label;
     chip.setAttribute("data-tip", condition.tip);
+    chip.setAttribute("data-condition-key", condition.key);
     chip.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
+      hideConditionTooltip();
       try {
         await api(`/api/combatants/${combatant.id}/conditions/${condition.key}`, {
           method: "DELETE"
@@ -2771,6 +2899,7 @@ function applyConditionStyleReadonly(li, combatant) {
     chip.className = "condition-chip condition-chip-readonly";
     chip.textContent = condition.label;
     chip.setAttribute("data-tip", condition.tip);
+    chip.setAttribute("data-condition-key", condition.key);
     li.appendChild(chip);
   }
 }
@@ -2825,6 +2954,7 @@ function renderScenarioRunPage() {
   if (!scenario) return;
 
   const isMapView = state.page === "scenario-map";
+  if (!isMapView) hideMapStatblockHover();
   const hasMap = Boolean(scenario.map_image_data);
   const mapTokenSize = scenarioMapTokenSize(scenario);
   hydrateRunMapTokensFromScenario(scenario);
@@ -2959,11 +3089,29 @@ function renderScenarioRunPage() {
     const name = createCombatantNameElement(combatant);
     if (combatant.kind === "enemy") {
       name.style.cursor = "pointer";
-      name.title = "Show this statblock";
-      name.addEventListener("click", () => {
-        state.runPreviewEnemyId = combatant.id;
-        renderScenarioRunPage();
-      });
+      if (isMapView) {
+        name.title = "Open statblock";
+        name.addEventListener("click", () => {
+          inspectCombatantStatblock(combatant);
+        });
+        if (state.authUser?.role === "admin" && combatant.monster_image_data) {
+          name.addEventListener("mouseenter", () => {
+            showMapStatblockHover(combatant.monster_image_data, name);
+          });
+          name.addEventListener("mousemove", () => {
+            showMapStatblockHover(combatant.monster_image_data, name);
+          });
+          name.addEventListener("mouseleave", () => {
+            hideMapStatblockHover();
+          });
+        }
+      } else {
+        name.title = "Show this statblock";
+        name.addEventListener("click", () => {
+          state.runPreviewEnemyId = combatant.id;
+          renderScenarioRunPage();
+        });
+      }
     }
 
     const initiative = document.createElement("input");
@@ -4017,7 +4165,14 @@ function bindEvents() {
       closeAddCombatantModal();
       return;
     }
-    if (!els.imageModal.classList.contains("hidden")) return;
+    if (!els.imageModal.classList.contains("hidden")) {
+      const key = event.key.toLowerCase();
+      if (key === "s" && state.page === "scenario-map" && state.authUser?.role === "admin") {
+        event.preventDefault();
+        closeImageModal();
+      }
+      return;
+    }
     if (!els.campaignActionModal.classList.contains("hidden")) return;
     if (!els.addCombatantModal.classList.contains("hidden")) return;
 
@@ -4068,6 +4223,18 @@ function bindEvents() {
     if (key === "s" && state.page === "monsters" && !state.monsterEditorReadOnly) {
       event.preventDefault();
       els.monsterForm.requestSubmit();
+      return;
+    }
+
+    if (key === "s" && state.page === "scenario-map" && state.authUser?.role === "admin") {
+      event.preventDefault();
+      hideMapStatblockHover();
+      const combatant = pickMapShortcutPreviewCombatant();
+      if (!combatant) {
+        setStatus("No NPC/Enemy available to preview.");
+        return;
+      }
+      inspectCombatantStatblock(combatant);
       return;
     }
 
@@ -4202,6 +4369,7 @@ function bindEvents() {
 
   els.userMenuLogoutBtn.addEventListener("click", async () => {
     closeUserMenuPopover();
+    hideMapStatblockHover();
     try {
       await api("/api/auth/logout", { method: "POST" });
     } catch (_error) {
@@ -5358,6 +5526,7 @@ function bindEvents() {
 
   window.addEventListener("resize", () => {
     if (conditionTooltipChip) positionConditionTooltip(conditionTooltipChip);
+    hideMapStatblockHover();
     if (state.page === "scenario-map") applyRunMapTransform();
   });
 }

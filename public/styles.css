@@ -1701,11 +1701,19 @@ body.page-player #playerLiveWrap {
 }
 
 .combatant-icon {
-  width: 3.6rem;
-  height: 3.6rem;
+  width: 2.9rem;
+  height: 2.9rem;
   display: inline-block;
   object-fit: contain;
   flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(10, 18, 30, 0.75);
+}
+
+.combatant-icon.token-portrait {
+  object-fit: cover;
+  object-position: center;
+  image-rendering: auto;
 }
 
 .condition-chip {
@@ -1749,10 +1757,43 @@ body.page-player #playerLiveWrap {
   border-radius: 6px;
   padding: 0.55rem 0.65rem;
   font-size: 0.8rem;
-  white-space: pre-line;
+  white-space: normal;
   line-height: 1.3;
   pointer-events: none;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.38);
+}
+
+.map-statblock-hover {
+  position: fixed;
+  z-index: 9998;
+  pointer-events: none;
+  background: #0f141c;
+  border: 1px solid #2d3846;
+  border-radius: 8px;
+  padding: 0.35rem;
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.42);
+}
+
+.map-statblock-hover img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 94vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.condition-tooltip-paragraph {
+  margin: 0;
+}
+
+.condition-tooltip-paragraph + .condition-tooltip-paragraph {
+  margin-top: 0.48rem;
+}
+
+.condition-tooltip-lead {
+  font-weight: 700;
+  font-style: italic;
 }
 
 .turn-active {

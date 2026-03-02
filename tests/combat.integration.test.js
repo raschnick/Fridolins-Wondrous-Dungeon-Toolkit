@@ -168,6 +168,29 @@ test("next turn skips hidden non-PCs and defeated enemies", async () => {
   assert.ok(nextCombatantNames.includes(defeated.name));
 });
 
+test("revoke turn skips hidden non-PCs and defeated enemies", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const { scenarioId } = await createScenario(admin, "PrevSkip");
+
+  const alpha = await addEnemy(admin, scenarioId, { name: "Alpha", initiative: 30, hp: 12 });
+  const hidden = await addEnemy(admin, scenarioId, { name: "Hidden", initiative: 20, hp: 10 });
+  await addEnemy(admin, scenarioId, { name: "Defeated", initiative: 15, hp: 0 });
+  const omega = await addEnemy(admin, scenarioId, { name: "Omega", initiative: 10, hp: 8 });
+
+  const hide = await admin.request("POST", `/api/combatants/${hidden.id}/player-visible`, {
+    visible: false
+  });
+  assert.equal(hide.status, 200);
+
+  const advance = await admin.request("POST", `/api/scenarios/${scenarioId}/combat/next-turn`);
+  assert.equal(advance.status, 200);
+  assert.equal(advance.json.activeCombatantId, omega.id);
+
+  const prev = await admin.request("POST", `/api/scenarios/${scenarioId}/combat/prev-turn`);
+  assert.equal(prev.status, 200);
+  assert.equal(prev.json.activeCombatantId, alpha.id);
+});
+
 test("revoke turn unreadies reaction only when it was auto-readied", async () => {
   const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
   const { scenarioId } = await createScenario(admin, "ReactionAuto");
