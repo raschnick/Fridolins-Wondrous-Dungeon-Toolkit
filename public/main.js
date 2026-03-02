@@ -95,6 +95,7 @@ const state = {
 
 const els = {
   status: document.getElementById("status"),
+  toastContainer: document.getElementById("toastContainer"),
   topNav: document.getElementById("topNav"),
   pageLogin: document.getElementById("pageLogin"),
   loginPageLogo: document.getElementById("loginPageLogo"),
@@ -457,8 +458,76 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-function setStatus(message = "") {
-  els.status.textContent = message;
+function inferStatusType(message = "") {
+  const text = `${message || ""}`.trim().toLowerCase();
+  if (!text) return "info";
+  if (
+    text.includes("error") ||
+    text.includes("failed") ||
+    text.includes("denied") ||
+    text.includes("invalid") ||
+    text.includes("required") ||
+    text.includes("not found") ||
+    text.includes("could not") ||
+    text.includes("can't")
+  ) {
+    return "error";
+  }
+  return "info";
+}
+
+function showToast(message, type = "info") {
+  const text = `${message || ""}`.trim();
+  if (!text || !els.toastContainer) return;
+  const level = ["info", "success", "error"].includes(type) ? type : "info";
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${level}`;
+  toast.setAttribute("role", "status");
+
+  const msg = document.createElement("div");
+  msg.className = "toast-message";
+  msg.textContent = text;
+  toast.appendChild(msg);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.textContent = "X";
+  close.setAttribute("aria-label", "Dismiss notification");
+  toast.appendChild(close);
+
+  let removed = false;
+  const removeToast = () => {
+    if (removed) return;
+    removed = true;
+    toast.classList.add("is-exiting");
+    window.setTimeout(() => {
+      toast.remove();
+    }, 170);
+  };
+
+  const ttl = level === "error" ? 5200 : 3400;
+  const timer = window.setTimeout(removeToast, ttl);
+  close.addEventListener("click", () => {
+    window.clearTimeout(timer);
+    removeToast();
+  });
+
+  els.toastContainer.appendChild(toast);
+  while (els.toastContainer.childElementCount > 5) {
+    const first = els.toastContainer.firstElementChild;
+    if (!first) break;
+    first.remove();
+  }
+}
+
+function setStatus(message = "", type = null) {
+  const text = `${message || ""}`.trim();
+  els.status.textContent = text;
+  if (!text) return;
+  const toastType = type || inferStatusType(text);
+  showToast(text, toastType);
 }
 
 function setLoginStatus(message = "") {
@@ -739,9 +808,9 @@ async function persistScenarioEditAutoSave({ showStatus = false } = {}) {
       body: JSON.stringify(payload)
     });
     state.scenarios = state.scenarios.map((s) => (s.id === updated.id ? updated : s));
-    if (showStatus) setStatus("Scenario updated.");
+    if (showStatus) setStatus("Scenario updated.", "success");
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   } finally {
     state.scenarioEditSaveInFlight = false;
     if (state.scenarioEditSavePending) {
@@ -894,7 +963,7 @@ function maybeCelebrateEncounterWin(scenarioId, combatants, options = {}) {
     } else {
       state.pendingVictorySoundById[key] = true;
     }
-    setStatus("Players won the encounter.");
+    setStatus("Players won the encounter.", "success");
     return;
   }
 
@@ -1424,7 +1493,7 @@ async function applyRoute(route, { replace = false } = {}) {
     try {
       await loadMonsters();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
     if (!isCurrent()) return;
     showPage("monsters");
@@ -1437,7 +1506,7 @@ async function applyRoute(route, { replace = false } = {}) {
       await loadUserSettings();
       renderSettingsPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
     if (!isCurrent()) return;
     showPage("settings");
@@ -1450,7 +1519,7 @@ async function applyRoute(route, { replace = false } = {}) {
     try {
       await loadPlayerLive();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
     if (!isCurrent()) return;
     startPlayerLivePolling();
@@ -1474,7 +1543,7 @@ async function applyRoute(route, { replace = false } = {}) {
       await loadAdminData();
       renderAdminPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
     if (!isCurrent()) return;
     showPage("admin");
@@ -1487,7 +1556,7 @@ async function applyRoute(route, { replace = false } = {}) {
       try {
         await loadPlayerLive();
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
       if (!isCurrent()) return;
       startPlayerLivePolling();
@@ -1505,7 +1574,7 @@ async function applyRoute(route, { replace = false } = {}) {
     try {
       await loadCampaigns();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
     if (!isCurrent()) return;
     showPage("welcome");
@@ -1521,7 +1590,7 @@ async function applyRoute(route, { replace = false } = {}) {
   try {
     await loadCampaigns();
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
   if (!isCurrent()) return;
 
@@ -2048,9 +2117,9 @@ function renderCharacters() {
       try {
         await api(`/api/characters/${character.id}`, { method: "DELETE" });
         await loadCampaignData();
-        setStatus(`Deleted character: ${character.name}`);
+        setStatus(`Deleted character: ${character.name}`, "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     row.appendChild(removeButton);
@@ -2158,9 +2227,9 @@ function renderScenarios() {
             replace: true
           });
         }
-        setStatus(`Deleted scenario: ${scenario.name}`);
+        setStatus(`Deleted scenario: ${scenario.name}`, "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     actions.appendChild(removeButton);
@@ -2207,9 +2276,9 @@ function renderCompletedScenariosPage() {
         });
         await loadCampaignData();
         renderCompletedScenariosPage();
-        setStatus(`Reopened scenario: ${scenario.name}`);
+        setStatus(`Reopened scenario: ${scenario.name}`, "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     actions.appendChild(reopenButton);
@@ -2235,9 +2304,9 @@ function renderCompletedScenariosPage() {
         await api(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
         await loadCampaignData();
         renderCompletedScenariosPage();
-        setStatus(`Deleted scenario: ${scenario.name}`);
+        setStatus(`Deleted scenario: ${scenario.name}`, "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     actions.appendChild(removeButton);
@@ -2264,7 +2333,7 @@ function attachInitiativeBlurUpdate(input, combatant) {
       if (state.page === "scenario-edit") renderScenarioEditPage();
       if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   };
   input.addEventListener("blur", onBlur);
@@ -2288,7 +2357,7 @@ function attachEnemyHpBlurUpdate(input, combatant) {
       if (state.page === "scenario-edit") renderScenarioEditPage();
       if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   };
   input.addEventListener("blur", onBlur);
@@ -2404,7 +2473,7 @@ async function persistRunMapTokenSize(scenarioId, tokenSize) {
     );
     setRunMapTokenSizeUI(saved);
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
 }
 
@@ -2461,7 +2530,7 @@ async function persistRunMapTokens(scenarioId) {
         : scenario
     );
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
 }
 
@@ -2724,7 +2793,7 @@ function createPlayerVisibilityToggle(combatant, rerender) {
       await safeLoadCombatState();
       rerender();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
   return button;
@@ -2743,7 +2812,7 @@ function attachConditionAdd(select, combatant) {
       await safeLoadCombatState();
       rerenderCurrentScenarioPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 }
@@ -2797,7 +2866,7 @@ function applyConditionStyle(li, combatant) {
         await safeLoadCombatState();
         rerenderCurrentScenarioPage();
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     li.appendChild(chip);
@@ -2881,9 +2950,9 @@ function renderScenarioEditPage() {
         await api(`/api/combatants/${combatant.id}`, { method: "DELETE" });
         await safeLoadCombatState();
         renderScenarioEditPage();
-        setStatus(`Removed ${combatant.name} from scenario.`);
+        setStatus(`Removed ${combatant.name} from scenario.`, "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     right.appendChild(remove);
@@ -3151,7 +3220,7 @@ function renderScenarioRunPage() {
         await safeLoadCombatState();
         renderScenarioRunPage();
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     mainLine.appendChild(reactionButton);
@@ -3190,7 +3259,7 @@ function renderScenarioRunPage() {
             await safeLoadCombatState();
             renderScenarioRunPage();
           } catch (error) {
-            setStatus(error.message);
+            setStatus(error.message, "error");
           }
         });
         legendaryWrap.appendChild(pip);
@@ -3249,7 +3318,7 @@ function renderScenarioRunPage() {
           await safeLoadCombatState();
           renderScenarioRunPage();
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       right.appendChild(heal);
@@ -3281,7 +3350,7 @@ function renderScenarioRunPage() {
           await safeLoadCombatState();
           renderScenarioRunPage();
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       right.appendChild(damage);
@@ -3321,7 +3390,7 @@ async function completeSelectedScenario() {
   await navigateToPage("campaign-completed", {
     campaignId: state.selectedCampaignId
   });
-  setStatus(`Completed scenario: ${scenario.name}`);
+  setStatus(`Completed scenario: ${scenario.name}`, "success");
 }
 
 function renderCampaignPage() {
@@ -3545,7 +3614,7 @@ function renderSettingsPage() {
         await loadUserSettings();
         renderSettingsPage();
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
     row.appendChild(actionBtn);
@@ -4066,9 +4135,9 @@ function renderAdminPage() {
             method: "POST",
             body: JSON.stringify({ password })
           });
-          setStatus(`Reset password for ${user.username}.`);
+          setStatus(`Reset password for ${user.username}.`, "success");
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       actions.appendChild(resetButton);
@@ -4085,9 +4154,9 @@ function renderAdminPage() {
           });
           await loadAdminData();
           renderAdminPage();
-          setStatus(`${Number(user.active) === 1 ? "Deactivated" : "Activated"} ${user.username}.`);
+          setStatus(`${Number(user.active) === 1 ? "Deactivated" : "Activated"} ${user.username}.`, "success");
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       actions.appendChild(toggleButton);
@@ -4173,9 +4242,9 @@ function renderAdminPage() {
           );
           await loadAdminData();
           renderAdminPage();
-          setStatus(`Removed ${member.username} from campaign.`);
+          setStatus(`Removed ${member.username} from campaign.`, "success");
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       row.appendChild(removeButton);
@@ -4222,9 +4291,9 @@ function renderAdminPage() {
           );
           await loadAdminData();
           renderAdminPage();
-          setStatus(`Unclaimed ${claim.character_name}.`);
+          setStatus(`Unclaimed ${claim.character_name}.`, "success");
         } catch (error) {
-          setStatus(error.message);
+          setStatus(error.message, "error");
         }
       });
       row.appendChild(unclaimButton);
@@ -4413,12 +4482,12 @@ function bindEvents() {
     }
     if (key === "r") {
       toggleActiveCombatantReaction().catch((error) => {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       });
       return;
     }
     cycleActiveCombatantLegendaryAction().catch((error) => {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     });
   });
   els.activeMonsterImage.addEventListener("click", () => {
@@ -4559,7 +4628,7 @@ function bindEvents() {
       setLoginStatus("Name changed. Please sign in again.");
       await navigateToPath("/login", { replace: true });
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4583,7 +4652,7 @@ function bindEvents() {
       setLoginStatus("Password changed. Please sign in again.");
       await navigateToPath("/login", { replace: true });
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4594,7 +4663,7 @@ function bindEvents() {
       state.draftSettingsProfileImageData = await readFileAsDataUrl(file);
       setSettingsProfileImagePreview(state.draftSettingsProfileImageData);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4609,9 +4678,9 @@ function bindEvents() {
       await loadUserSettings();
       renderSettingsPage();
       renderMainSections();
-      setStatus("Profile image saved.");
+      setStatus("Profile image saved.", "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4625,9 +4694,9 @@ function bindEvents() {
       await loadUserSettings();
       renderSettingsPage();
       renderMainSections();
-      setStatus("Profile image removed.");
+      setStatus("Profile image removed.", "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4671,7 +4740,7 @@ function bindEvents() {
       await loadAdminData();
       renderAdminPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4689,7 +4758,7 @@ function bindEvents() {
       await loadAdminData();
       renderAdminPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4732,7 +4801,7 @@ function bindEvents() {
       closeAdminActionModal();
     } catch (error) {
       setAdminStatus(error.message || "Failed to create user.");
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4752,10 +4821,10 @@ function bindEvents() {
       state.adminMemberCampaignId = campaignId;
       await loadAdminData();
       renderAdminPage();
-      setStatus("Membership updated.");
+      setStatus("Membership updated.", "success");
       closeAdminActionModal();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4809,7 +4878,7 @@ function bindEvents() {
       state.draftMonsterImageData = await readFileAsDataUrl(file);
       setMonsterImagePreview(state.draftMonsterImageData);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4822,7 +4891,7 @@ function bindEvents() {
       state.draftMonsterTokenImageData = await readFileAsDataUrl(file);
       setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4834,7 +4903,7 @@ function bindEvents() {
       state.draftLibraryEntryImageData = await readFileAsDataUrl(file);
       setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4846,7 +4915,7 @@ function bindEvents() {
       state.draftLibraryEntryTokenImageData = await readFileAsDataUrl(file);
       setLibraryEntryTokenImagePreview(state.draftLibraryEntryTokenImageData);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -4897,9 +4966,9 @@ function bindEvents() {
       try {
         state.draftSettingsProfileImageData = await readFileAsDataUrl(file);
         setSettingsProfileImagePreview(state.draftSettingsProfileImageData);
-        setStatus("Pasted profile image.");
+        setStatus("Pasted profile image.", "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
       return;
     }
@@ -4924,9 +4993,9 @@ function bindEvents() {
         state.draftScenarioMapImageData = await readFileAsDataUrl(file);
         setScenarioMapPreview(state.draftScenarioMapImageData);
         scheduleScenarioEditAutoSave(80);
-        setStatus("Pasted encounter map.");
+        setStatus("Pasted encounter map.", "success");
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
       return;
     }
@@ -4954,15 +5023,15 @@ function bindEvents() {
           setLibraryEntryPasteTarget("token");
           state.draftLibraryEntryTokenImageData = dataUrl;
           setLibraryEntryTokenImagePreview(state.draftLibraryEntryTokenImageData);
-          setStatus("Pasted token image.");
+          setStatus("Pasted token image.", "success");
         } else {
           setLibraryEntryPasteTarget("statblock");
           state.draftLibraryEntryImageData = dataUrl;
           setLibraryEntryImagePreview(state.draftLibraryEntryImageData);
-          setStatus("Pasted statblock screenshot.");
+          setStatus("Pasted statblock screenshot.", "success");
         }
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
       return;
     }
@@ -4987,15 +5056,15 @@ function bindEvents() {
         setMonsterPasteTarget("token");
         state.draftMonsterTokenImageData = dataUrl;
         setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
-        setStatus("Pasted token image.");
+        setStatus("Pasted token image.", "success");
       } else {
         setMonsterPasteTarget("statblock");
         state.draftMonsterImageData = dataUrl;
         setMonsterImagePreview(state.draftMonsterImageData);
-        setStatus("Pasted statblock screenshot.");
+        setStatus("Pasted statblock screenshot.", "success");
       }
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5022,19 +5091,19 @@ function bindEvents() {
           method: "PUT",
           body: JSON.stringify(payload)
         });
-        setStatus(`Saved monster: ${updated.name}`);
+        setStatus(`Saved monster: ${updated.name}`, "success");
       } else {
         const created = await api("/api/monsters", {
           method: "POST",
           body: JSON.stringify(payload)
         });
         state.selectedMonsterId = created.id;
-        setStatus(`Created monster: ${created.name}`);
+        setStatus(`Created monster: ${created.name}`, "success");
       }
       await loadMonsters();
       setMonsterEditorReadOnly(true);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5066,9 +5135,9 @@ function bindEvents() {
       if (current) fillMonsterForm(current);
       renderMonsterList();
       setMonsterEditorReadOnly(true);
-      setStatus(`Created entry: ${created.name}`);
+      setStatus(`Created entry: ${created.name}`, "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5080,9 +5149,9 @@ function bindEvents() {
       await api(`/api/monsters/${monster.id}`, { method: "DELETE" });
       state.selectedMonsterId = null;
       await loadMonsters();
-      setStatus(`Deleted monster: ${monster.name}`);
+      setStatus(`Deleted monster: ${monster.name}`, "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5096,9 +5165,9 @@ function bindEvents() {
       els.newCampaignName.value = "";
       closeCampaignActionModal();
       await navigateToPage("campaign", { campaignId: campaign.id });
-      setStatus(`Created campaign: ${campaign.name}`);
+      setStatus(`Created campaign: ${campaign.name}`, "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5121,9 +5190,9 @@ function bindEvents() {
       state.scenarios = [];
       await safeLoadCombatState();
       await navigateToPage("welcome");
-      setStatus(`Deleted campaign: ${campaign.name}`);
+      setStatus(`Deleted campaign: ${campaign.name}`, "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5142,9 +5211,9 @@ function bindEvents() {
       els.charClass.value = "";
       closeCampaignActionModal();
       await loadCampaignData();
-      setStatus("Character added.");
+      setStatus("Character added.", "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5163,9 +5232,9 @@ function bindEvents() {
       els.scenarioNotes.value = "";
       closeCampaignActionModal();
       await loadCampaignData();
-      setStatus("Scenario added.");
+      setStatus("Scenario added.", "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5195,7 +5264,7 @@ function bindEvents() {
       setScenarioMapPreview(state.draftScenarioMapImageData);
       scheduleScenarioEditAutoSave(80);
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5227,9 +5296,9 @@ function bindEvents() {
         campaignId: state.selectedCampaignId,
         scenarioId: scenario.id
       });
-      setStatus(`Reopened scenario: ${scenario.name}`);
+      setStatus(`Reopened scenario: ${scenario.name}`, "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5237,7 +5306,7 @@ function bindEvents() {
     try {
       await completeSelectedScenario();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5266,9 +5335,9 @@ function bindEvents() {
       closeAddCombatantModal();
       await safeLoadCombatState();
       renderScenarioEditPage();
-      setStatus("Combatant added.");
+      setStatus("Combatant added.", "success");
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5282,7 +5351,7 @@ function bindEvents() {
       state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5296,7 +5365,7 @@ function bindEvents() {
       state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5319,7 +5388,7 @@ function bindEvents() {
       state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5327,7 +5396,7 @@ function bindEvents() {
     try {
       await completeSelectedScenario();
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5346,10 +5415,11 @@ function bindEvents() {
       setStatus(
         isSharedCurrent
           ? `Stopped sharing encounter: ${scenario.name}`
-          : `Shared encounter with players: ${scenario.name}`
+          : `Shared encounter with players: ${scenario.name}`,
+        "success"
       );
     } catch (error) {
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -5715,7 +5785,7 @@ async function init() {
       setMonsterEditorReadOnly(true);
     }
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
   await navigateToPath(window.location.pathname, { replace: true });
 }
