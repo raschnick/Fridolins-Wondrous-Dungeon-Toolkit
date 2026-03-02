@@ -34,6 +34,7 @@ const state = {
     lastClientX: 0,
     lastClientY: 0,
     tokensByScenario: {},
+    pendingRemoteSync: null,
     saveTimer: null,
     saveSizeTimer: null
   },
@@ -67,7 +68,12 @@ const state = {
   playerLiveData: null,
   userSettings: null,
   playerLivePollTimer: null,
+  playerLiveEventSource: null,
+  playerLiveReconnectTimer: null,
   runMapSyncPollTimer: null,
+  runMapSyncEventSource: null,
+  runMapSyncReconnectTimer: null,
+  runMapSyncScenarioId: null,
   playerLiveViewMode: "initiative",
   loginAweTimer: null,
   scenarioVictoryById: {},
@@ -2629,6 +2635,7 @@ function resetRunMapViewForScenario(scenarioId) {
   state.runMap.dragMode = "map";
   state.runMap.dragCombatantId = null;
   state.runMap.pointerId = null;
+  state.runMap.pendingRemoteSync = null;
   applyRunMapTransform();
 }
 
@@ -3763,7 +3770,63 @@ async function loadPlayerLive() {
   renderPlayerHome();
 }
 
+function supportsEventStream() {
+  return typeof window.EventSource === "function";
+}
+
+function clearPlayerLiveReconnectTimer() {
+  if (state.playerLiveReconnectTimer) {
+    clearTimeout(state.playerLiveReconnectTimer);
+    state.playerLiveReconnectTimer = null;
+  }
+}
+
+function clearRunMapSyncReconnectTimer() {
+  if (state.runMapSyncReconnectTimer) {
+    clearTimeout(state.runMapSyncReconnectTimer);
+    state.runMapSyncReconnectTimer = null;
+  }
+}
+
+function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
+  const scenarioId = Number(snapshot?.scenarioId ?? snapshot?.id);
+  if (!Number.isInteger(scenarioId)) return;
+  const current = state.scenarios.find((scenario) => scenario.id === scenarioId);
+  if (!current) return;
+  const nextMapTokensJson = `${snapshot?.mapTokensJson ?? snapshot?.map_tokens_json ?? ""}`;
+  const nextTokenSizeRaw = Number(snapshot?.mapTokenSize ?? snapshot?.map_token_size);
+  const nextTokenSize = Number.isFinite(nextTokenSizeRaw)
+    ? clamp(Math.round(nextTokenSizeRaw), 24, 128)
+    : scenarioMapTokenSize(current);
+  const changed =
+    `${current.map_tokens_json || ""}` !== nextMapTokensJson ||
+    scenarioMapTokenSize(current) !== nextTokenSize;
+  if (!changed && !force) return;
+
+  state.scenarios = state.scenarios.map((scenario) =>
+    scenario.id === scenarioId
+      ? {
+        ...scenario,
+        map_tokens_json: nextMapTokensJson,
+        map_token_size: nextTokenSize
+      }
+      : scenario
+  );
+  delete state.runMap.tokensByScenario[scenarioId];
+  const refreshed = selectedScenario();
+  if (!refreshed || state.page !== "scenario-map") return;
+  hydrateRunMapTokensFromScenario(refreshed);
+  setRunMapTokenSizeUI(scenarioMapTokenSize(refreshed));
+  renderRunMapTokens(scenarioId, state.combat.combatants);
+  applyRunMapTransform();
+}
+
 function stopPlayerLivePolling() {
+  clearPlayerLiveReconnectTimer();
+  if (state.playerLiveEventSource) {
+    state.playerLiveEventSource.close();
+    state.playerLiveEventSource = null;
+  }
   if (state.playerLivePollTimer) {
     clearInterval(state.playerLivePollTimer);
     state.playerLivePollTimer = null;
@@ -3771,6 +3834,13 @@ function stopPlayerLivePolling() {
 }
 
 function stopRunMapSyncPolling() {
+  clearRunMapSyncReconnectTimer();
+  if (state.runMapSyncEventSource) {
+    state.runMapSyncEventSource.close();
+    state.runMapSyncEventSource = null;
+  }
+  state.runMapSyncScenarioId = null;
+  state.runMap.pendingRemoteSync = null;
   if (state.runMapSyncPollTimer) {
     clearInterval(state.runMapSyncPollTimer);
     state.runMapSyncPollTimer = null;
@@ -3778,46 +3848,136 @@ function stopRunMapSyncPolling() {
 }
 
 function startRunMapSyncPolling() {
-  stopRunMapSyncPolling();
-  state.runMapSyncPollTimer = setInterval(async () => {
-    if (state.page !== "scenario-map") return;
-    if (!state.selectedScenarioId) return;
-    if (state.runMap.dragging) return;
-    try {
-      const latest = await api(`/api/scenarios/${state.selectedScenarioId}`);
-      if (state.page !== "scenario-map" || state.selectedScenarioId !== latest.id) return;
-      const current = selectedScenario();
-      if (!current) return;
-      if (`${latest.map_tokens_json || ""}` === `${current.map_tokens_json || ""}`) return;
+  if (state.page !== "scenario-map" || !state.selectedScenarioId) {
+    stopRunMapSyncPolling();
+    return;
+  }
+  const scenarioId = state.selectedScenarioId;
+  const canUseStream = supportsEventStream();
+  if (
+    canUseStream &&
+    state.runMapSyncEventSource &&
+    state.runMapSyncScenarioId === scenarioId
+  ) {
+    return;
+  }
+  if (
+    !canUseStream &&
+    state.runMapSyncPollTimer &&
+    state.runMapSyncScenarioId === scenarioId
+  ) {
+    return;
+  }
 
-      state.scenarios = state.scenarios.map((scenario) =>
-        scenario.id === latest.id
-          ? {
-            ...scenario,
-            map_tokens_json: latest.map_tokens_json,
-            map_token_size: latest.map_token_size
-          }
-          : scenario
-      );
-      delete state.runMap.tokensByScenario[latest.id];
-      const refreshed = selectedScenario();
-      if (!refreshed) return;
-      hydrateRunMapTokensFromScenario(refreshed);
-      renderRunMapTokens(latest.id, state.combat.combatants);
+  stopRunMapSyncPolling();
+  state.runMapSyncScenarioId = scenarioId;
+
+  if (!canUseStream) {
+    state.runMapSyncPollTimer = setInterval(async () => {
+      if (state.page !== "scenario-map") return;
+      if (!state.selectedScenarioId) return;
+      if (state.runMap.dragging) return;
+      try {
+        const latest = await api(`/api/scenarios/${state.selectedScenarioId}`);
+        if (state.page !== "scenario-map" || state.selectedScenarioId !== latest.id) return;
+        applyRunMapSyncSnapshot(latest);
+      } catch (_error) {
+        // Ignore transient polling errors.
+      }
+    }, 1000);
+    return;
+  }
+
+  const source = new EventSource(`/api/scenarios/${scenarioId}/stream`);
+  state.runMapSyncEventSource = source;
+
+  source.addEventListener("scenario-map", (event) => {
+    if (state.runMapSyncEventSource !== source) return;
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
     } catch (_error) {
-      // Ignore transient polling errors.
+      return;
     }
-  }, 1000);
+    if (!payload || Number(payload.scenarioId) !== scenarioId) return;
+    if (payload.deleted) {
+      setStatus("This encounter was deleted.");
+      stopRunMapSyncPolling();
+      return;
+    }
+    if (state.page !== "scenario-map" || state.selectedScenarioId !== scenarioId) return;
+    if (state.runMap.dragging) {
+      state.runMap.pendingRemoteSync = payload;
+      return;
+    }
+    applyRunMapSyncSnapshot(payload);
+  });
+
+  source.onopen = () => {
+    if (state.runMapSyncEventSource !== source) return;
+    clearRunMapSyncReconnectTimer();
+  };
+
+  source.onerror = () => {
+    if (state.runMapSyncEventSource !== source) return;
+    source.close();
+    state.runMapSyncEventSource = null;
+    if (state.page !== "scenario-map" || state.selectedScenarioId !== scenarioId) return;
+    clearRunMapSyncReconnectTimer();
+    state.runMapSyncReconnectTimer = setTimeout(() => {
+      state.runMapSyncReconnectTimer = null;
+      if (state.page !== "scenario-map" || state.selectedScenarioId !== scenarioId) return;
+      startRunMapSyncPolling();
+    }, 1200);
+  };
 }
 
 function startPlayerLivePolling() {
   stopPlayerLivePolling();
   if (!state.authUser || state.authUser.role === "admin") return;
-  state.playerLivePollTimer = setInterval(() => {
-    loadPlayerLive().catch(() => {
-      // keep prior state on transient failures
-    });
-  }, 2000);
+
+  if (!supportsEventStream()) {
+    state.playerLivePollTimer = setInterval(() => {
+      loadPlayerLive().catch(() => {
+        // keep prior state on transient failures
+      });
+    }, 2000);
+    return;
+  }
+
+  const source = new EventSource("/api/player/live/stream");
+  state.playerLiveEventSource = source;
+
+  source.addEventListener("player-live", (event) => {
+    if (state.playerLiveEventSource !== source) return;
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch (_error) {
+      return;
+    }
+    if (!payload || typeof payload !== "object") return;
+    state.playerLiveData = payload;
+    renderPlayerHome();
+  });
+
+  source.onopen = () => {
+    if (state.playerLiveEventSource !== source) return;
+    clearPlayerLiveReconnectTimer();
+  };
+
+  source.onerror = () => {
+    if (state.playerLiveEventSource !== source) return;
+    source.close();
+    state.playerLiveEventSource = null;
+    if (state.page !== "player-home" || !state.authUser || state.authUser.role === "admin") return;
+    clearPlayerLiveReconnectTimer();
+    state.playerLiveReconnectTimer = setTimeout(() => {
+      state.playerLiveReconnectTimer = null;
+      if (state.page !== "player-home" || !state.authUser || state.authUser.role === "admin") return;
+      startPlayerLivePolling();
+    }, 1200);
+  };
 }
 
 async function loadAdminData() {
@@ -5339,6 +5499,11 @@ function bindEvents() {
       });
       if (state.runMap.scenarioId != null) {
         scheduleRunMapTokensSave(state.runMap.scenarioId);
+      }
+      if (state.runMap.pendingRemoteSync) {
+        const pending = state.runMap.pendingRemoteSync;
+        state.runMap.pendingRemoteSync = null;
+        applyRunMapSyncSnapshot(pending, { force: true });
       }
     };
 

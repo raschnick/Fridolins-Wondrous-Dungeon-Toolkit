@@ -9,8 +9,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = "fwdt_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const STREAM_KEEPALIVE_MS = 15000;
 const DEFAULT_ADMIN_USERNAME = "fridolin";
 const DEFAULT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
+
+let nextStreamClientId = 1;
+const playerLiveSubscribersByUser = new Map();
+const scenarioMapSubscribersByScenario = new Map();
+const playerLivePushTimersByUser = new Map();
+const scenarioMapPushTimersByScenario = new Map();
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -421,6 +428,7 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "POST" && path === "/users/me/claim-character") return true;
   if (method === "POST" && path === "/users/me/unclaim-character") return true;
   if (method === "GET" && path === "/player/live") return true;
+  if (method === "GET" && path === "/player/live/stream") return true;
   if (method === "POST" && path === "/player/live/map-token") return true;
   return false;
 }
@@ -509,6 +517,332 @@ function getCampaignLiveState(campaignId) {
   return row;
 }
 
+function latestSharedScenarioForUser(userId) {
+  return db
+    .prepare(
+      `SELECT
+        cls.campaign_id,
+        cls.shared_scenario_id AS scenario_id,
+        cls.updated_at
+       FROM campaign_live_state cls
+       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
+       WHERE cm.user_id = ?
+         AND cls.shared_scenario_id IS NOT NULL
+       ORDER BY cls.updated_at DESC
+       LIMIT 1`
+    )
+    .get(userId);
+}
+
+function buildPlayerLiveSnapshotForUser(userId) {
+  const shared = latestSharedScenarioForUser(userId);
+  if (!shared || !Number.isInteger(shared.scenario_id)) {
+    return { shared: null };
+  }
+
+  const scenario = getScenario(shared.scenario_id);
+  if (!scenario) return { shared: null };
+  const combatants = listCombatants(scenario.id);
+  const combatState = normalizeCombatState(scenario, combatants);
+  const visibleCombatants = combatants.filter((combatant) => Number(combatant.player_visible) !== 0);
+  const active = visibleCombatants.find((combatant) => combatant.id === combatState.activeCombatantId) || null;
+
+  return {
+    shared: {
+      campaignId: scenario.campaign_id,
+      scenarioId: scenario.id,
+      name: scenario.name,
+      notes: scenario.notes || "",
+      mapImageData: scenario.map_image_data || "",
+      mapTokensJson: scenario.map_tokens_json || "",
+      mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
+      round: combatState.round,
+      turnIndex: combatState.turnIndex,
+      activeCombatantId: combatState.activeCombatantId,
+      activeCombatantName: active ? active.name : null,
+      combatants: visibleCombatants.map((combatant) => ({
+        id: combatant.id,
+        name: combatant.name,
+        initiative: combatant.initiative,
+        kind: combatant.kind,
+        enemy_role: combatant.enemy_role,
+        monster_size: combatant.monster_size,
+        monster_token_image_data: combatant.monster_token_image_data || "",
+        claimed_profile_image_data: combatant.claimed_profile_image_data || "",
+        character_class: combatant.character_class,
+        reaction_available: combatant.reaction_available,
+        is_legendary: combatant.is_legendary,
+        legendary_actions_count: combatant.legendary_actions_count,
+        legendary_actions_remaining: combatant.legendary_actions_remaining,
+        is_defeated:
+          combatant.kind === "enemy" && Number.isFinite(Number(combatant.hp)) && Number(combatant.hp) <= 0
+            ? 1
+            : 0,
+        condition_keys: Array.isArray(combatant.condition_keys) ? combatant.condition_keys : []
+      }))
+    }
+  };
+}
+
+function beginSseStream(res) {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+}
+
+function writeSseEvent(res, eventName, payload) {
+  if (!res || res.writableEnded || res.destroyed) return false;
+  try {
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function writeSseComment(res, comment = "ping") {
+  if (!res || res.writableEnded || res.destroyed) return false;
+  try {
+    res.write(`: ${comment}\n\n`);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function addPlayerLiveSubscriber(userId, res) {
+  const clientId = nextStreamClientId++;
+  let subscribers = playerLiveSubscribersByUser.get(userId);
+  if (!subscribers) {
+    subscribers = new Map();
+    playerLiveSubscribersByUser.set(userId, subscribers);
+  }
+
+  const keepAliveTimer = setInterval(() => {
+    writeSseComment(res);
+  }, STREAM_KEEPALIVE_MS);
+
+  subscribers.set(clientId, { userId, res, keepAliveTimer });
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearInterval(keepAliveTimer);
+    const current = playerLiveSubscribersByUser.get(userId);
+    if (!current) return;
+    current.delete(clientId);
+    if (current.size === 0) {
+      playerLiveSubscribersByUser.delete(userId);
+      const timer = playerLivePushTimersByUser.get(userId);
+      if (timer) {
+        clearTimeout(timer);
+        playerLivePushTimersByUser.delete(userId);
+      }
+    }
+  };
+
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+  return cleanup;
+}
+
+function addScenarioMapSubscriber(scenarioId, res, userId) {
+  const clientId = nextStreamClientId++;
+  let subscribers = scenarioMapSubscribersByScenario.get(scenarioId);
+  if (!subscribers) {
+    subscribers = new Map();
+    scenarioMapSubscribersByScenario.set(scenarioId, subscribers);
+  }
+
+  const keepAliveTimer = setInterval(() => {
+    writeSseComment(res);
+  }, STREAM_KEEPALIVE_MS);
+
+  subscribers.set(clientId, { userId, res, keepAliveTimer });
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearInterval(keepAliveTimer);
+    const current = scenarioMapSubscribersByScenario.get(scenarioId);
+    if (!current) return;
+    current.delete(clientId);
+    if (current.size === 0) {
+      scenarioMapSubscribersByScenario.delete(scenarioId);
+      const timer = scenarioMapPushTimersByScenario.get(scenarioId);
+      if (timer) {
+        clearTimeout(timer);
+        scenarioMapPushTimersByScenario.delete(scenarioId);
+      }
+    }
+  };
+
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+  return cleanup;
+}
+
+function flushPlayerLivePushForUser(userId) {
+  const subscribers = playerLiveSubscribersByUser.get(userId);
+  if (!subscribers || subscribers.size === 0) return;
+  const payload = buildPlayerLiveSnapshotForUser(userId);
+  for (const [clientId, subscriber] of subscribers.entries()) {
+    if (writeSseEvent(subscriber.res, "player-live", payload)) continue;
+    clearInterval(subscriber.keepAliveTimer);
+    subscribers.delete(clientId);
+  }
+  if (subscribers.size === 0) {
+    playerLiveSubscribersByUser.delete(userId);
+  }
+}
+
+function schedulePlayerLivePushForUser(userId, delayMs = 80) {
+  if (!Number.isInteger(userId)) return;
+  if (!playerLiveSubscribersByUser.has(userId)) return;
+  if (playerLivePushTimersByUser.has(userId)) return;
+  const timer = setTimeout(() => {
+    playerLivePushTimersByUser.delete(userId);
+    flushPlayerLivePushForUser(userId);
+  }, delayMs);
+  playerLivePushTimersByUser.set(userId, timer);
+}
+
+function notifyPlayerLiveForCampaign(campaignId) {
+  if (!Number.isInteger(campaignId)) return;
+  if (playerLiveSubscribersByUser.size === 0) return;
+  const members = db
+    .prepare("SELECT user_id FROM campaign_members WHERE campaign_id = ?")
+    .all(campaignId);
+  for (const member of members) {
+    const userId = Number(member.user_id);
+    if (!Number.isInteger(userId)) continue;
+    schedulePlayerLivePushForUser(userId);
+  }
+}
+
+function notifyPlayerLiveForScenario(scenarioId) {
+  if (!Number.isInteger(scenarioId)) return;
+  const scenario = getScenario(scenarioId);
+  if (!scenario) return;
+  notifyPlayerLiveForCampaign(scenario.campaign_id);
+}
+
+function notifyPlayerLiveForCombatant(combatantId) {
+  if (!Number.isInteger(combatantId)) return;
+  const row = db
+    .prepare(
+      `SELECT cs.campaign_id
+       FROM scenario_combatants sc
+       JOIN combat_scenarios cs ON cs.id = sc.scenario_id
+       WHERE sc.id = ?`
+    )
+    .get(combatantId);
+  if (!row) return;
+  notifyPlayerLiveForCampaign(row.campaign_id);
+}
+
+function flushScenarioMapPushForScenario(scenarioId) {
+  const subscribers = scenarioMapSubscribersByScenario.get(scenarioId);
+  if (!subscribers || subscribers.size === 0) return;
+
+  const scenario = getScenario(scenarioId);
+  if (!scenario) {
+    for (const [clientId, subscriber] of subscribers.entries()) {
+      writeSseEvent(subscriber.res, "scenario-map", {
+        scenarioId,
+        deleted: true
+      });
+      clearInterval(subscriber.keepAliveTimer);
+      subscribers.delete(clientId);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    scenarioMapSubscribersByScenario.delete(scenarioId);
+    return;
+  }
+
+  const payload = {
+    scenarioId: scenario.id,
+    mapTokensJson: `${scenario.map_tokens_json || ""}`,
+    mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
+    updatedAt: scenario.updated_at || null
+  };
+
+  for (const [clientId, subscriber] of subscribers.entries()) {
+    if (writeSseEvent(subscriber.res, "scenario-map", payload)) continue;
+    clearInterval(subscriber.keepAliveTimer);
+    subscribers.delete(clientId);
+  }
+  if (subscribers.size === 0) {
+    scenarioMapSubscribersByScenario.delete(scenarioId);
+  }
+}
+
+function scheduleScenarioMapPushForScenario(scenarioId, delayMs = 70) {
+  if (!Number.isInteger(scenarioId)) return;
+  if (!scenarioMapSubscribersByScenario.has(scenarioId)) return;
+  if (scenarioMapPushTimersByScenario.has(scenarioId)) return;
+  const timer = setTimeout(() => {
+    scenarioMapPushTimersByScenario.delete(scenarioId);
+    flushScenarioMapPushForScenario(scenarioId);
+  }, delayMs);
+  scenarioMapPushTimersByScenario.set(scenarioId, timer);
+}
+
+function closePlayerLiveSubscribersForUser(userId) {
+  const subscribers = playerLiveSubscribersByUser.get(userId);
+  if (!subscribers || subscribers.size === 0) return;
+  for (const [clientId, subscriber] of subscribers.entries()) {
+    clearInterval(subscriber.keepAliveTimer);
+    subscribers.delete(clientId);
+    if (!subscriber.res.writableEnded) {
+      subscriber.res.end();
+    }
+  }
+  playerLiveSubscribersByUser.delete(userId);
+  const timer = playerLivePushTimersByUser.get(userId);
+  if (timer) {
+    clearTimeout(timer);
+    playerLivePushTimersByUser.delete(userId);
+  }
+}
+
+function closeScenarioMapSubscribersForUser(userId) {
+  for (const [scenarioId, subscribers] of scenarioMapSubscribersByScenario.entries()) {
+    for (const [clientId, subscriber] of subscribers.entries()) {
+      if (subscriber.userId !== userId) continue;
+      clearInterval(subscriber.keepAliveTimer);
+      subscribers.delete(clientId);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    if (subscribers.size === 0) {
+      scenarioMapSubscribersByScenario.delete(scenarioId);
+      const timer = scenarioMapPushTimersByScenario.get(scenarioId);
+      if (timer) {
+        clearTimeout(timer);
+        scenarioMapPushTimersByScenario.delete(scenarioId);
+      }
+    }
+  }
+}
+
+function closeStreamsForUser(userId) {
+  if (!Number.isInteger(userId)) return;
+  closePlayerLiveSubscribersForUser(userId);
+  closeScenarioMapSubscribersForUser(userId);
+}
+
 ensureDefaultAdminUser();
 app.use(loadAuthUser);
 
@@ -573,6 +907,9 @@ app.post("/api/auth/logout", (req, res) => {
     const tokenHash = hashSessionToken(sessionToken);
     db.prepare("DELETE FROM user_sessions WHERE token_hash = ?").run(tokenHash);
   }
+  if (req.authUser?.id) {
+    closeStreamsForUser(req.authUser.id);
+  }
   clearAuthCookie(res);
   res.status(204).send();
 });
@@ -590,6 +927,7 @@ app.post("/api/users/me/change-password", (req, res) => {
     req.authUser.id
   );
   db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(req.authUser.id);
+  closeStreamsForUser(req.authUser.id);
   clearAuthCookie(res);
   return res.status(204).send();
 });
@@ -650,6 +988,7 @@ app.post("/api/users/me/username", (req, res) => {
     throw error;
   }
   db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(req.authUser.id);
+  closeStreamsForUser(req.authUser.id);
   clearAuthCookie(res);
   return res.status(204).send();
 });
@@ -753,6 +1092,7 @@ app.post("/api/admin/users/:userId/reset-password", requireAdmin, (req, res) => 
     userId
   );
   db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId);
+  closeStreamsForUser(userId);
   return res.status(204).send();
 });
 
@@ -773,6 +1113,7 @@ app.post("/api/admin/users/:userId/active", requireAdmin, (req, res) => {
   );
   if (!active) {
     db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId);
+    closeStreamsForUser(userId);
   }
   return res.status(204).send();
 });
@@ -1017,6 +1358,8 @@ app.post("/api/campaigns/:campaignId/members", requireAdmin, (req, res) => {
   db.prepare(
     "INSERT OR REPLACE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?, ?, ?, datetime('now'))"
   ).run(campaignId, userId, role);
+  schedulePlayerLivePushForUser(userId);
+  notifyPlayerLiveForCampaign(campaignId);
   res.status(204).send();
 });
 
@@ -1031,6 +1374,8 @@ app.delete("/api/campaigns/:campaignId/members/:userId", requireAdmin, (req, res
     campaignId,
     userId
   );
+  schedulePlayerLivePushForUser(userId);
+  notifyPlayerLiveForCampaign(campaignId);
   res.status(204).send();
 });
 
@@ -1089,6 +1434,7 @@ app.post("/api/campaigns/:campaignId/live/clear", (req, res) => {
        shared_scenario_id = NULL,
        updated_at = datetime('now')`
   ).run(campaignId);
+  notifyPlayerLiveForCampaign(campaignId);
   res.json(getCampaignLiveState(campaignId));
 });
 
@@ -1106,6 +1452,7 @@ app.post("/api/scenarios/:scenarioId/share", (req, res) => {
        updated_at = datetime('now')`
   ).run(scenario.campaign_id, scenario.id);
 
+  notifyPlayerLiveForCampaign(scenario.campaign_id);
   res.json(getCampaignLiveState(scenario.campaign_id));
 });
 
@@ -1113,65 +1460,17 @@ app.get("/api/player/live", (req, res) => {
   if (isAdminUser(req.authUser)) {
     return res.json({ shared: null });
   }
+  return res.json(buildPlayerLiveSnapshotForUser(req.authUser.id));
+});
 
-  const shared = db
-    .prepare(
-      `SELECT
-        cls.campaign_id,
-        cls.shared_scenario_id AS scenario_id,
-        cls.updated_at
-       FROM campaign_live_state cls
-       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
-       WHERE cm.user_id = ?
-         AND cls.shared_scenario_id IS NOT NULL
-       ORDER BY cls.updated_at DESC
-       LIMIT 1`
-    )
-    .get(req.authUser.id);
-
-  if (!shared || !Number.isInteger(shared.scenario_id)) {
-    return res.json({ shared: null });
+app.get("/api/player/live/stream", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return res.status(403).json({ error: "Player endpoint is not available for admin users." });
   }
 
-  const scenario = getScenario(shared.scenario_id);
-  if (!scenario) return res.json({ shared: null });
-  const combatants = listCombatants(scenario.id);
-  const state = normalizeCombatState(scenario, combatants);
-  const visibleCombatants = combatants.filter((c) => Number(c.player_visible) !== 0);
-  const active = visibleCombatants.find((c) => c.id === state.activeCombatantId) || null;
-
-  return res.json({
-    shared: {
-      campaignId: scenario.campaign_id,
-      scenarioId: scenario.id,
-      name: scenario.name,
-      notes: scenario.notes || "",
-      mapImageData: scenario.map_image_data || "",
-      mapTokensJson: scenario.map_tokens_json || "",
-      mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
-      round: state.round,
-      turnIndex: state.turnIndex,
-      activeCombatantId: state.activeCombatantId,
-      activeCombatantName: active ? active.name : null,
-      combatants: visibleCombatants.map((c) => ({
-        id: c.id,
-        name: c.name,
-        initiative: c.initiative,
-        kind: c.kind,
-        enemy_role: c.enemy_role,
-        monster_size: c.monster_size,
-        monster_token_image_data: c.monster_token_image_data || "",
-        claimed_profile_image_data: c.claimed_profile_image_data || "",
-        character_class: c.character_class,
-        reaction_available: c.reaction_available,
-        is_legendary: c.is_legendary,
-        legendary_actions_count: c.legendary_actions_count,
-        legendary_actions_remaining: c.legendary_actions_remaining,
-        is_defeated: c.kind === "enemy" && Number.isFinite(Number(c.hp)) && Number(c.hp) <= 0 ? 1 : 0,
-        condition_keys: Array.isArray(c.condition_keys) ? c.condition_keys : []
-      }))
-    }
-  });
+  beginSseStream(res);
+  writeSseEvent(res, "player-live", buildPlayerLiveSnapshotForUser(req.authUser.id));
+  addPlayerLiveSubscriber(req.authUser.id, res);
 });
 
 app.post("/api/player/live/map-token", (req, res) => {
@@ -1248,6 +1547,8 @@ app.post("/api/player/live/map-token", (req, res) => {
   db.prepare(
     "UPDATE combat_scenarios SET map_tokens_json = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(mapTokensJson, shared.scenario_id);
+  notifyPlayerLiveForCampaign(shared.campaign_id);
+  scheduleScenarioMapPushForScenario(shared.scenario_id);
 
   return res.json({
     scenarioId: shared.scenario_id,
@@ -1385,7 +1686,24 @@ app.put("/api/scenarios/:scenarioId", (req, res) => {
       "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
   res.json(updated);
+});
+
+app.get("/api/scenarios/:scenarioId/stream", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  beginSseStream(res);
+  writeSseEvent(res, "scenario-map", {
+    scenarioId: scenario.id,
+    mapTokensJson: `${scenario.map_tokens_json || ""}`,
+    mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
+    updatedAt: scenario.updated_at || null
+  });
+  addScenarioMapSubscriber(scenario.id, res, req.authUser.id);
 });
 
 app.post("/api/scenarios/:scenarioId/map-tokens", (req, res) => {
@@ -1416,6 +1734,8 @@ app.post("/api/scenarios/:scenarioId/map-tokens", (req, res) => {
   db.prepare(
     "UPDATE combat_scenarios SET map_tokens_json = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(mapTokensJson, scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
+  scheduleScenarioMapPushForScenario(scenarioId);
 
   res.json({ scenarioId, mapTokensJson });
 });
@@ -1436,6 +1756,8 @@ app.post("/api/scenarios/:scenarioId/map-token-size", (req, res) => {
   db.prepare(
     "UPDATE combat_scenarios SET map_token_size = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(tokenSize, scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
+  scheduleScenarioMapPushForScenario(scenarioId);
 
   res.json({ scenarioId, mapTokenSize: tokenSize });
 });
@@ -1472,6 +1794,7 @@ app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
       "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
+  notifyPlayerLiveForCampaign(scenario.campaign_id);
   res.json(updated);
 });
 
@@ -1627,6 +1950,7 @@ app.post("/api/scenarios/:scenarioId/combatants", (req, res) => {
 
   const combatant = getCombatantById(result.lastInsertRowid);
 
+  notifyPlayerLiveForScenario(scenarioId);
   res.status(201).json(combatant);
 });
 
@@ -1652,11 +1976,13 @@ app.delete("/api/scenarios/:scenarioId", (req, res) => {
   if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
 
   const scenario = db
-    .prepare("SELECT id FROM combat_scenarios WHERE id = ?")
+    .prepare("SELECT id, campaign_id FROM combat_scenarios WHERE id = ?")
     .get(scenarioId);
   if (!scenario) return badRequest(res, "Scenario not found.");
 
   db.prepare("DELETE FROM combat_scenarios WHERE id = ?").run(scenarioId);
+  notifyPlayerLiveForCampaign(scenario.campaign_id);
+  scheduleScenarioMapPushForScenario(scenarioId);
   res.status(204).send();
 });
 
@@ -1681,6 +2007,7 @@ app.delete("/api/combatants/:combatantId", (req, res) => {
   }
 
   db.prepare("DELETE FROM scenario_combatants WHERE id = ?").run(combatantId);
+  notifyPlayerLiveForCampaign(combatant.campaign_id);
   res.status(204).send();
 });
 
@@ -1742,6 +2069,7 @@ app.put("/api/combatants/:combatantId", (req, res) => {
 
   const updated = getCombatantById(combatantId);
 
+  notifyPlayerLiveForScenario(existing.scenario_id);
   res.json(updated);
 });
 
@@ -1761,6 +2089,7 @@ app.post("/api/combatants/:combatantId/conditions", (req, res) => {
     "INSERT OR IGNORE INTO scenario_combatant_conditions (combatant_id, condition_key) VALUES (?, ?)"
   ).run(combatantId, conditionKey);
 
+  notifyPlayerLiveForCombatant(combatantId);
   res.json(getCombatantById(combatantId));
 });
 
@@ -1780,6 +2109,7 @@ app.delete("/api/combatants/:combatantId/conditions/:conditionKey", (req, res) =
     "DELETE FROM scenario_combatant_conditions WHERE combatant_id = ? AND condition_key = ?"
   ).run(combatantId, conditionKey);
 
+  notifyPlayerLiveForCombatant(combatantId);
   res.json(getCombatantById(combatantId));
 });
 
@@ -1813,6 +2143,7 @@ app.post("/api/combatants/:combatantId/hp-adjust", (req, res) => {
     .all(combatantId)
     .map((row) => row.condition_key);
 
+  notifyPlayerLiveForCombatant(combatantId);
   res.json(updated);
 });
 
@@ -1839,6 +2170,7 @@ app.post("/api/scenarios/:scenarioId/combat/reset", (req, res) => {
     combatants
   );
 
+  notifyPlayerLiveForScenario(scenarioId);
   res.json({
     scenarioId,
     round: state.round,
@@ -1917,6 +2249,7 @@ app.post("/api/scenarios/:scenarioId/combat/next-turn", (req, res) => {
   }
 
   const latestCombatants = listCombatants(scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
   res.json({
     scenarioId,
     round: nextRound,
@@ -2009,6 +2342,7 @@ app.post("/api/scenarios/:scenarioId/combat/prev-turn", (req, res) => {
   }
 
   const latestCombatants = listCombatants(scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
   res.json({
     scenarioId,
     round: nextRound,
@@ -2041,6 +2375,7 @@ app.post("/api/combatants/:combatantId/reaction", (req, res) => {
     combatantId
   );
 
+  notifyPlayerLiveForCombatant(combatantId);
   res.json(getCombatantById(combatantId));
 });
 
@@ -2065,6 +2400,7 @@ app.post("/api/combatants/:combatantId/player-visible", (req, res) => {
     combatantId
   );
 
+  notifyPlayerLiveForCampaign(accessRow.campaign_id);
   res.json(getCombatantById(combatantId));
 });
 
@@ -2097,6 +2433,7 @@ app.post("/api/combatants/:combatantId/legendary-actions", (req, res) => {
     remaining,
     combatantId
   );
+  notifyPlayerLiveForCombatant(combatantId);
   res.json(getCombatantById(combatantId));
 });
 
