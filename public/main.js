@@ -30,9 +30,11 @@ const state = {
     dragging: false,
     dragMode: "map",
     dragCombatantId: null,
+    hoverCombatantId: null,
     pointerId: null,
     lastClientX: 0,
     lastClientY: 0,
+    dragLocked: false,
     tokensByScenario: {},
     pendingRemoteSync: null,
     saveTimer: null,
@@ -49,9 +51,11 @@ const state = {
     dragging: false,
     dragMode: "map",
     dragCombatantId: null,
+    hoverCombatantId: null,
     pointerId: null,
     lastClientX: 0,
     lastClientY: 0,
+    dragLocked: false,
     saveTimer: null,
     pendingTokenUpdate: null
   },
@@ -81,6 +85,12 @@ const state = {
   victoryAudioContext: null,
   victoryAudioElement: null,
   victoryAudioUnlocked: false,
+  revealMomentCombatantId: null,
+  revealMomentUntilMs: 0,
+  revealMomentTimer: null,
+  playerRevealMomentsByCombatant: {},
+  playerVisibleCombatantIdsByScenario: {},
+  playerRevealMomentTimer: null,
   selectedCampaignId: null,
   characters: [],
   scenarios: [],
@@ -133,6 +143,11 @@ const els = {
   playerLiveMapWrap: document.getElementById("playerLiveMapWrap"),
   playerLiveMapHint: document.getElementById("playerLiveMapHint"),
   playerMapViewport: document.getElementById("playerMapViewport"),
+  playerMapControls: document.getElementById("playerMapControls"),
+  playerMapZoomOutBtn: document.getElementById("playerMapZoomOutBtn"),
+  playerMapZoomInBtn: document.getElementById("playerMapZoomInBtn"),
+  playerMapResetBtn: document.getElementById("playerMapResetBtn"),
+  playerMapDragLockBtn: document.getElementById("playerMapDragLockBtn"),
   playerMapScene: document.getElementById("playerMapScene"),
   playerMapImage: document.getElementById("playerMapImage"),
   playerMapTokens: document.getElementById("playerMapTokens"),
@@ -262,6 +277,11 @@ const els = {
   runMapWrap: document.getElementById("runMapWrap"),
   runMapHint: document.getElementById("runMapHint"),
   runMapTokenSizeControls: document.getElementById("runMapTokenSizeControls"),
+  runMapControls: document.getElementById("runMapControls"),
+  runMapZoomOutBtn: document.getElementById("runMapZoomOutBtn"),
+  runMapZoomInBtn: document.getElementById("runMapZoomInBtn"),
+  runMapResetBtn: document.getElementById("runMapResetBtn"),
+  runMapDragLockBtn: document.getElementById("runMapDragLockBtn"),
   runMapTokenSizeInput: document.getElementById("runMapTokenSizeInput"),
   runMapTokenSizeValue: document.getElementById("runMapTokenSizeValue"),
   runMapViewport: document.getElementById("runMapViewport"),
@@ -971,6 +991,124 @@ function maybeCelebrateEncounterWin(scenarioId, combatants, options = {}) {
   if (!wonNow) {
     delete state.pendingVictorySoundById[key];
   }
+}
+
+function hasRevealMoment(combatantId) {
+  if (!Number.isInteger(combatantId)) return false;
+  return (
+    state.revealMomentCombatantId === combatantId &&
+    Date.now() < Number(state.revealMomentUntilMs || 0)
+  );
+}
+
+function playRevealSound() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  if (!state.victoryAudioContext) {
+    state.victoryAudioContext = new AudioCtx();
+  }
+  const audioCtx = state.victoryAudioContext;
+  const scheduleReveal = () => {
+    const now = audioCtx.currentTime;
+    const master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.linearRampToValueAtTime(0.1, now + 0.03);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+    master.connect(audioCtx.destination);
+
+    const oscA = audioCtx.createOscillator();
+    oscA.type = "triangle";
+    oscA.frequency.setValueAtTime(523.25, now);
+    oscA.frequency.exponentialRampToValueAtTime(880, now + 0.2);
+    oscA.connect(master);
+    oscA.start(now);
+    oscA.stop(now + 0.36);
+
+    const oscB = audioCtx.createOscillator();
+    oscB.type = "sine";
+    oscB.frequency.setValueAtTime(659.25, now + 0.02);
+    oscB.frequency.exponentialRampToValueAtTime(1174.66, now + 0.26);
+    oscB.connect(master);
+    oscB.start(now + 0.02);
+    oscB.stop(now + 0.36);
+  };
+  if (audioCtx.state === "running") {
+    scheduleReveal();
+    return;
+  }
+  audioCtx.resume().then(scheduleReveal).catch(() => {});
+}
+
+function triggerRevealMoment(combatantId) {
+  if (!Number.isInteger(combatantId)) return;
+  state.revealMomentCombatantId = combatantId;
+  state.revealMomentUntilMs = Date.now() + 1800;
+  if (state.revealMomentTimer) clearTimeout(state.revealMomentTimer);
+  state.revealMomentTimer = setTimeout(() => {
+    state.revealMomentTimer = null;
+    if (Date.now() >= Number(state.revealMomentUntilMs || 0)) {
+      state.revealMomentCombatantId = null;
+      state.revealMomentUntilMs = 0;
+    }
+  }, 1900);
+}
+
+function hasPlayerRevealMoment(combatantId) {
+  if (!Number.isInteger(combatantId)) return false;
+  return Date.now() < Number(state.playerRevealMomentsByCombatant[combatantId] || 0);
+}
+
+function schedulePlayerRevealMomentCleanup() {
+  if (state.playerRevealMomentTimer) {
+    clearTimeout(state.playerRevealMomentTimer);
+    state.playerRevealMomentTimer = null;
+  }
+  const now = Date.now();
+  const activeUntil = Object.values(state.playerRevealMomentsByCombatant)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > now);
+  if (activeUntil.length === 0) return;
+  const nextUntil = Math.min(...activeUntil);
+  const waitMs = Math.max(20, nextUntil - now + 30);
+  state.playerRevealMomentTimer = setTimeout(() => {
+    state.playerRevealMomentTimer = null;
+    if (state.page === "player-home" && state.playerLiveViewMode === "map") {
+      renderPlayerHome();
+    }
+  }, waitMs);
+}
+
+function triggerPlayerRevealMoments(combatantIds) {
+  const now = Date.now();
+  let added = false;
+  for (const id of combatantIds) {
+    const combatantId = Number(id);
+    if (!Number.isInteger(combatantId)) continue;
+    state.playerRevealMomentsByCombatant[combatantId] = now + 2200;
+    added = true;
+  }
+  if (!added) return;
+  schedulePlayerRevealMomentCleanup();
+}
+
+function updatePlayerRevealMomentsFromShared(shared) {
+  const scenarioId = Number(shared?.scenarioId);
+  if (!Number.isInteger(scenarioId)) return;
+  const combatants = Array.isArray(shared?.combatants) ? shared.combatants : [];
+  const visibleNonPcIds = combatants
+    .filter((combatant) => combatant.kind !== "character" && Number(combatant.player_visible) !== 0)
+    .map((combatant) => Number(combatant.id))
+    .filter((id) => Number.isInteger(id));
+
+  const previous = state.playerVisibleCombatantIdsByScenario[scenarioId];
+  if (previous instanceof Set) {
+    const newlyVisible = visibleNonPcIds.filter((id) => !previous.has(id));
+    if (newlyVisible.length > 0) {
+      triggerPlayerRevealMoments(newlyVisible);
+    }
+  }
+
+  state.playerVisibleCombatantIdsByScenario[scenarioId] = new Set(visibleNonPcIds);
 }
 
 function updateMonsterLegendaryFieldsVisibility() {
@@ -2407,6 +2545,19 @@ function rerenderCurrentScenarioPage() {
   if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
 }
 
+function setMapHoverCombatantRow(combatantId, isPlayerView, on) {
+  if (isPlayerView) {
+    state.playerMap.hoverCombatantId = on && Number.isInteger(combatantId) ? combatantId : null;
+  } else {
+    state.runMap.hoverCombatantId = on && Number.isInteger(combatantId) ? combatantId : null;
+  }
+  const list = isPlayerView ? els.playerLiveCombatantList : els.runOrderList;
+  if (!(list instanceof HTMLElement) || !Number.isInteger(combatantId)) return;
+  const row = list.querySelector(`li[data-combatant-id="${combatantId}"]`);
+  if (!(row instanceof HTMLElement)) return;
+  row.classList.toggle("map-token-hover-linked", Boolean(on));
+}
+
 function focusPreviewOnActiveNonPc() {
   const active = state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId);
   if (active && active.kind === "enemy") {
@@ -2457,6 +2608,86 @@ function setRunMapTokenSizeUI(size) {
 function setPlayerMapTokenSize(size) {
   const finalSize = clamp(Math.round(Number(size) || 44), 24, 128);
   if (els.playerMapViewport) els.playerMapViewport.style.setProperty("--map-token-size", `${finalSize}px`);
+}
+
+function setRunMapDragLockUi(locked) {
+  state.runMap.dragLocked = Boolean(locked);
+  if (els.runMapViewport) {
+    els.runMapViewport.classList.toggle("drag-locked", state.runMap.dragLocked);
+  }
+  if (els.runMapDragLockBtn) {
+    els.runMapDragLockBtn.setAttribute("aria-pressed", state.runMap.dragLocked ? "true" : "false");
+    els.runMapDragLockBtn.setAttribute(
+      "aria-label",
+      state.runMap.dragLocked ? "Unlock map dragging" : "Lock map dragging"
+    );
+    els.runMapDragLockBtn.title = state.runMap.dragLocked ? "Unlock Dragging" : "Lock Dragging";
+  }
+}
+
+function setPlayerMapDragLockUi(locked) {
+  state.playerMap.dragLocked = Boolean(locked);
+  if (els.playerMapViewport) {
+    els.playerMapViewport.classList.toggle("drag-locked", state.playerMap.dragLocked);
+  }
+  if (els.playerMapDragLockBtn) {
+    els.playerMapDragLockBtn.setAttribute("aria-pressed", state.playerMap.dragLocked ? "true" : "false");
+    els.playerMapDragLockBtn.setAttribute(
+      "aria-label",
+      state.playerMap.dragLocked ? "Unlock map dragging" : "Lock map dragging"
+    );
+    els.playerMapDragLockBtn.title = state.playerMap.dragLocked ? "Unlock Dragging" : "Lock Dragging";
+  }
+}
+
+function zoomRunMapAtPointer(factor, pointerX = null, pointerY = null) {
+  if (!els.runMapViewport || !els.runMapImage || els.runMapImage.classList.contains("hidden")) return;
+  if (!els.runMapImage.naturalWidth || !els.runMapImage.naturalHeight) return;
+  const viewportWidth = els.runMapViewport.clientWidth;
+  const viewportHeight = els.runMapViewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return;
+  const focusX = Number.isFinite(pointerX) ? pointerX : viewportWidth / 2;
+  const focusY = Number.isFinite(pointerY) ? pointerY : viewportHeight / 2;
+  const baseScale = Math.min(
+    viewportWidth / els.runMapImage.naturalWidth,
+    viewportHeight / els.runMapImage.naturalHeight
+  );
+  const prevZoom = state.runMap.zoom;
+  const nextZoom = clamp(prevZoom * factor, state.runMap.minZoom, state.runMap.maxZoom);
+  if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+  const prevTotalScale = baseScale * prevZoom;
+  const nextTotalScale = baseScale * nextZoom;
+  const imageX = (focusX - state.runMap.panX) / prevTotalScale;
+  const imageY = (focusY - state.runMap.panY) / prevTotalScale;
+  state.runMap.zoom = nextZoom;
+  state.runMap.panX = focusX - imageX * nextTotalScale;
+  state.runMap.panY = focusY - imageY * nextTotalScale;
+  applyRunMapTransform();
+}
+
+function zoomPlayerMapAtPointer(factor, pointerX = null, pointerY = null) {
+  if (!els.playerMapViewport || !els.playerMapImage || els.playerMapImage.classList.contains("hidden")) return;
+  if (!els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return;
+  const viewportWidth = els.playerMapViewport.clientWidth;
+  const viewportHeight = els.playerMapViewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return;
+  const focusX = Number.isFinite(pointerX) ? pointerX : viewportWidth / 2;
+  const focusY = Number.isFinite(pointerY) ? pointerY : viewportHeight / 2;
+  const baseScale = Math.min(
+    viewportWidth / els.playerMapImage.naturalWidth,
+    viewportHeight / els.playerMapImage.naturalHeight
+  );
+  const prevZoom = state.playerMap.zoom;
+  const nextZoom = clamp(prevZoom * factor, state.playerMap.minZoom, state.playerMap.maxZoom);
+  if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+  const prevTotalScale = baseScale * prevZoom;
+  const nextTotalScale = baseScale * nextZoom;
+  const imageX = (focusX - state.playerMap.panX) / prevTotalScale;
+  const imageY = (focusY - state.playerMap.panY) / prevTotalScale;
+  state.playerMap.zoom = nextZoom;
+  state.playerMap.panX = focusX - imageX * nextTotalScale;
+  state.playerMap.panY = focusY - imageY * nextTotalScale;
+  applyPlayerMapTransform();
 }
 
 async function persistRunMapTokenSize(scenarioId, tokenSize) {
@@ -2610,6 +2841,9 @@ function renderRunMapTokens(scenarioId, combatants) {
     if (combatant.id === state.combat.activeCombatantId) {
       token.classList.add("is-active");
     }
+    if (hasRevealMoment(combatant.id)) {
+      token.classList.add("reveal-moment-token");
+    }
 
     const icon = document.createElement("img");
     icon.className = "run-map-token-icon";
@@ -2633,6 +2867,7 @@ function renderRunMapTokens(scenarioId, combatants) {
 
     token.addEventListener("pointerdown", (event) => {
       if (state.page !== "scenario-map") return;
+      if (state.runMap.dragLocked) return;
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2645,6 +2880,19 @@ function renderRunMapTokens(scenarioId, combatants) {
       if (els.runMapViewport) els.runMapViewport.setPointerCapture(event.pointerId);
       token.classList.add("is-dragging");
       if (els.runMapViewport) els.runMapViewport.classList.add("is-dragging");
+    });
+
+    token.addEventListener("mouseenter", () => {
+      setMapHoverCombatantRow(combatant.id, false, true);
+    });
+    token.addEventListener("pointerenter", () => {
+      setMapHoverCombatantRow(combatant.id, false, true);
+    });
+    token.addEventListener("mouseleave", () => {
+      setMapHoverCombatantRow(combatant.id, false, false);
+    });
+    token.addEventListener("pointerleave", () => {
+      setMapHoverCombatantRow(combatant.id, false, false);
     });
 
     if (combatant.kind === "enemy") {
@@ -2782,15 +3030,20 @@ function createPlayerVisibilityToggle(combatant, rerender) {
   button.type = "button";
   button.className = "visibility-toggle";
   button.classList.toggle("is-hidden", !visibleToPlayers);
+  button.classList.toggle("reveal-moment-btn", hasRevealMoment(combatant.id));
   button.textContent = visibleToPlayers ? "Visible" : "Hidden";
   button.title = visibleToPlayers ? "Visible in player view" : "Hidden from player view";
   button.addEventListener("click", async () => {
+    const nextVisible = !visibleToPlayers;
     try {
       await api(`/api/combatants/${combatant.id}/player-visible`, {
         method: "POST",
-        body: JSON.stringify({ visible: !visibleToPlayers })
+        body: JSON.stringify({ visible: nextVisible })
       });
       await safeLoadCombatState();
+      if (nextVisible) {
+        triggerRevealMoment(combatant.id);
+      }
       rerender();
     } catch (error) {
       setStatus(error.message, "error");
@@ -2891,6 +3144,13 @@ function renderScenarioEditPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
+    li.dataset.combatantId = String(combatant.id);
+    if (state.runMap.hoverCombatantId === combatant.id) {
+      li.classList.add("map-token-hover-linked");
+    }
+    if (hasRevealMoment(combatant.id)) {
+      li.classList.add("reveal-moment-row");
+    }
     if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
       li.classList.add("combatant-hidden-for-players");
     }
@@ -3030,7 +3290,10 @@ function renderScenarioRunPage() {
   if (!scenario) return;
 
   const isMapView = state.page === "scenario-map";
-  if (!isMapView) hideMapStatblockHover();
+  if (!isMapView) {
+    hideMapStatblockHover();
+    state.runMap.hoverCombatantId = null;
+  }
   const hasMap = Boolean(scenario.map_image_data);
   const mapTokenSize = scenarioMapTokenSize(scenario);
   hydrateRunMapTokensFromScenario(scenario);
@@ -3052,7 +3315,9 @@ function renderScenarioRunPage() {
     els.runMapImage.classList.remove("hidden");
     els.runMapHint.classList.add("hidden");
     els.runMapTokenSizeControls.classList.remove("hidden");
+    els.runMapControls.classList.remove("hidden");
     setRunMapTokenSizeUI(mapTokenSize);
+    setRunMapDragLockUi(state.runMap.dragLocked);
     if (shouldResetMap) resetRunMapViewForScenario(scenario.id);
     renderRunMapTokens(scenario.id, state.combat.combatants);
     applyRunMapTransform();
@@ -3061,6 +3326,7 @@ function renderScenarioRunPage() {
     els.runMapImage.classList.add("hidden");
     els.runMapHint.classList.remove("hidden");
     els.runMapTokenSizeControls.classList.add("hidden");
+    els.runMapControls.classList.add("hidden");
     if (els.runMapTokens) els.runMapTokens.innerHTML = "";
     state.runMap.scenarioId = null;
     state.runMap.dragging = false;
@@ -3070,6 +3336,7 @@ function renderScenarioRunPage() {
     els.runMapImage.classList.add("hidden");
     els.runMapHint.classList.add("hidden");
     els.runMapTokenSizeControls.classList.add("hidden");
+    els.runMapControls.classList.add("hidden");
     if (els.runMapTokens) els.runMapTokens.innerHTML = "";
     state.runMap.dragging = false;
     state.runMap.pointerId = null;
@@ -3135,6 +3402,10 @@ function renderScenarioRunPage() {
 
   for (const combatant of state.combat.combatants) {
     const li = document.createElement("li");
+    li.dataset.combatantId = String(combatant.id);
+    if (hasRevealMoment(combatant.id)) {
+      li.classList.add("reveal-moment-row");
+    }
     if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
       li.classList.add("combatant-hidden-for-players");
     }
@@ -3443,9 +3714,17 @@ function renderPlayerHome() {
   const hasShared = Boolean(shared);
   els.playerWaitingWrap.classList.toggle("hidden", hasShared);
   els.playerLiveWrap.classList.toggle("hidden", !hasShared);
-  if (!hasShared) return;
+  if (!hasShared) {
+    state.playerVisibleCombatantIdsByScenario = {};
+    return;
+  }
+
+  updatePlayerRevealMomentsFromShared(shared);
 
   const isMapMode = state.playerLiveViewMode === "map";
+  if (!isMapMode) {
+    state.playerMap.hoverCombatantId = null;
+  }
   els.playerLiveWrap.classList.toggle("player-map-mode", isMapMode);
   els.playerLiveInitiativeWrap.classList.remove("hidden");
   els.playerLiveMapWrap.classList.toggle("hidden", !isMapMode);
@@ -3462,6 +3741,10 @@ function renderPlayerHome() {
 
   for (const combatant of combatants) {
     const li = document.createElement("li");
+    li.dataset.combatantId = String(combatant.id);
+    if (state.playerMap.hoverCombatantId === combatant.id) {
+      li.classList.add("map-token-hover-linked");
+    }
     if (combatant.kind === "character") {
       li.classList.add("run-tone-pc");
     } else if (isAllyCombatant(combatant)) {
@@ -3698,6 +3981,7 @@ function schedulePlayerMapTokenSave(scenarioId, combatantId, x, y) {
 function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants, activeCombatantId) {
   const hasMap = Boolean(mapImageData);
   els.playerLiveMapHint.classList.toggle("hidden", hasMap);
+  els.playerMapControls.classList.toggle("hidden", !hasMap);
   els.playerMapViewport.classList.toggle("hidden", !hasMap);
   if (!hasMap) {
     state.playerMap.dragging = false;
@@ -3719,6 +4003,7 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
     els.playerMapTokens.innerHTML = "";
     return;
   }
+  setPlayerMapDragLockUi(state.playerMap.dragLocked);
 
   const nextScenarioId = Number.isInteger(Number(scenarioId)) ? Number(scenarioId) : null;
   const nextMapKey = `${mapImageData || ""}`;
@@ -3756,6 +4041,9 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
     if (combatant.id === activeCombatantId) {
       token.classList.add("is-active");
     }
+    if (hasPlayerRevealMoment(combatant.id)) {
+      token.classList.add("reveal-moment-token");
+    }
 
     const icon = document.createElement("img");
     icon.className = "player-map-token-icon";
@@ -3779,6 +4067,7 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
 
     token.addEventListener("pointerdown", (event) => {
       if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+      if (state.playerMap.dragLocked) return;
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -3794,6 +4083,19 @@ function renderPlayerLiveMap(scenarioId, mapImageData, mapTokensJson, combatants
         els.playerMapViewport.setPointerCapture(event.pointerId);
       }
       token.classList.add("is-dragging");
+    });
+
+    token.addEventListener("mouseenter", () => {
+      setMapHoverCombatantRow(combatant.id, true, true);
+    });
+    token.addEventListener("pointerenter", () => {
+      setMapHoverCombatantRow(combatant.id, true, true);
+    });
+    token.addEventListener("mouseleave", () => {
+      setMapHoverCombatantRow(combatant.id, true, false);
+    });
+    token.addEventListener("pointerleave", () => {
+      setMapHoverCombatantRow(combatant.id, true, false);
     });
 
     els.playerMapTokens.appendChild(token);
@@ -5446,6 +5748,36 @@ function bindEvents() {
   };
   els.runMapTokenSizeInput.addEventListener("input", onRunMapTokenSizeChange);
   els.runMapTokenSizeInput.addEventListener("change", onRunMapTokenSizeChange);
+  setRunMapDragLockUi(false);
+  setPlayerMapDragLockUi(false);
+
+  els.runMapZoomOutBtn?.addEventListener("click", () => {
+    zoomRunMapAtPointer(1 / 1.12);
+  });
+  els.runMapZoomInBtn?.addEventListener("click", () => {
+    zoomRunMapAtPointer(1.12);
+  });
+  els.runMapResetBtn?.addEventListener("click", () => {
+    const scenario = selectedScenario();
+    if (!scenario) return;
+    resetRunMapViewForScenario(scenario.id);
+  });
+  els.runMapDragLockBtn?.addEventListener("click", () => {
+    setRunMapDragLockUi(!state.runMap.dragLocked);
+  });
+
+  els.playerMapZoomOutBtn?.addEventListener("click", () => {
+    zoomPlayerMapAtPointer(1 / 1.12);
+  });
+  els.playerMapZoomInBtn?.addEventListener("click", () => {
+    zoomPlayerMapAtPointer(1.12);
+  });
+  els.playerMapResetBtn?.addEventListener("click", () => {
+    resetPlayerMapViewForScenario(state.playerMap.scenarioId, state.playerMap.mapKey);
+  });
+  els.playerMapDragLockBtn?.addEventListener("click", () => {
+    setPlayerMapDragLockUi(!state.playerMap.dragLocked);
+  });
 
   if (els.runMapImage) {
     els.runMapImage.addEventListener("load", () => {
@@ -5463,43 +5795,18 @@ function bindEvents() {
       (event) => {
         if (state.page !== "scenario-map" || els.runMapImage.classList.contains("hidden")) return;
         event.preventDefault();
-        if (!els.runMapImage.naturalWidth || !els.runMapImage.naturalHeight) return;
-
         const rect = els.runMapViewport.getBoundingClientRect();
         const pointerX = event.clientX - rect.left;
         const pointerY = event.clientY - rect.top;
-
-        const viewportWidth = els.runMapViewport.clientWidth;
-        const viewportHeight = els.runMapViewport.clientHeight;
-        if (viewportWidth <= 0 || viewportHeight <= 0) return;
-        const baseScale = Math.min(
-          viewportWidth / els.runMapImage.naturalWidth,
-          viewportHeight / els.runMapImage.naturalHeight
-        );
-
-        const prevZoom = state.runMap.zoom;
-        const nextZoom = clamp(
-          prevZoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12),
-          state.runMap.minZoom,
-          state.runMap.maxZoom
-        );
-        if (Math.abs(nextZoom - prevZoom) < 0.001) return;
-
-        const prevTotalScale = baseScale * prevZoom;
-        const nextTotalScale = baseScale * nextZoom;
-        const imageX = (pointerX - state.runMap.panX) / prevTotalScale;
-        const imageY = (pointerY - state.runMap.panY) / prevTotalScale;
-
-        state.runMap.zoom = nextZoom;
-        state.runMap.panX = pointerX - imageX * nextTotalScale;
-        state.runMap.panY = pointerY - imageY * nextTotalScale;
-        applyRunMapTransform();
+        zoomRunMapAtPointer(event.deltaY < 0 ? 1.12 : 1 / 1.12, pointerX, pointerY);
       },
       { passive: false }
     );
 
     els.runMapViewport.addEventListener("pointerdown", (event) => {
       if (state.page !== "scenario-map" || els.runMapImage.classList.contains("hidden")) return;
+      if (event.target instanceof Element && event.target.closest(".map-touch-controls")) return;
+      if (state.runMap.dragLocked) return;
       if (event.button !== 0) return;
       state.runMap.dragging = true;
       state.runMap.dragMode = "map";
@@ -5588,36 +5895,10 @@ function bindEvents() {
         if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
         if (els.playerMapImage.classList.contains("hidden")) return;
         event.preventDefault();
-        if (!els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return;
-
         const rect = els.playerMapViewport.getBoundingClientRect();
         const pointerX = event.clientX - rect.left;
         const pointerY = event.clientY - rect.top;
-        const viewportWidth = els.playerMapViewport.clientWidth;
-        const viewportHeight = els.playerMapViewport.clientHeight;
-        if (viewportWidth <= 0 || viewportHeight <= 0) return;
-
-        const baseScale = Math.min(
-          viewportWidth / els.playerMapImage.naturalWidth,
-          viewportHeight / els.playerMapImage.naturalHeight
-        );
-        const prevZoom = state.playerMap.zoom;
-        const nextZoom = clamp(
-          prevZoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12),
-          state.playerMap.minZoom,
-          state.playerMap.maxZoom
-        );
-        if (Math.abs(nextZoom - prevZoom) < 0.001) return;
-
-        const prevTotalScale = baseScale * prevZoom;
-        const nextTotalScale = baseScale * nextZoom;
-        const imageX = (pointerX - state.playerMap.panX) / prevTotalScale;
-        const imageY = (pointerY - state.playerMap.panY) / prevTotalScale;
-
-        state.playerMap.zoom = nextZoom;
-        state.playerMap.panX = pointerX - imageX * nextTotalScale;
-        state.playerMap.panY = pointerY - imageY * nextTotalScale;
-        applyPlayerMapTransform();
+        zoomPlayerMapAtPointer(event.deltaY < 0 ? 1.12 : 1 / 1.12, pointerX, pointerY);
       },
       { passive: false }
     );
@@ -5625,6 +5906,8 @@ function bindEvents() {
     els.playerMapViewport.addEventListener("pointerdown", (event) => {
       if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
       if (els.playerMapImage.classList.contains("hidden")) return;
+      if (event.target instanceof Element && event.target.closest(".map-touch-controls")) return;
+      if (state.playerMap.dragLocked) return;
       if (event.button !== 0) return;
       stopPlayerLivePolling();
       state.playerMap.dragging = true;

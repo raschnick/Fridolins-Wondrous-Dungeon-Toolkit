@@ -1232,6 +1232,72 @@ body.page-player #playerLiveWrap {
   font-size: 0.8rem;
 }
 
+.map-touch-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  position: absolute;
+  top: 0.7rem;
+  left: 0.7rem;
+  z-index: 8;
+  padding: 0.5rem 0.45rem;
+  border-radius: 16px;
+  border: 1px solid rgba(121, 145, 168, 0.3);
+  background: rgba(8, 17, 29, 0.75);
+  box-shadow: 0 10px 22px rgba(2, 8, 14, 0.35);
+  backdrop-filter: blur(3px);
+}
+
+.map-tool-btn {
+  width: 2.35rem;
+  height: 2.35rem;
+  min-width: 2.35rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  border: 1px solid rgba(126, 152, 176, 0.32);
+  background: rgba(16, 29, 44, 0.75);
+  color: #d9e8f7;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.map-tool-btn:hover,
+.map-tool-btn:focus-visible {
+  opacity: 0.98;
+  background: rgba(22, 39, 58, 0.92);
+  border-color: rgba(163, 193, 222, 0.55);
+}
+
+.map-tool-btn[aria-pressed="true"] {
+  opacity: 0.98;
+  background: rgba(65, 39, 42, 0.9);
+  border-color: rgba(218, 126, 126, 0.62);
+  color: #ffe5e5;
+}
+
+.map-tool-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  display: block;
+}
+
+#runMapViewport.drag-locked,
+.player-map-viewport.drag-locked {
+  cursor: default;
+}
+
+#runMapViewport.drag-locked .run-map-token,
+.player-map-viewport.drag-locked .player-map-token {
+  cursor: default;
+}
+
 #runMapScene {
   position: absolute;
   top: 0;
@@ -1280,6 +1346,11 @@ body.page-player #playerLiveWrap {
 
 .run-map-token.is-dragging {
   cursor: grabbing;
+}
+
+.run-map-token.reveal-moment-token,
+.player-map-token.reveal-moment-token {
+  animation: reveal-token-bloom 1450ms cubic-bezier(0.14, 0.78, 0.18, 1) 1;
 }
 
 .run-map-token-icon {
@@ -1673,8 +1744,16 @@ body.page-player #playerLiveWrap {
   background: #7a8390;
 }
 
+.visibility-toggle.reveal-moment-btn {
+  animation: reveal-toggle-pulse 1200ms cubic-bezier(0.14, 0.78, 0.18, 1) 1;
+}
+
 .combatant-hidden-for-players {
   opacity: 0.8;
+}
+
+.reveal-moment-row {
+  animation: reveal-row-flash 1250ms cubic-bezier(0.14, 0.78, 0.18, 1) 1;
 }
 
 .run-input-locked {
@@ -1692,6 +1771,47 @@ body.page-player #playerLiveWrap {
 
 .run-page input {
   text-align: center;
+}
+
+@keyframes reveal-row-flash {
+  0% {
+    background: rgba(167, 205, 244, 0);
+  }
+  18% {
+    background: rgba(167, 205, 244, 0.2);
+  }
+  100% {
+    background: rgba(167, 205, 244, 0);
+  }
+}
+
+@keyframes reveal-toggle-pulse {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes reveal-token-bloom {
+  0% {
+    transform: translate(-50%, -50%) scale(0.55);
+    filter: saturate(1.35) brightness(1.24);
+  }
+  22% {
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+  56% {
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    filter: saturate(1) brightness(1);
+  }
 }
 
 .combatant-name {
@@ -1814,6 +1934,10 @@ body.page-player #playerLiveWrap {
 
 .turn-active .condition-chip {
   opacity: 0.78;
+}
+
+li.map-token-hover-linked {
+  border-color: #e3b861 !important;
 }
 
 .status {
@@ -2386,5 +2510,15 @@ body.page-player #playerLiveWrap {
 
   .app-footer-logo {
     width: min(46vw, 180px);
+  }
+
+  #runMapViewport {
+    min-height: 320px;
+    height: calc(100vh - 16.5rem);
+  }
+
+  .player-map-viewport {
+    min-height: 300px;
+    height: calc(100vh - 22rem);
   }
 }
