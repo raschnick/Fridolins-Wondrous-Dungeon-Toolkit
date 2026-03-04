@@ -127,6 +127,7 @@
               </div>
               <div id="playerMapScene" class="player-map-scene">
                 <img id="playerMapImage" class="monster-image hidden" alt="Shared encounter map" />
+                <img id="playerMapFogImage" class="player-map-fog-layer hidden" alt="" aria-hidden="true" />
                 <div id="playerMapTokens" class="player-map-tokens"></div>
               </div>
             </div>
@@ -477,7 +478,15 @@
                 <div id="runMapTokenSizeControls" class="run-map-token-size-controls">
                   <label for="runMapTokenSizeInput">Token Size</label>
                   <input id="runMapTokenSizeInput" type="range" min="24" max="128" step="1" value="44" />
-                  <span id="runMapTokenSizeValue">44</span>
+                  <input
+                    id="runMapTokenSizeNumber"
+                    type="number"
+                    min="24"
+                    max="128"
+                    step="1"
+                    value="44"
+                    aria-label="Token size"
+                  />
                 </div>
                 <div id="runMapViewport" class="run-map-viewport">
                   <div id="runMapControls" class="map-touch-controls hidden">
@@ -500,8 +509,56 @@
                       </svg>
                     </button>
                   </div>
+                  <div id="runMapDmControls" class="map-touch-controls map-touch-controls-dm hidden">
+                    <button id="runMapFogPaintBtn" class="map-tool-btn" type="button" aria-pressed="false" aria-label="Paint fog of war" title="Paint Fog">
+                      <svg class="map-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M6.5 18.2h10.7a3.4 3.4 0 1 0-.4-6.8 4.7 4.7 0 0 0-8.9-1.2A3.9 3.9 0 0 0 6.5 18.2z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.9"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        ></path>
+                      </svg>
+                    </button>
+                    <button id="runMapFogEraseBtn" class="map-tool-btn" type="button" aria-pressed="false" aria-label="Erase fog of war" title="Erase Fog">
+                      <svg class="map-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M5.3 15.4 12.9 9.8l4.9 6.6-7.6 5.6-4.9-6.6z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.9"
+                          stroke-linejoin="round"
+                        ></path>
+                        <path
+                          d="M4 21h16"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.9"
+                          stroke-linecap="round"
+                        ></path>
+                      </svg>
+                    </button>
+                    <button id="runMapFogClearBtn" class="map-tool-btn" type="button" aria-label="Clear fog of war" title="Clear Fog">C</button>
+                  </div>
+                  <div id="runMapFogBrushControls" class="map-fog-brush-controls hidden">
+                    <label for="runMapFogBrushSizeInput">Fog Tool Size</label>
+                    <input id="runMapFogBrushSizeInput" type="range" min="12" max="220" step="1" value="56" />
+                    <input
+                      id="runMapFogBrushSizeNumber"
+                      type="number"
+                      min="12"
+                      max="220"
+                      step="1"
+                      value="56"
+                      aria-label="Fog brush size"
+                    />
+                  </div>
+                  <div id="runMapFogCursorPreview" class="run-map-fog-cursor hidden" aria-hidden="true"></div>
                   <div id="runMapScene" class="run-map-scene">
                     <img id="runMapImage" class="monster-image hidden" alt="Encounter map" />
+                    <canvas id="runMapFogCanvas" class="run-map-fog-layer" aria-hidden="true"></canvas>
                     <div id="runMapTokens" class="run-map-tokens"></div>
                   </div>
                 </div>

@@ -71,7 +71,7 @@ function asId(value) {
 function getScenario(scenarioId) {
   return db
     .prepare(
-      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
 }
@@ -555,6 +555,7 @@ function buildPlayerLiveSnapshotForUser(userId) {
       notes: scenario.notes || "",
       mapImageData: scenario.map_image_data || "",
       mapTokensJson: scenario.map_tokens_json || "",
+      mapFogData: scenario.map_fog_data || "",
       mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
       round: combatState.round,
       turnIndex: combatState.turnIndex,
@@ -773,6 +774,7 @@ function flushScenarioMapPushForScenario(scenarioId) {
   const payload = {
     scenarioId: scenario.id,
     mapTokensJson: `${scenario.map_tokens_json || ""}`,
+    mapFogData: `${scenario.map_fog_data || ""}`,
     mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
     updatedAt: scenario.updated_at || null
   };
@@ -1622,7 +1624,7 @@ app.get("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenarios = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE campaign_id = ? ORDER BY id DESC"
     )
     .all(campaignId);
   res.json(scenarios);
@@ -1653,7 +1655,7 @@ app.post("/api/campaigns/:campaignId/scenarios", (req, res) => {
 
   const scenario = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(result.lastInsertRowid);
 
@@ -1683,7 +1685,7 @@ app.put("/api/scenarios/:scenarioId", (req, res) => {
 
   const updated = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
   notifyPlayerLiveForScenario(scenarioId);
@@ -1700,6 +1702,7 @@ app.get("/api/scenarios/:scenarioId/stream", (req, res) => {
   writeSseEvent(res, "scenario-map", {
     scenarioId: scenario.id,
     mapTokensJson: `${scenario.map_tokens_json || ""}`,
+    mapFogData: `${scenario.map_fog_data || ""}`,
     mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
     updatedAt: scenario.updated_at || null
   });
@@ -1762,6 +1765,31 @@ app.post("/api/scenarios/:scenarioId/map-token-size", (req, res) => {
   res.json({ scenarioId, mapTokenSize: tokenSize });
 });
 
+app.post("/api/scenarios/:scenarioId/map-fog", (req, res) => {
+  const scenarioId = asId(req.params.scenarioId);
+  if (scenarioId === null) return badRequest(res, "Invalid scenario id.");
+
+  const scenario = ensureScenarioAccess(req, res, scenarioId);
+  if (!scenario) return;
+
+  const fogDataRaw = `${req.body?.fogData || ""}`.trim();
+  if (fogDataRaw.length > 2_000_000) {
+    return badRequest(res, "fogData is too large.");
+  }
+  const fogData =
+    fogDataRaw && fogDataRaw.startsWith("data:image/")
+      ? fogDataRaw
+      : "";
+
+  db.prepare(
+    "UPDATE combat_scenarios SET map_fog_data = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(fogData, scenarioId);
+  notifyPlayerLiveForScenario(scenarioId);
+  scheduleScenarioMapPushForScenario(scenarioId);
+
+  res.json({ scenarioId, mapFogData: fogData });
+});
+
 app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
   const scenarioId = asId(req.params.scenarioId);
   const completedInput = req.body?.completed;
@@ -1791,7 +1819,7 @@ app.post("/api/scenarios/:scenarioId/completed", (req, res) => {
 
   const updated = db
     .prepare(
-      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
+      "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
   notifyPlayerLiveForCampaign(scenario.campaign_id);

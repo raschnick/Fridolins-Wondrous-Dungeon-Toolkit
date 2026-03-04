@@ -97,6 +97,7 @@ function initDb() {
       notes TEXT NOT NULL DEFAULT '',
       map_image_data TEXT NOT NULL DEFAULT '',
       map_tokens_json TEXT NOT NULL DEFAULT '',
+      map_fog_data TEXT NOT NULL DEFAULT '',
       map_token_size INTEGER NOT NULL DEFAULT 44,
       is_completed INTEGER NOT NULL DEFAULT 0,
       current_round INTEGER NOT NULL DEFAULT 1,
@@ -221,6 +222,11 @@ function initDb() {
       "ALTER TABLE combat_scenarios ADD COLUMN map_tokens_json TEXT NOT NULL DEFAULT ''"
     );
   }
+  if (!scenarioColumns.includes("map_fog_data")) {
+    db.exec(
+      "ALTER TABLE combat_scenarios ADD COLUMN map_fog_data TEXT NOT NULL DEFAULT ''"
+    );
+  }
   if (!scenarioColumns.includes("map_token_size")) {
     db.exec(
       "ALTER TABLE combat_scenarios ADD COLUMN map_token_size INTEGER NOT NULL DEFAULT 44"
@@ -231,6 +237,7 @@ function initDb() {
   );
   db.exec("UPDATE combat_scenarios SET map_image_data = '' WHERE map_image_data IS NULL");
   db.exec("UPDATE combat_scenarios SET map_tokens_json = '' WHERE map_tokens_json IS NULL");
+  db.exec("UPDATE combat_scenarios SET map_fog_data = '' WHERE map_fog_data IS NULL");
   db.exec("UPDATE combat_scenarios SET map_token_size = 44 WHERE map_token_size IS NULL");
   db.exec("UPDATE combat_scenarios SET map_token_size = 44 WHERE map_token_size < 24 OR map_token_size > 128");
 
