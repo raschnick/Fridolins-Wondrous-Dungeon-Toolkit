@@ -554,6 +554,32 @@
                       value="56"
                       aria-label="Fog brush size"
                     />
+                    <label>Fog Tool Shape</label>
+                    <div class="map-fog-brush-shape-group" role="radiogroup" aria-label="Fog brush shape">
+                      <input
+                        id="runMapFogBrushShapeRound"
+                        type="radio"
+                        name="runMapFogBrushShape"
+                        value="round"
+                        checked
+                      />
+                      <label for="runMapFogBrushShapeRound" class="map-fog-brush-shape-btn" title="Round Brush">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" stroke-width="2"></circle>
+                        </svg>
+                      </label>
+                      <input
+                        id="runMapFogBrushShapeSquare"
+                        type="radio"
+                        name="runMapFogBrushShape"
+                        value="square"
+                      />
+                      <label for="runMapFogBrushShapeSquare" class="map-fog-brush-shape-btn" title="Square Brush">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="5.8" y="5.8" width="12.4" height="12.4" fill="none" stroke="currentColor" stroke-width="2"></rect>
+                        </svg>
+                      </label>
+                    </div>
                   </div>
                   <div id="runMapFogCursorPreview" class="run-map-fog-cursor hidden" aria-hidden="true"></div>
                   <div id="runMapScene" class="run-map-scene">

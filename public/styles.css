@@ -1341,6 +1341,48 @@ body.page-player #playerLiveWrap {
   font-size: 0.84rem;
 }
 
+.map-fog-brush-shape-group {
+  grid-column: 1 / 3;
+  display: inline-flex;
+  gap: 0.38rem;
+}
+
+.map-fog-brush-shape-group input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-fog-brush-shape-btn {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(126, 152, 176, 0.42);
+  background: rgba(12, 25, 38, 0.62);
+  color: #dbe9f7;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.map-fog-brush-shape-btn svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.map-fog-brush-shape-group input[type="radio"]:checked + .map-fog-brush-shape-btn {
+  border-color: rgba(111, 152, 255, 0.9);
+  background: rgba(72, 124, 240, 0.28);
+  color: #eef6ff;
+}
+
+.map-fog-brush-shape-group input[type="radio"]:focus-visible + .map-fog-brush-shape-btn {
+  outline: 2px solid rgba(136, 181, 255, 0.7);
+  outline-offset: 1px;
+}
+
 .run-map-fog-cursor {
   position: absolute;
   top: 0;
@@ -1354,6 +1396,10 @@ body.page-player #playerLiveWrap {
   box-shadow: 0 0 0 1px rgba(7, 15, 22, 0.75), inset 0 0 0 1px rgba(7, 15, 22, 0.45);
   pointer-events: none;
   z-index: 9;
+}
+
+.run-map-fog-cursor.is-square {
+  border-radius: 4px;
 }
 
 #runMapViewport.drag-locked,

@@ -42,6 +42,7 @@ const state = {
     saveFogTimer: null,
     fogMode: "navigate",
     fogBrushSize: 56,
+    fogBrushShape: "round",
     fogPainting: false,
     fogPointerId: null,
     fogDataByScenario: {},
@@ -114,6 +115,7 @@ const state = {
 };
 
 const RUN_MAP_FOG_BRUSH_SESSION_KEY = "runMapFogBrushSize";
+const RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY = "runMapFogBrushShape";
 
 const els = {
   status: document.getElementById("status"),
@@ -301,6 +303,8 @@ const els = {
   runMapFogBrushControls: document.getElementById("runMapFogBrushControls"),
   runMapFogBrushSizeInput: document.getElementById("runMapFogBrushSizeInput"),
   runMapFogBrushSizeNumber: document.getElementById("runMapFogBrushSizeNumber"),
+  runMapFogBrushShapeRound: document.getElementById("runMapFogBrushShapeRound"),
+  runMapFogBrushShapeSquare: document.getElementById("runMapFogBrushShapeSquare"),
   runMapFogCursorPreview: document.getElementById("runMapFogCursorPreview"),
   runMapDragLockBtn: document.getElementById("runMapDragLockBtn"),
   runMapTokenSizeInput: document.getElementById("runMapTokenSizeInput"),
@@ -2656,6 +2660,28 @@ function saveRunMapFogBrushSizeToSession(size) {
   }
 }
 
+function loadRunMapFogBrushShapeFromSession() {
+  try {
+    const raw = window.sessionStorage.getItem(RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY);
+    if (raw === "square") return "square";
+    if (raw === "round") return "round";
+    return null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveRunMapFogBrushShapeToSession(shape) {
+  try {
+    window.sessionStorage.setItem(
+      RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY,
+      shape === "square" ? "square" : "round"
+    );
+  } catch (_error) {
+    // Ignore storage failures (private mode, quota, blocked storage).
+  }
+}
+
 function setRunMapFogBrushSizeUi(size) {
   const finalSize = clamp(Math.round(Number(size) || 56), 12, 220);
   state.runMap.fogBrushSize = finalSize;
@@ -2664,6 +2690,20 @@ function setRunMapFogBrushSizeUi(size) {
   }
   if (els.runMapFogBrushSizeNumber) {
     els.runMapFogBrushSizeNumber.value = String(finalSize);
+  }
+}
+
+function setRunMapFogBrushShapeUi(shape) {
+  const finalShape = shape === "square" ? "square" : "round";
+  state.runMap.fogBrushShape = finalShape;
+  if (els.runMapFogBrushShapeRound) {
+    els.runMapFogBrushShapeRound.checked = finalShape === "round";
+  }
+  if (els.runMapFogBrushShapeSquare) {
+    els.runMapFogBrushShapeSquare.checked = finalShape === "square";
+  }
+  if (els.runMapFogCursorPreview) {
+    els.runMapFogCursorPreview.classList.toggle("is-square", finalShape === "square");
   }
 }
 
@@ -2727,6 +2767,7 @@ function updateRunMapFogCursorPreview(clientX, clientY, eventTarget = null) {
   const radius = clamp((Number(state.runMap.fogBrushSize) || 56) * totalScale, 6, 520);
   const diameter = radius * 2;
   const preview = els.runMapFogCursorPreview;
+  preview.classList.toggle("is-square", state.runMap.fogBrushShape === "square");
   preview.style.left = `${x}px`;
   preview.style.top = `${y}px`;
   preview.style.width = `${diameter}px`;
@@ -2907,9 +2948,15 @@ function paintRunMapFogAt(x, y, mode = "paint") {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const radius = Math.max(12, Math.min(220, Number(state.runMap.fogBrushSize) || 56));
+  const square = state.runMap.fogBrushShape === "square";
   ctx.save();
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  if (square) {
+    const size = radius * 2;
+    ctx.rect(x - radius, y - radius, size, size);
+  } else {
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+  }
   if (mode === "erase") {
     ctx.globalCompositeOperation = "destination-out";
     ctx.fill();
@@ -5371,6 +5418,19 @@ function bindEvents() {
       return;
     }
 
+    if (state.page === "scenario-map" && state.authUser?.role === "admin") {
+      if (key === "f") {
+        event.preventDefault();
+        setRunMapFogMode(state.runMap.fogMode === "paint" ? "navigate" : "paint");
+        return;
+      }
+      if (key === "d") {
+        event.preventDefault();
+        setRunMapFogMode(state.runMap.fogMode === "erase" ? "navigate" : "erase");
+        return;
+      }
+    }
+
     if (state.page !== "scenario-run" && state.page !== "scenario-map") return;
     if (!["n", "b", "r", "l"].includes(key)) return;
     if (key === "n" && els.nextTurnBtn.disabled) return;
@@ -6375,6 +6435,8 @@ function bindEvents() {
   setRunMapFogMode("navigate");
   const fogBrushSizeFromSession = loadRunMapFogBrushSizeFromSession();
   setRunMapFogBrushSizeUi(fogBrushSizeFromSession ?? state.runMap.fogBrushSize);
+  const fogBrushShapeFromSession = loadRunMapFogBrushShapeFromSession();
+  setRunMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.runMap.fogBrushShape);
   setPlayerMapDragLockUi(false);
 
   els.runMapZoomOutBtn?.addEventListener("click", () => {
@@ -6452,6 +6514,15 @@ function bindEvents() {
   els.runMapFogBrushSizeNumber?.addEventListener("change", onRunMapFogBrushSizeNumberCommit);
   els.runMapFogBrushSizeNumber?.addEventListener("blur", onRunMapFogBrushSizeNumberCommit);
   els.runMapFogBrushSizeNumber?.addEventListener("keydown", onRunMapFogBrushSizeNumberKeydown);
+  const onRunMapFogBrushShapeChange = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.checked) return;
+    const shape = target.value === "square" ? "square" : "round";
+    setRunMapFogBrushShapeUi(shape);
+    saveRunMapFogBrushShapeToSession(shape);
+  };
+  els.runMapFogBrushShapeRound?.addEventListener("change", onRunMapFogBrushShapeChange);
+  els.runMapFogBrushShapeSquare?.addEventListener("change", onRunMapFogBrushShapeChange);
   els.runMapDragLockBtn?.addEventListener("click", () => {
     setRunMapDragLockUi(!state.runMap.dragLocked);
   });
