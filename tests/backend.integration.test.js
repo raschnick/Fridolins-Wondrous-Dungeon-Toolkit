@@ -401,6 +401,175 @@ test("visibility workflow: hidden non-PC combatants are excluded from player liv
   assert.ok(!names.includes(hiddenEnemy.json.name));
 });
 
+test("tracks enemy condition applications and PC down events per campaign", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+
+  const campaign = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("ConditionStatsCampaign")
+  });
+  assert.equal(campaign.status, 201);
+
+  const character = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/characters`,
+    { name: "Condition PC", className: "Cleric" }
+  );
+  assert.equal(character.status, 201);
+
+  const scenario = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/scenarios`,
+    { name: "Condition Scenario", notes: "" }
+  );
+  assert.equal(scenario.status, 201);
+
+  const enemy = await admin.request(
+    "POST",
+    `/api/scenarios/${scenario.json.id}/combatants`,
+    { kind: "enemy", enemyRole: "enemy", name: "Enemy Target", initiative: 15, hp: 20 }
+  );
+  assert.equal(enemy.status, 201);
+
+  const ally = await admin.request(
+    "POST",
+    `/api/scenarios/${scenario.json.id}/combatants`,
+    { kind: "enemy", enemyRole: "ally", name: "Ally Target", initiative: 10, hp: 20 }
+  );
+  assert.equal(ally.status, 201);
+
+  const combat = await admin.request("GET", `/api/scenarios/${scenario.json.id}/combat`);
+  assert.equal(combat.status, 200);
+  const pcCombatant = combat.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === character.json.id
+  );
+  assert.ok(pcCombatant);
+
+  let response = await admin.request("POST", `/api/combatants/${enemy.json.id}/conditions`, {
+    conditionKey: "poisoned"
+  });
+  assert.equal(response.status, 200);
+
+  response = await admin.request("POST", `/api/combatants/${enemy.json.id}/conditions`, {
+    conditionKey: "poisoned"
+  });
+  assert.equal(response.status, 200);
+
+  response = await admin.request("DELETE", `/api/combatants/${enemy.json.id}/conditions/poisoned`);
+  assert.equal(response.status, 200);
+
+  response = await admin.request("POST", `/api/combatants/${enemy.json.id}/conditions`, {
+    conditionKey: "poisoned"
+  });
+  assert.equal(response.status, 200);
+
+  response = await admin.request("POST", `/api/combatants/${ally.json.id}/conditions`, {
+    conditionKey: "stunned"
+  });
+  assert.equal(response.status, 200);
+
+  response = await admin.request("POST", `/api/combatants/${pcCombatant.id}/conditions`, {
+    conditionKey: "down"
+  });
+  assert.equal(response.status, 200);
+
+  response = await admin.request("DELETE", `/api/combatants/${pcCombatant.id}/conditions/down`);
+  assert.equal(response.status, 200);
+
+  response = await admin.request("POST", `/api/combatants/${pcCombatant.id}/conditions`, {
+    conditionKey: "down"
+  });
+  assert.equal(response.status, 200);
+
+  const stats = await admin.request("GET", `/api/campaigns/${campaign.json.id}/stats`);
+  assert.equal(stats.status, 200);
+  assert.equal(stats.json.enemyConditionApplies.poisoned, 2);
+  assert.ok(!Object.prototype.hasOwnProperty.call(stats.json.enemyConditionApplies, "stunned"));
+  assert.equal(stats.json.pcDownCount, 2);
+});
+
+test("reports PC average initiative dominance across campaign encounters", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+
+  const campaign = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("InitiativeDominanceCampaign")
+  });
+  assert.equal(campaign.status, 201);
+
+  const pcA = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/characters`,
+    { name: "Ayla", className: "Wizard" }
+  );
+  assert.equal(pcA.status, 201);
+  const pcB = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/characters`,
+    { name: "Borin", className: "Fighter" }
+  );
+  assert.equal(pcB.status, 201);
+
+  const scenarioOne = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/scenarios`,
+    { name: "Encounter One", notes: "" }
+  );
+  assert.equal(scenarioOne.status, 201);
+
+  const scenarioTwo = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/scenarios`,
+    { name: "Encounter Two", notes: "" }
+  );
+  assert.equal(scenarioTwo.status, 201);
+
+  const combatOne = await admin.request("GET", `/api/scenarios/${scenarioOne.json.id}/combat`);
+  assert.equal(combatOne.status, 200);
+  const aylaOne = combatOne.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcA.json.id
+  );
+  const borinOne = combatOne.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcB.json.id
+  );
+  assert.ok(aylaOne);
+  assert.ok(borinOne);
+
+  let response = await admin.request("PUT", `/api/combatants/${aylaOne.id}`, { initiative: 18 });
+  assert.equal(response.status, 200);
+  response = await admin.request("PUT", `/api/combatants/${borinOne.id}`, { initiative: 12 });
+  assert.equal(response.status, 200);
+
+  const combatTwo = await admin.request("GET", `/api/scenarios/${scenarioTwo.json.id}/combat`);
+  assert.equal(combatTwo.status, 200);
+  const aylaTwo = combatTwo.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcA.json.id
+  );
+  const borinTwo = combatTwo.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcB.json.id
+  );
+  assert.ok(aylaTwo);
+  assert.ok(borinTwo);
+
+  response = await admin.request("PUT", `/api/combatants/${aylaTwo.id}`, { initiative: 14 });
+  assert.equal(response.status, 200);
+  response = await admin.request("PUT", `/api/combatants/${borinTwo.id}`, { initiative: 16 });
+  assert.equal(response.status, 200);
+
+  const stats = await admin.request("GET", `/api/campaigns/${campaign.json.id}/stats`);
+  assert.equal(stats.status, 200);
+  const averages = stats.json.pcInitiativeAverages;
+  assert.ok(Array.isArray(averages));
+
+  const aylaStats = averages.find((entry) => entry.characterId === pcA.json.id);
+  const borinStats = averages.find((entry) => entry.characterId === pcB.json.id);
+  assert.ok(aylaStats);
+  assert.ok(borinStats);
+
+  assert.equal(aylaStats.encounterCount, 2);
+  assert.equal(aylaStats.averageInitiative, 16);
+  assert.equal(borinStats.encounterCount, 2);
+  assert.equal(borinStats.averageInitiative, 14);
+});
+
 test.after(() => {
   delete process.env.FWDT_DB_PATH;
   fs.rmSync(tempDir, { recursive: true, force: true });

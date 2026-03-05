@@ -267,7 +267,23 @@
 
       <section id="pageAnalytics" class="panel page hidden">
         <h2>Analytics</h2>
-        <p>TODO: Add encounter and campaign analytics dashboards.</p>
+        <div class="analytics-top-row">
+          <div class="analytics-controls">
+            <label for="analyticsCampaignSelect">Campaign</label>
+            <select id="analyticsCampaignSelect"></select>
+          </div>
+          <div id="analyticsEncounterCounters" class="analytics-encounter-counters"></div>
+        </div>
+        <p id="analyticsStatus" class="hint"></p>
+        <div id="analyticsMetrics" class="analytics-metrics"></div>
+        <section class="subpanel">
+          <h3>Enemy Condition Applications</h3>
+          <ul id="analyticsEnemyConditionList" class="list"></ul>
+        </section>
+        <section class="subpanel">
+          <h3>PC Initiative Dominance (Average Initiative)</h3>
+          <ul id="analyticsPcInitiativeList" class="list"></ul>
+        </section>
       </section>
 
       <section id="pageAdmin" class="page hidden">

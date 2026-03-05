@@ -154,6 +154,64 @@ function getCombatantById(combatantId) {
   return combatant;
 }
 
+function toFiniteNumberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function computeEnemyDamageAndDefeatDelta(previousHp, nextHp) {
+  const prev = toFiniteNumberOrNull(previousHp);
+  const next = toFiniteNumberOrNull(nextHp);
+  if (prev === null || next === null) {
+    return { damage: 0, defeats: 0 };
+  }
+  const damage = Math.max(0, Math.trunc(prev - next));
+  const defeats = prev > 0 && next <= 0 ? 1 : 0;
+  return { damage, defeats };
+}
+
+function applyCampaignEnemyStatsDelta(campaignId, damage, defeats) {
+  if (!Number.isInteger(campaignId)) return;
+  const safeDamage = Math.max(0, Math.trunc(Number(damage) || 0));
+  const safeDefeats = Math.max(0, Math.trunc(Number(defeats) || 0));
+  if (safeDamage === 0 && safeDefeats === 0) return;
+  db.prepare(
+    `INSERT INTO campaign_stats (campaign_id, total_enemy_damage, total_enemy_defeats, updated_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(campaign_id) DO UPDATE SET
+       total_enemy_damage = total_enemy_damage + excluded.total_enemy_damage,
+       total_enemy_defeats = total_enemy_defeats + excluded.total_enemy_defeats,
+       updated_at = datetime('now')`
+  ).run(campaignId, safeDamage, safeDefeats);
+}
+
+function campaignConditionTargetGroup(combatant, conditionKey) {
+  if (!combatant || !conditionKey) return null;
+  if (combatant.kind === "enemy" && combatant.enemy_role !== "ally") {
+    return "enemy";
+  }
+  if (combatant.kind === "character" && conditionKey === "down") {
+    return "pc";
+  }
+  return null;
+}
+
+function incrementCampaignConditionApplyCount(campaignId, targetGroup, conditionKey, amount = 1) {
+  if (!Number.isInteger(campaignId)) return;
+  if (targetGroup !== "enemy" && targetGroup !== "pc") return;
+  const normalizedCondition = `${conditionKey || ""}`.trim().toLowerCase();
+  if (!normalizedCondition) return;
+  const safeAmount = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (safeAmount <= 0) return;
+  db.prepare(
+    `INSERT INTO campaign_condition_stats (campaign_id, target_group, condition_key, apply_count, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(campaign_id, target_group, condition_key) DO UPDATE SET
+       apply_count = apply_count + excluded.apply_count,
+       updated_at = datetime('now')`
+  ).run(campaignId, targetGroup, normalizedCondition, safeAmount);
+}
+
 function ensureScenarioHasCampaignCharacters(scenario) {
   const characters = db
     .prepare(
@@ -1268,14 +1326,33 @@ app.delete("/api/monsters/:monsterId", (req, res) => {
 });
 
 app.get("/api/campaigns", (_req, res) => {
+  const baseSelect = `SELECT
+      c.id,
+      c.name,
+      c.created_at,
+      COALESCE(cs.total_enemy_damage, 0) AS total_enemy_damage,
+      COALESCE(cs.total_enemy_defeats, 0) AS total_enemy_defeats,
+      (
+        SELECT COUNT(*)
+        FROM combat_scenarios s
+        WHERE s.campaign_id = c.id
+      ) AS total_encounters,
+      (
+        SELECT COUNT(*)
+        FROM combat_scenarios s
+        WHERE s.campaign_id = c.id
+          AND s.is_completed = 1
+      ) AS total_finished_encounters
+    FROM campaigns c
+    LEFT JOIN campaign_stats cs ON cs.campaign_id = c.id`;
+
   const campaigns = isAdminUser(_req.authUser)
     ? db
-      .prepare("SELECT id, name, created_at FROM campaigns ORDER BY name ASC")
+      .prepare(`${baseSelect} ORDER BY c.name ASC`)
       .all()
     : db
       .prepare(
-        `SELECT c.id, c.name, c.created_at
-         FROM campaigns c
+        `${baseSelect}
          JOIN campaign_members cm ON cm.campaign_id = c.id
          WHERE cm.user_id = ?
          ORDER BY c.name ASC`
@@ -1284,17 +1361,127 @@ app.get("/api/campaigns", (_req, res) => {
   res.json(campaigns);
 });
 
+app.get("/api/campaigns/:campaignId/stats", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+
+  const totals = db
+    .prepare(
+      `SELECT
+        COALESCE(cs.total_enemy_damage, 0) AS total_enemy_damage,
+        COALESCE(cs.total_enemy_defeats, 0) AS total_enemy_defeats,
+        (
+          SELECT COUNT(*)
+          FROM combat_scenarios s
+          WHERE s.campaign_id = ?
+        ) AS total_encounters,
+        (
+          SELECT COUNT(*)
+          FROM combat_scenarios s
+          WHERE s.campaign_id = ?
+            AND s.is_completed = 1
+        ) AS total_finished_encounters
+       FROM campaigns c
+       LEFT JOIN campaign_stats cs ON cs.campaign_id = c.id
+       WHERE c.id = ?`
+    )
+    .get(campaignId, campaignId, campaignId);
+  if (!totals) return badRequest(res, "Campaign not found.");
+
+  const enemyConditionRows = db
+    .prepare(
+      `SELECT condition_key, apply_count
+       FROM campaign_condition_stats
+       WHERE campaign_id = ?
+         AND target_group = 'enemy'
+       ORDER BY apply_count DESC, condition_key ASC`
+    )
+    .all(campaignId);
+  const enemyConditionApplies = {};
+  for (const row of enemyConditionRows) {
+    enemyConditionApplies[row.condition_key] = Number(row.apply_count) || 0;
+  }
+
+  const pcDownCount = db
+    .prepare(
+      `SELECT COALESCE(apply_count, 0) AS apply_count
+       FROM campaign_condition_stats
+       WHERE campaign_id = ?
+         AND target_group = 'pc'
+         AND condition_key = 'down'`
+    )
+    .get(campaignId);
+
+  const pcInitiativeRows = db
+    .prepare(
+      `SELECT
+        c.id AS character_id,
+        c.name AS character_name,
+        c.class_name AS character_class,
+        cu.profile_image_data AS claimed_profile_image_data,
+        COUNT(sc.id) AS encounter_count,
+        AVG(sc.initiative) AS avg_initiative
+       FROM characters c
+       LEFT JOIN character_claims cc ON cc.character_id = c.id
+       LEFT JOIN users cu ON cu.id = cc.user_id
+       LEFT JOIN combat_scenarios cs
+         ON cs.campaign_id = c.campaign_id
+       LEFT JOIN scenario_combatants sc
+         ON sc.scenario_id = cs.id
+        AND sc.kind = 'character'
+        AND sc.character_id = c.id
+       WHERE c.campaign_id = ?
+       GROUP BY c.id, c.name, c.class_name, cu.profile_image_data
+       ORDER BY c.name ASC`
+    )
+    .all(campaignId)
+    .map((row) => {
+      const encounterCount = Number(row.encounter_count) || 0;
+      const rawAvg = Number(row.avg_initiative);
+      const averageInitiative = Number.isFinite(rawAvg)
+        ? Math.round(rawAvg * 100) / 100
+        : null;
+      return {
+        characterId: Number(row.character_id),
+        characterName: row.character_name,
+        characterClass: row.character_class || "",
+        claimedProfileImageData: `${row.claimed_profile_image_data || ""}`,
+        encounterCount,
+        averageInitiative
+      };
+    });
+
+  res.json({
+    campaignId,
+    totalEnemyDamage: Number(totals.total_enemy_damage) || 0,
+    totalEnemyDefeats: Number(totals.total_enemy_defeats) || 0,
+    totalEncounters: Number(totals.total_encounters) || 0,
+    totalFinishedEncounters: Number(totals.total_finished_encounters) || 0,
+    enemyConditionApplies,
+    pcDownCount: Number(pcDownCount?.apply_count) || 0,
+    pcInitiativeAverages: pcInitiativeRows
+  });
+});
+
 app.post("/api/campaigns", (req, res) => {
   const name = `${req.body?.name || ""}`.trim();
   if (!name) return badRequest(res, "Campaign name is required.");
 
   try {
-    const result = db
-      .prepare("INSERT INTO campaigns (name) VALUES (?)")
-      .run(name);
+    const tx = db.transaction((campaignName) => {
+      const result = db
+        .prepare("INSERT INTO campaigns (name) VALUES (?)")
+        .run(campaignName);
+      db.prepare("INSERT OR IGNORE INTO campaign_stats (campaign_id) VALUES (?)").run(
+        result.lastInsertRowid
+      );
+      return result.lastInsertRowid;
+    });
+    const campaignId = tx(name);
     const campaign = db
       .prepare("SELECT id, name, created_at FROM campaigns WHERE id = ?")
-      .get(result.lastInsertRowid);
+      .get(campaignId);
     res.status(201).json(campaign);
   } catch (error) {
     if (error.code === "SQLITE_CONSTRAINT_UNIQUE") {
@@ -2065,7 +2252,19 @@ app.put("/api/combatants/:combatantId", (req, res) => {
 
   const existing = db
     .prepare(
-      "SELECT id, scenario_id, kind, enemy_role, character_id, name, initiative, hp FROM scenario_combatants WHERE id = ?"
+      `SELECT
+        sc.id,
+        sc.scenario_id,
+        sc.kind,
+        sc.enemy_role,
+        sc.character_id,
+        sc.name,
+        sc.initiative,
+        sc.hp,
+        s.campaign_id
+       FROM scenario_combatants sc
+       JOIN combat_scenarios s ON s.id = sc.scenario_id
+       WHERE sc.id = ?`
     )
     .get(combatantId);
   if (!existing) return badRequest(res, "Combatant not found.");
@@ -2083,15 +2282,32 @@ app.put("/api/combatants/:combatantId", (req, res) => {
     finalHp,
     combatantId
   );
+  if (existing.kind === "enemy" && existing.enemy_role !== "ally") {
+    const { damage, defeats } = computeEnemyDamageAndDefeatDelta(existing.hp, finalHp);
+    applyCampaignEnemyStatsDelta(existing.campaign_id, damage, defeats);
+  }
 
   if (conditionProvided) {
+    const hadConditionAlready = conditionKey
+      ? Boolean(
+        db
+          .prepare(
+            "SELECT 1 FROM scenario_combatant_conditions WHERE combatant_id = ? AND condition_key = ?"
+          )
+          .get(combatantId, conditionKey)
+      )
+      : false;
     db.prepare("DELETE FROM scenario_combatant_conditions WHERE combatant_id = ?").run(
       combatantId
     );
     if (conditionKey) {
-      db.prepare(
+      const insertResult = db.prepare(
         "INSERT OR IGNORE INTO scenario_combatant_conditions (combatant_id, condition_key) VALUES (?, ?)"
       ).run(combatantId, conditionKey);
+      if (insertResult.changes > 0 && !hadConditionAlready) {
+        const targetGroup = campaignConditionTargetGroup(existing, conditionKey);
+        incrementCampaignConditionApplyCount(existing.campaign_id, targetGroup, conditionKey);
+      }
     }
   }
 
@@ -2110,12 +2326,27 @@ app.post("/api/combatants/:combatantId/conditions", (req, res) => {
     return badRequest(res, "Invalid condition.");
   }
 
-  const existing = db.prepare("SELECT id FROM scenario_combatants WHERE id = ?").get(combatantId);
+  const existing = db
+    .prepare(
+      `SELECT
+        sc.id,
+        sc.kind,
+        sc.enemy_role,
+        s.campaign_id
+       FROM scenario_combatants sc
+       JOIN combat_scenarios s ON s.id = sc.scenario_id
+       WHERE sc.id = ?`
+    )
+    .get(combatantId);
   if (!existing) return badRequest(res, "Combatant not found.");
 
-  db.prepare(
+  const insertResult = db.prepare(
     "INSERT OR IGNORE INTO scenario_combatant_conditions (combatant_id, condition_key) VALUES (?, ?)"
   ).run(combatantId, conditionKey);
+  if (insertResult.changes > 0) {
+    const targetGroup = campaignConditionTargetGroup(existing, conditionKey);
+    incrementCampaignConditionApplyCount(existing.campaign_id, targetGroup, conditionKey);
+  }
 
   notifyPlayerLiveForCombatant(combatantId);
   res.json(getCombatantById(combatantId));
@@ -2150,7 +2381,15 @@ app.post("/api/combatants/:combatantId/hp-adjust", (req, res) => {
 
   const existing = db
     .prepare(
-      "SELECT id, kind, hp FROM scenario_combatants WHERE id = ?"
+      `SELECT
+        sc.id,
+        sc.kind,
+        sc.enemy_role,
+        sc.hp,
+        s.campaign_id
+       FROM scenario_combatants sc
+       JOIN combat_scenarios s ON s.id = sc.scenario_id
+       WHERE sc.id = ?`
     )
     .get(combatantId);
   if (!existing) return badRequest(res, "Combatant not found.");
@@ -2158,6 +2397,10 @@ app.post("/api/combatants/:combatantId/hp-adjust", (req, res) => {
 
   const nextHp = (existing.hp || 0) + Math.trunc(delta);
   db.prepare("UPDATE scenario_combatants SET hp = ? WHERE id = ?").run(nextHp, combatantId);
+  if (existing.enemy_role !== "ally") {
+    const { damage, defeats } = computeEnemyDamageAndDefeatDelta(existing.hp, nextHp);
+    applyCampaignEnemyStatsDelta(existing.campaign_id, damage, defeats);
+  }
 
   const updated = db
     .prepare(

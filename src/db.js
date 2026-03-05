@@ -44,6 +44,24 @@ function initDb() {
       FOREIGN KEY (shared_scenario_id) REFERENCES combat_scenarios(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS campaign_stats (
+      campaign_id INTEGER PRIMARY KEY,
+      total_enemy_damage INTEGER NOT NULL DEFAULT 0,
+      total_enemy_defeats INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_condition_stats (
+      campaign_id INTEGER NOT NULL,
+      target_group TEXT NOT NULL CHECK(target_group IN ('enemy', 'pc')),
+      condition_key TEXT NOT NULL,
+      apply_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (campaign_id, target_group, condition_key),
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
@@ -258,6 +276,19 @@ function initDb() {
   db.exec("UPDATE users SET active = 1 WHERE active NOT IN (0, 1) OR active IS NULL");
   db.exec("UPDATE users SET profile_image_data = '' WHERE profile_image_data IS NULL");
   db.exec("DELETE FROM user_sessions WHERE expires_at <= datetime('now')");
+  db.exec(
+    `INSERT OR IGNORE INTO campaign_stats (campaign_id)
+     SELECT id FROM campaigns`
+  );
+  db.exec(
+    "UPDATE campaign_stats SET total_enemy_damage = 0 WHERE total_enemy_damage IS NULL OR total_enemy_damage < 0"
+  );
+  db.exec(
+    "UPDATE campaign_stats SET total_enemy_defeats = 0 WHERE total_enemy_defeats IS NULL OR total_enemy_defeats < 0"
+  );
+  db.exec(
+    "UPDATE campaign_condition_stats SET apply_count = 0 WHERE apply_count IS NULL OR apply_count < 0"
+  );
 
   const combatantColumns = db
     .prepare("PRAGMA table_info(scenario_combatants)")
