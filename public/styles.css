@@ -1629,6 +1629,68 @@ body.page-player #playerLiveWrap {
   z-index: 3;
 }
 
+#runMapPings,
+#playerMapPings {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.map-ping-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+}
+
+.map-ping-core,
+.map-ping-wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.map-ping-core {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 170, 170, 0.98);
+  color: rgba(125, 8, 8, 1);
+  font-size: 1.08rem;
+  line-height: 1;
+  font-weight: 900;
+  border: 3px solid rgba(112, 12, 12, 1);
+  box-shadow:
+    0 0 0 2px rgba(255, 120, 120, 0.78),
+    0 0 30px rgba(255, 52, 52, 0.98),
+    0 0 56px rgba(220, 25, 25, 0.82);
+}
+
+.map-ping-wave {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 58, 58, 0.98);
+  box-shadow: 0 0 14px rgba(255, 44, 44, 0.86);
+  animation: map-ping-wave 980ms ease-out forwards;
+}
+
+@keyframes map-ping-wave {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.38);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(6.6);
+  }
+}
+
 .run-map-token {
   --token-scale: 1;
   --token-size-effective: calc(var(--map-token-size) * var(--token-scale));

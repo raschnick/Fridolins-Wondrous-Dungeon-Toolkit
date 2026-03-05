@@ -45,6 +45,8 @@ const state = {
     fogMode: "navigate",
     fogBrushSize: 56,
     fogBrushShape: "round",
+    pingMode: false,
+    lastPingId: null,
     fogPainting: false,
     fogPointerId: null,
     fogDataByScenario: {},
@@ -67,6 +69,8 @@ const state = {
     lastClientX: 0,
     lastClientY: 0,
     dragLocked: false,
+    pingMode: false,
+    lastPingId: null,
     saveTimer: null,
     pendingTokenUpdate: null,
     fogMaskByFogData: {},
@@ -98,6 +102,7 @@ const state = {
   victoryAudioContext: null,
   victoryAudioElement: null,
   victoryAudioUnlocked: false,
+  pingAudioElement: null,
   revealMomentCombatantId: null,
   revealMomentUntilMs: 0,
   revealMomentTimer: null,
@@ -170,10 +175,12 @@ const els = {
   playerMapZoomInBtn: document.getElementById("playerMapZoomInBtn"),
   playerMapResetBtn: document.getElementById("playerMapResetBtn"),
   playerMapDragLockBtn: document.getElementById("playerMapDragLockBtn"),
+  playerMapPingBtn: document.getElementById("playerMapPingBtn"),
   playerMapScene: document.getElementById("playerMapScene"),
   playerMapImage: document.getElementById("playerMapImage"),
   playerMapFogImage: document.getElementById("playerMapFogImage"),
   playerMapTokens: document.getElementById("playerMapTokens"),
+  playerMapPings: document.getElementById("playerMapPings"),
   playerLiveCombatantList: document.getElementById("playerLiveCombatantList"),
   settingsProfileImagePreview: document.getElementById("settingsProfileImagePreview"),
   settingsProfileImageFile: document.getElementById("settingsProfileImageFile"),
@@ -315,12 +322,14 @@ const els = {
   runMapFogBrushShapeSquare: document.getElementById("runMapFogBrushShapeSquare"),
   runMapFogCursorPreview: document.getElementById("runMapFogCursorPreview"),
   runMapDragLockBtn: document.getElementById("runMapDragLockBtn"),
+  runMapPingBtn: document.getElementById("runMapPingBtn"),
   runMapTokenSizeInput: document.getElementById("runMapTokenSizeInput"),
   runMapTokenSizeNumber: document.getElementById("runMapTokenSizeNumber"),
   runMapViewport: document.getElementById("runMapViewport"),
   runMapScene: document.getElementById("runMapScene"),
   runMapFogCanvas: document.getElementById("runMapFogCanvas"),
   runMapTokens: document.getElementById("runMapTokens"),
+  runMapPings: document.getElementById("runMapPings"),
   runMapImage: document.getElementById("runMapImage"),
   runInitiativeWrap: document.getElementById("runInitiativeWrap"),
   shareScenarioBtn: document.getElementById("shareScenarioBtn"),
@@ -2072,7 +2081,7 @@ function renderWelcomeCampaigns() {
 
     const scenarioCount = document.createElement("span");
     scenarioCount.className = "campaign-scenario-count";
-    scenarioCount.textContent = `${summary.scenarioCount} scenario${summary.scenarioCount === 1 ? "" : "s"}`;
+    scenarioCount.textContent = `${summary.scenarioCount} encounter${summary.scenarioCount === 1 ? "" : "s"}`;
     row.appendChild(scenarioCount);
 
     li.appendChild(row);
@@ -2812,6 +2821,9 @@ function updateRunMapFogCursorPreview(clientX, clientY, eventTarget = null) {
 function setRunMapFogMode(mode) {
   const nextMode = mode === "paint" || mode === "erase" ? mode : "navigate";
   state.runMap.fogMode = nextMode;
+  if (nextMode !== "navigate" && state.runMap.pingMode) {
+    setRunMapPingModeUi(false);
+  }
   if (els.runMapFogPaintBtn) {
     const active = nextMode === "paint";
     els.runMapFogPaintBtn.setAttribute("aria-pressed", active ? "true" : "false");
@@ -2974,6 +2986,134 @@ function runMapPointerToImageCoords(event) {
   };
 }
 
+function playerMapPointerToImageCoords(event) {
+  if (!els.playerMapViewport || !els.playerMapImage) return null;
+  if (!els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return null;
+  const rect = els.playerMapViewport.getBoundingClientRect();
+  const pointerX = event.clientX - rect.left;
+  const pointerY = event.clientY - rect.top;
+  const viewportWidth = els.playerMapViewport.clientWidth;
+  const viewportHeight = els.playerMapViewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return null;
+  const baseScale = Math.min(
+    viewportWidth / els.playerMapImage.naturalWidth,
+    viewportHeight / els.playerMapImage.naturalHeight
+  );
+  const totalScale = baseScale * state.playerMap.zoom;
+  if (!Number.isFinite(totalScale) || totalScale <= 0) return null;
+  const imageX = (pointerX - state.playerMap.panX) / totalScale;
+  const imageY = (pointerY - state.playerMap.panY) / totalScale;
+  return {
+    x: clamp(imageX, 0, els.playerMapImage.naturalWidth),
+    y: clamp(imageY, 0, els.playerMapImage.naturalHeight)
+  };
+}
+
+function parseMapPingJson(raw) {
+  const text = `${raw || ""}`.trim();
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    const x = Number(parsed?.x);
+    const y = Number(parsed?.y);
+    const id = `${parsed?.id || ""}`.trim();
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !id) return null;
+    return {
+      id,
+      x,
+      y,
+      source: `${parsed?.source || ""}`.trim() || "dm",
+      sentAt: `${parsed?.sentAt || ""}`.trim() || null
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function renderMapPing(container, ping) {
+  if (!(container instanceof HTMLElement) || !ping) return;
+  playPingSound();
+  const marker = document.createElement("div");
+  marker.className = "map-ping-marker";
+  marker.style.left = `${ping.x}px`;
+  marker.style.top = `${ping.y}px`;
+  const core = document.createElement("span");
+  core.className = "map-ping-core";
+  core.textContent = "?";
+  marker.appendChild(core);
+  const waveOne = document.createElement("span");
+  waveOne.className = "map-ping-wave";
+  marker.appendChild(waveOne);
+  const waveTwo = document.createElement("span");
+  waveTwo.className = "map-ping-wave";
+  waveTwo.style.animationDelay = "190ms";
+  marker.appendChild(waveTwo);
+  container.appendChild(marker);
+  setTimeout(() => {
+    marker.remove();
+  }, 1600);
+}
+
+async function playPingSound() {
+  if (!state.pingAudioElement) {
+    state.pingAudioElement = new Audio("/sounds/ping.mp3");
+    state.pingAudioElement.preload = "auto";
+    state.pingAudioElement.volume = 0.9;
+  }
+  state.pingAudioElement.currentTime = 0;
+  try {
+    await state.pingAudioElement.play();
+  } catch (_error) {
+    // Ignore autoplay/device restrictions.
+  }
+}
+
+function maybeShowRunMapPing(pingRaw) {
+  const ping = parseMapPingJson(pingRaw);
+  if (!ping) return;
+  if (state.runMap.lastPingId === ping.id) return;
+  state.runMap.lastPingId = ping.id;
+  const sentAtMs = ping.sentAt ? Date.parse(ping.sentAt) : NaN;
+  if (Number.isFinite(sentAtMs) && Date.now() - sentAtMs > 8000) return;
+  renderMapPing(els.runMapPings, ping);
+}
+
+function maybeShowPlayerMapPing(pingRaw) {
+  const ping = parseMapPingJson(pingRaw);
+  if (!ping) return;
+  if (state.playerMap.lastPingId === ping.id) return;
+  state.playerMap.lastPingId = ping.id;
+  const sentAtMs = ping.sentAt ? Date.parse(ping.sentAt) : NaN;
+  if (Number.isFinite(sentAtMs) && Date.now() - sentAtMs > 8000) return;
+  renderMapPing(els.playerMapPings, ping);
+}
+
+async function sendRunMapPing(scenarioId, x, y) {
+  if (!Number.isInteger(scenarioId)) return;
+  try {
+    const result = await api(`/api/scenarios/${scenarioId}/map-ping`, {
+      method: "POST",
+      body: JSON.stringify({ x, y })
+    });
+    maybeShowRunMapPing(JSON.stringify(result?.ping || ""));
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function sendPlayerMapPing(scenarioId, x, y) {
+  if (!Number.isInteger(scenarioId)) return;
+  try {
+    const result = await api("/api/player/live/map-ping", {
+      method: "POST",
+      body: JSON.stringify({ scenarioId, x, y })
+    });
+    maybeShowPlayerMapPing(JSON.stringify(result?.ping || ""));
+  } catch (_error) {
+    // Ignore transient ping errors for players.
+  }
+}
+
 function paintRunMapFogAt(x, y, mode = "paint") {
   const canvas = els.runMapFogCanvas;
   if (!(canvas instanceof HTMLCanvasElement)) return;
@@ -3032,6 +3172,16 @@ function setRunMapDragLockUi(locked) {
   }
 }
 
+function setRunMapPingModeUi(enabled) {
+  state.runMap.pingMode = Boolean(enabled);
+  if (els.runMapPingBtn) {
+    els.runMapPingBtn.setAttribute("aria-pressed", state.runMap.pingMode ? "true" : "false");
+  }
+  if (state.runMap.pingMode && state.runMap.fogMode !== "navigate") {
+    setRunMapFogMode("navigate");
+  }
+}
+
 function setPlayerMapDragLockUi(locked) {
   state.playerMap.dragLocked = Boolean(locked);
   if (els.playerMapViewport) {
@@ -3044,6 +3194,13 @@ function setPlayerMapDragLockUi(locked) {
       state.playerMap.dragLocked ? "Unlock map dragging" : "Lock map dragging"
     );
     els.playerMapDragLockBtn.title = state.playerMap.dragLocked ? "Unlock Dragging" : "Lock Dragging";
+  }
+}
+
+function setPlayerMapPingModeUi(enabled) {
+  state.playerMap.pingMode = Boolean(enabled);
+  if (els.playerMapPingBtn) {
+    els.playerMapPingBtn.setAttribute("aria-pressed", state.playerMap.pingMode ? "true" : "false");
   }
 }
 
@@ -3064,6 +3221,10 @@ function clearMapViewSelectionsOnEsc() {
     }
     if (state.runMap.fogMode !== "navigate") {
       setRunMapFogMode("navigate");
+      changed = true;
+    }
+    if (state.runMap.pingMode) {
+      setRunMapPingModeUi(false);
       changed = true;
     }
     if (state.runMap.dragLocked) {
@@ -3106,6 +3267,10 @@ function clearMapViewSelectionsOnEsc() {
     }
     if (state.playerMap.dragLocked) {
       setPlayerMapDragLockUi(false);
+      changed = true;
+    }
+    if (state.playerMap.pingMode) {
+      setPlayerMapPingModeUi(false);
       changed = true;
     }
     if (state.playerMap.dragging) {
@@ -3391,6 +3556,7 @@ function renderRunMapTokens(scenarioId, combatants) {
 
       token.addEventListener("pointerdown", (event) => {
         if (state.page !== "scenario-map") return;
+        if (state.runMap.pingMode) return;
         if (state.runMap.fogMode !== "navigate") return;
         if (state.runMap.dragLocked) return;
         if (event.button !== 0) return;
@@ -3548,6 +3714,7 @@ function resetRunMapViewForScenario(scenarioId) {
   state.runMap.fogPainting = false;
   state.runMap.fogPointerId = null;
   state.runMap.pendingRemoteSync = null;
+  setRunMapPingModeUi(false);
   applyRunMapTransform();
 }
 
@@ -3918,6 +4085,7 @@ function renderScenarioRunPage() {
     ensureRunMapFogCanvasFromScenario(scenario);
     if (shouldResetMap) resetRunMapViewForScenario(scenario.id);
     renderRunMapTokens(scenario.id, state.combat.combatants);
+    maybeShowRunMapPing(scenario.map_last_ping_json || "");
     applyRunMapTransform();
   } else if (isMapView && !hasMap) {
     els.runMapImage.src = "";
@@ -3929,6 +4097,7 @@ function renderScenarioRunPage() {
     els.runMapFogBrushControls?.classList.add("hidden");
     hideRunMapFogCursorPreview();
     if (els.runMapTokens) els.runMapTokens.innerHTML = "";
+    if (els.runMapPings) els.runMapPings.innerHTML = "";
     clearRunMapFogCanvas();
     state.runMap.scenarioId = null;
     state.runMap.dragging = false;
@@ -3943,6 +4112,7 @@ function renderScenarioRunPage() {
     els.runMapFogBrushControls?.classList.add("hidden");
     hideRunMapFogCursorPreview();
     if (els.runMapTokens) els.runMapTokens.innerHTML = "";
+    if (els.runMapPings) els.runMapPings.innerHTML = "";
     clearRunMapFogCanvas();
     state.runMap.dragging = false;
     state.runMap.pointerId = null;
@@ -4644,6 +4814,7 @@ function renderPlayerHome() {
       shared.scenarioId,
       mapImageData,
       mapFogData,
+      `${shared.mapLastPingJson || ""}`,
       mapTokensJson,
       combatants,
       shared.activeCombatantId
@@ -4768,6 +4939,7 @@ function resetPlayerMapViewForScenario(scenarioId, mapKey) {
     state.playerMap.saveTimer = null;
   }
   state.playerMap.pendingTokenUpdate = null;
+  setPlayerMapPingModeUi(false);
   if (els.playerMapViewport) {
     els.playerMapViewport.classList.remove("is-dragging");
   }
@@ -4808,6 +4980,7 @@ function renderPlayerLiveMap(
   scenarioId,
   mapImageData,
   mapFogData,
+  mapLastPingJson,
   mapTokensJson,
   combatants,
   activeCombatantId
@@ -4835,6 +5008,7 @@ function renderPlayerLiveMap(
     els.playerMapImage.classList.add("hidden");
     setPlayerMapFogOverlay("");
     els.playerMapTokens.innerHTML = "";
+    if (els.playerMapPings) els.playerMapPings.innerHTML = "";
     return;
   }
   setPlayerMapDragLockUi(state.playerMap.dragLocked);
@@ -4891,6 +5065,7 @@ function renderPlayerLiveMap(
 
       token.addEventListener("pointerdown", (event) => {
         if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+        if (state.playerMap.pingMode) return;
         if (state.playerMap.dragLocked) return;
         if (event.button !== 0) return;
         const combatantId = Number(token.dataset.combatantId);
@@ -4980,6 +5155,7 @@ function renderPlayerLiveMap(
 
     els.playerMapTokens.appendChild(token);
   }
+  maybeShowPlayerMapPing(mapLastPingJson);
   applyPlayerMapTransform();
 }
 
@@ -5052,13 +5228,15 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
     current.map_fog_data ??
     "";
   const nextMapFogData = `${nextMapFogRaw || ""}`;
+  const nextMapLastPingJson = `${snapshot?.mapLastPingJson ?? snapshot?.map_last_ping_json ?? current.map_last_ping_json ?? ""}`;
   const nextTokenSize = Number.isFinite(nextTokenSizeRaw)
     ? clamp(Math.round(nextTokenSizeRaw), 24, 128)
     : scenarioMapTokenSize(current);
   const changed =
     `${current.map_tokens_json || ""}` !== nextMapTokensJson ||
     scenarioMapTokenSize(current) !== nextTokenSize ||
-    `${current.map_fog_data || ""}` !== nextMapFogData;
+    `${current.map_fog_data || ""}` !== nextMapFogData ||
+    `${current.map_last_ping_json || ""}` !== nextMapLastPingJson;
   if (!changed && !force) return;
 
   state.scenarios = state.scenarios.map((scenario) =>
@@ -5067,7 +5245,8 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
         ...scenario,
         map_tokens_json: nextMapTokensJson,
         map_token_size: nextTokenSize,
-        map_fog_data: nextMapFogData
+        map_fog_data: nextMapFogData,
+        map_last_ping_json: nextMapLastPingJson
       }
       : scenario
   );
@@ -5081,6 +5260,7 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
   state.runMap.fogCanvasLoadedKey = null;
   ensureRunMapFogCanvasFromScenario(refreshed);
   renderRunMapTokens(scenarioId, state.combat.combatants);
+  maybeShowRunMapPing(nextMapLastPingJson);
   applyRunMapTransform();
 }
 
@@ -5676,6 +5856,17 @@ function bindEvents() {
         setRunMapFogMode(state.runMap.fogMode === "erase" ? "navigate" : "erase");
         return;
       }
+      if (key === "g") {
+        event.preventDefault();
+        setRunMapPingModeUi(!state.runMap.pingMode);
+        return;
+      }
+    }
+
+    if (state.page === "player-home" && state.playerLiveViewMode === "map" && key === "g") {
+      event.preventDefault();
+      setPlayerMapPingModeUi(!state.playerMap.pingMode);
+      return;
     }
 
     if (state.page !== "scenario-run" && state.page !== "scenario-map") return;
@@ -6690,6 +6881,8 @@ function bindEvents() {
   const fogBrushShapeFromSession = loadRunMapFogBrushShapeFromSession();
   setRunMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.runMap.fogBrushShape);
   setPlayerMapDragLockUi(false);
+  setRunMapPingModeUi(false);
+  setPlayerMapPingModeUi(false);
 
   els.runMapZoomOutBtn?.addEventListener("click", () => {
     zoomRunMapAtPointer(1 / 1.12);
@@ -6778,6 +6971,9 @@ function bindEvents() {
   els.runMapDragLockBtn?.addEventListener("click", () => {
     setRunMapDragLockUi(!state.runMap.dragLocked);
   });
+  els.runMapPingBtn?.addEventListener("click", () => {
+    setRunMapPingModeUi(!state.runMap.pingMode);
+  });
 
   els.playerMapZoomOutBtn?.addEventListener("click", () => {
     zoomPlayerMapAtPointer(1 / 1.12);
@@ -6790,6 +6986,9 @@ function bindEvents() {
   });
   els.playerMapDragLockBtn?.addEventListener("click", () => {
     setPlayerMapDragLockUi(!state.playerMap.dragLocked);
+  });
+  els.playerMapPingBtn?.addEventListener("click", () => {
+    setPlayerMapPingModeUi(!state.playerMap.pingMode);
   });
 
   if (els.runMapImage) {
@@ -6829,6 +7028,15 @@ function bindEvents() {
         return;
       }
       if (event.button !== 0) return;
+      if (state.runMap.pingMode) {
+        const scenario = selectedScenario();
+        if (!scenario) return;
+        const point = runMapPointerToImageCoords(event);
+        if (!point) return;
+        sendRunMapPing(scenario.id, point.x, point.y);
+        event.preventDefault();
+        return;
+      }
       if (state.runMap.fogMode !== "navigate") {
         const scenario = selectedScenario();
         if (!scenario) return;
@@ -6969,8 +7177,15 @@ function bindEvents() {
       if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
       if (els.playerMapImage.classList.contains("hidden")) return;
       if (event.target instanceof Element && event.target.closest(".map-touch-controls")) return;
-      if (state.playerMap.dragLocked) return;
       if (event.button !== 0) return;
+      if (state.playerMap.pingMode) {
+        const point = playerMapPointerToImageCoords(event);
+        if (!point || !Number.isInteger(state.playerMap.scenarioId)) return;
+        sendPlayerMapPing(state.playerMap.scenarioId, point.x, point.y);
+        event.preventDefault();
+        return;
+      }
+      if (state.playerMap.dragLocked) return;
       stopPlayerLivePolling();
       state.playerMap.dragging = true;
       state.playerMap.dragMode = "map";
