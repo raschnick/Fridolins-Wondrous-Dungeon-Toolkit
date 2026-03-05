@@ -1063,8 +1063,42 @@ body.page-player #playerLiveWrap {
 
 .analytics-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
+  width: 100%;
+}
+
+.analytics-main-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.analytics-conditions-panel {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  padding: 0.6rem 0.7rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-conditions-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.98rem;
+}
+
+.analytics-conditions-panel .list {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 980px) {
+  .analytics-main-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .analytics-encounter-counters {
@@ -1101,19 +1135,26 @@ body.page-player #playerLiveWrap {
   border-radius: 9px;
   background: var(--panel-2);
   padding: 0.55rem 0.65rem;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
 .analytics-metric h4 {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   color: var(--muted);
   font-weight: 600;
 }
 
 .analytics-metric strong {
   display: block;
-  margin-top: 0.26rem;
-  font-size: 1.16rem;
+  margin-top: 0.4rem;
+  font-size: 1.9rem;
+  line-height: 1.1;
   color: var(--text);
 }
 

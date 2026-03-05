@@ -570,6 +570,50 @@ test("reports PC average initiative dominance across campaign encounters", async
   assert.equal(borinStats.averageInitiative, 14);
 });
 
+test("player analytics access is limited to member campaigns", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const playerIdentity = await createPlayer(admin, `analytics_scope_${Date.now()}`);
+  const player = await login(playerIdentity.username, playerIdentity.password);
+
+  const memberCampaign = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("AnalyticsMemberCampaign")
+  });
+  assert.equal(memberCampaign.status, 201);
+  const outsiderCampaign = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("AnalyticsOutsiderCampaign")
+  });
+  assert.equal(outsiderCampaign.status, 201);
+
+  const addMember = await admin.request(
+    "POST",
+    `/api/campaigns/${memberCampaign.json.id}/members`,
+    {
+      userId: playerIdentity.id,
+      role: "player"
+    }
+  );
+  assert.equal(addMember.status, 204);
+
+  const campaigns = await player.request("GET", "/api/campaigns");
+  assert.equal(campaigns.status, 200);
+  assert.ok(campaigns.json.some((entry) => entry.id === memberCampaign.json.id));
+  assert.ok(!campaigns.json.some((entry) => entry.id === outsiderCampaign.json.id));
+
+  const allowedStats = await player.request(
+    "GET",
+    `/api/campaigns/${memberCampaign.json.id}/stats`
+  );
+  assert.equal(allowedStats.status, 200);
+  assert.equal(allowedStats.json.campaignId, memberCampaign.json.id);
+
+  const deniedStats = await player.request(
+    "GET",
+    `/api/campaigns/${outsiderCampaign.json.id}/stats`
+  );
+  assert.equal(deniedStats.status, 403);
+  assert.match(deniedStats.json.error, /campaign access denied/i);
+});
+
 test.after(() => {
   delete process.env.FWDT_DB_PATH;
   fs.rmSync(tempDir, { recursive: true, force: true });

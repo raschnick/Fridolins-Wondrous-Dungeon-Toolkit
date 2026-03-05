@@ -488,6 +488,8 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "GET" && path === "/player/live") return true;
   if (method === "GET" && path === "/player/live/stream") return true;
   if (method === "POST" && path === "/player/live/map-token") return true;
+  if (method === "GET" && path === "/campaigns") return true;
+  if (method === "GET" && /^\/campaigns\/\d+\/stats$/.test(path)) return true;
   return false;
 }
 

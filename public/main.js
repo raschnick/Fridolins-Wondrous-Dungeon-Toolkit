@@ -1701,10 +1701,6 @@ async function applyRoute(route, { replace = false } = {}) {
   }
 
   if (route.page === "analytics") {
-    if (state.authUser?.role !== "admin") {
-      await safeNavigate("/", "Analytics access denied.");
-      return;
-    }
     try {
       await loadCampaigns();
       if (
@@ -1909,7 +1905,7 @@ function renderMainSections() {
   els.mainPlayerMapBtn.classList.toggle("hidden", !isPlayer);
   els.userMenu.classList.toggle("hidden", !isAuthed);
   const showLibrary = isAuthed && state.authUser?.role === "admin";
-  const showAnalytics = isAuthed && state.authUser?.role === "admin";
+  const showAnalytics = isAuthed;
   els.mainMonstersBtn.classList.toggle("hidden", !showLibrary);
   els.mainAnalyticsBtn.classList.toggle("hidden", !showAnalytics);
   if (!isAuthed) return;
@@ -4339,9 +4335,9 @@ function renderAnalyticsPage() {
 
   els.analyticsStatus.textContent = "";
   const metricItems = [
-    { label: "Total Enemy Damage", value: stats.totalEnemyDamage ?? 0 },
-    { label: "Total Enemy Defeats", value: stats.totalEnemyDefeats ?? 0 },
-    { label: "PC Down Events", value: stats.pcDownCount ?? 0 }
+    { label: "Total Damage dealt to enemies", value: stats.totalEnemyDamage ?? 0 },
+    { label: "Total Enemies killed", value: stats.totalEnemyDefeats ?? 0 },
+    { label: "Total PCs downed", value: stats.pcDownCount ?? 0 }
   ];
   els.analyticsEncounterCounters.innerHTML = "";
   const topCounterItems = [
@@ -4468,6 +4464,32 @@ async function setAnalyticsCampaign(campaignId) {
 
 async function loadCampaigns() {
   state.campaigns = await api("/api/campaigns");
+  if (state.authUser?.role !== "admin") {
+    const summaryEntries = state.campaigns.map((campaign) => {
+      const totalEncounters = Number.isFinite(Number(campaign.total_encounters))
+        ? Number(campaign.total_encounters)
+        : 0;
+      const totalFinishedEncounters = Number.isFinite(Number(campaign.total_finished_encounters))
+        ? Number(campaign.total_finished_encounters)
+        : 0;
+      const scenarioCount = Math.max(0, totalEncounters - totalFinishedEncounters);
+      return [
+        campaign.id,
+        {
+          players: [],
+          scenarioCount,
+          totalEncounters,
+          totalFinishedEncounters,
+          totalEnemyDamage: Number(campaign.total_enemy_damage) || 0,
+          totalEnemyDefeats: Number(campaign.total_enemy_defeats) || 0
+        }
+      ];
+    });
+    state.campaignSummaries = Object.fromEntries(summaryEntries);
+    renderWelcomeCampaigns();
+    renderNav();
+    return;
+  }
   const summaryEntries = await Promise.all(
     state.campaigns.map(async (campaign) => {
       const players = await api(`/api/campaigns/${campaign.id}/characters`);
