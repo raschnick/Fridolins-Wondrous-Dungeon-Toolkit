@@ -76,6 +76,7 @@ const state = {
     fogMaskByFogData: {},
     fogMaskRequestId: 0
   },
+  playerTurnResourcesByKey: {},
   runPreviewEnemyId: null,
   campaigns: [],
   campaignSummaries: {},
@@ -627,6 +628,31 @@ function closeUserMenuPopover() {
 let conditionTooltipEl = null;
 let conditionTooltipChip = null;
 const CONDITION_TOOLTIP_NO_LEAD_STYLE = new Set(["down", "concentrated"]);
+const PLAYER_TURN_RESOURCE_TIPS = {
+  action: `Possible Actions include:
+
+Attack: Attack with a weapon or an Unarmed Strike.
+
+Dash: For the rest of the turn, give yourself extra movement equal to your Speed.
+
+Disengage: Your movement doesn't provoke Opportunity Attack for the rest of the turn.
+
+Dodge: Until the start of your next turn, attack rolls against you have Disadvantage, and you make Dexterity saving throws with Advantage. You lose this benefit if you have the Incapacitated condition or if your Speed is 0.
+
+Help: Help another creature's ability check or attack roll, or administer first aid.
+
+Hide: Make a Dexterity (Stealth) check.
+
+Magic: Cast a spell, use a magic item, or use a magical feature.
+
+Ready Action: Prepare to take an action in response to a trigger you define.
+
+Player characters and monsters can also do things not covered by these actions. Many class features and other abilities provide additional action options, and you can improvise other actions.`,
+  bonus: `Various class features, spells, and other abilities let you take an additional action on your turn called a Bonus Action. You can take a Bonus Action only when a special ability, a spell, or another feature of the game states that you can do something as a Bonus Action. You otherwise don't have a Bonus Action to take.
+
+You can take only one Bonus Action on your turn, so you must choose which Bonus Action to use if you have more than one available.`,
+  movement: `On your turn, you can move a distance up to your speed. You can use as much or as little of your speed as you like on your turn or also break up your movement between actions or bonus actions.`
+};
 let mapStatblockHoverEl = null;
 
 function ensureConditionTooltipEl() {
@@ -719,6 +745,7 @@ function positionConditionTooltip(chip) {
 
 function renderConditionTooltipContent(tooltip, tip, options = {}) {
   const emphasizeLead = options.emphasizeLead !== false;
+  const tipStyle = `${options.tipStyle || ""}`.trim().toLowerCase();
   tooltip.replaceChildren();
   const paragraphs = `${tip || ""}`
     .split(/\n{2,}/)
@@ -729,8 +756,24 @@ function renderConditionTooltipContent(tooltip, tip, options = {}) {
     const line = document.createElement("p");
     line.className = "condition-tooltip-paragraph";
 
-    const firstDot = paragraph.indexOf(".");
-    if (firstDot > 0 && emphasizeLead) {
+    if (tipStyle === "action-list") {
+      const firstColon = paragraph.indexOf(":");
+      if (firstColon > 0) {
+        const lead = paragraph.slice(0, firstColon + 1).trim();
+        const rest = paragraph.slice(firstColon + 1).trim();
+        const leadEl = document.createElement("span");
+        leadEl.className = "condition-tooltip-action-label";
+        leadEl.textContent = lead;
+        line.appendChild(leadEl);
+        if (rest) {
+          line.appendChild(document.createTextNode(` ${rest}`));
+        }
+      } else {
+        line.textContent = paragraph;
+      }
+    } else {
+      const firstDot = paragraph.indexOf(".");
+      if (firstDot > 0 && emphasizeLead) {
       const lead = paragraph.slice(0, firstDot + 1).trim();
       const rest = paragraph.slice(firstDot + 1).trim();
       const leadEl = document.createElement("span");
@@ -740,8 +783,9 @@ function renderConditionTooltipContent(tooltip, tip, options = {}) {
       if (rest) {
         line.appendChild(document.createTextNode(` ${rest}`));
       }
-    } else {
-      line.textContent = paragraph;
+      } else {
+        line.textContent = paragraph;
+      }
     }
 
     tooltip.appendChild(line);
@@ -749,15 +793,21 @@ function renderConditionTooltipContent(tooltip, tip, options = {}) {
 }
 
 function showConditionTooltip(chip) {
+  showTooltipForElement(chip);
+}
+
+function showTooltipForElement(chip) {
   const tip = `${chip.getAttribute("data-tip") || ""}`.trim();
   if (!tip) {
     hideConditionTooltip();
     return;
   }
+  const tooltipStyle = `${chip.getAttribute("data-tip-style") || ""}`.trim().toLowerCase();
   const conditionKey = `${chip.getAttribute("data-condition-key") || ""}`.trim().toLowerCase();
-  const emphasizeLead = !CONDITION_TOOLTIP_NO_LEAD_STYLE.has(conditionKey);
+  const emphasizeLead =
+    tooltipStyle === "plain" ? false : !CONDITION_TOOLTIP_NO_LEAD_STYLE.has(conditionKey);
   const tooltip = ensureConditionTooltipEl();
-  renderConditionTooltipContent(tooltip, tip, { emphasizeLead });
+  renderConditionTooltipContent(tooltip, tip, { emphasizeLead, tipStyle: tooltipStyle });
   tooltip.classList.remove("hidden");
   conditionTooltipChip = chip;
   positionConditionTooltip(chip);
@@ -3613,12 +3663,13 @@ function renderRunMapTokens(scenarioId, combatants) {
     }
     token.classList.remove("token-fade-out");
 
-    const wasDragging = token.classList.contains("is-dragging");
-    token.className = "run-map-token";
-    if (wasDragging) token.classList.add("is-dragging");
-    if (combatant.kind === "character") token.classList.add("token-pc");
-    else if (isAllyCombatant(combatant)) token.classList.add("token-npc");
-    else token.classList.add("token-enemy");
+    token.classList.add("run-map-token");
+    const isPcToken = combatant.kind === "character";
+    const isNpcToken = !isPcToken && isAllyCombatant(combatant);
+    const isEnemyToken = !isPcToken && !isNpcToken;
+    token.classList.toggle("token-pc", isPcToken);
+    token.classList.toggle("token-npc", isNpcToken);
+    token.classList.toggle("token-enemy", isEnemyToken);
 
     token.title = combatant.name;
     if (combatant.kind === "enemy") {
@@ -3628,12 +3679,8 @@ function renderRunMapTokens(scenarioId, combatants) {
     token.style.left = `${clamp(pos.x, 20, width - 20)}px`;
     token.style.top = `${clamp(pos.y, 20, height - 20)}px`;
     token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
-    if (combatant.id === state.combat.activeCombatantId) {
-      token.classList.add("is-active");
-    }
-    if (hasRevealMoment(combatant.id)) {
-      token.classList.add("reveal-moment-token");
-    }
+    token.classList.toggle("is-active", isSameCombatantId(combatant.id, state.combat.activeCombatantId));
+    token.classList.toggle("reveal-moment-token", hasRevealMoment(combatant.id));
 
     const icon = token.querySelector(".run-map-token-icon");
     if (!(icon instanceof HTMLImageElement)) continue;
@@ -3720,6 +3767,10 @@ function resetRunMapViewForScenario(scenarioId) {
 
 function activeCombatant() {
   return state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId) || null;
+}
+
+function isSameCombatantId(leftId, rightId) {
+  return Number(leftId) === Number(rightId);
 }
 
 function inspectCombatantStatblock(combatant) {
@@ -4775,6 +4826,47 @@ function renderPlayerHome() {
     const name = createCombatantNameElement(combatant);
     row.appendChild(name);
 
+    const isActivePlayerTurn = combatant.kind === "character" && combatant.id === shared.activeCombatantId;
+    if (isActivePlayerTurn) {
+      const turnResourceKey = `${shared.scenarioId}:${shared.round}:${shared.activeCombatantId}`;
+      if (!state.playerTurnResourcesByKey[turnResourceKey]) {
+        state.playerTurnResourcesByKey[turnResourceKey] = {
+          actionUsed: false,
+          bonusUsed: false,
+          movementUsed: false
+        };
+      }
+      const resources = state.playerTurnResourcesByKey[turnResourceKey];
+      const controls = document.createElement("div");
+      controls.className = "player-turn-resources";
+      const options = [
+        { key: "actionUsed", label: "Action" },
+        { key: "bonusUsed", label: "Bonus Action" },
+        { key: "movementUsed", label: "Movement" }
+      ];
+      for (const option of options) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "player-turn-resource-btn";
+        const tipKey = option.key === "actionUsed" ? "action" : option.key === "bonusUsed" ? "bonus" : "movement";
+        button.setAttribute("data-tip", PLAYER_TURN_RESOURCE_TIPS[tipKey]);
+        button.setAttribute("data-tip-style", tipKey === "action" ? "action-list" : "plain");
+        const isUsed = Boolean(resources[option.key]);
+        button.classList.toggle("used", isUsed);
+        button.setAttribute("aria-pressed", isUsed ? "true" : "false");
+        button.textContent = option.label;
+        button.addEventListener("click", () => {
+          resources[option.key] = !resources[option.key];
+          const nextUsed = Boolean(resources[option.key]);
+          button.classList.toggle("used", nextUsed);
+          button.setAttribute("aria-pressed", nextUsed ? "true" : "false");
+          button.textContent = option.label;
+        });
+        controls.appendChild(button);
+      }
+      row.appendChild(controls);
+    }
+
     if (
       combatant.kind === "enemy" &&
       Number(combatant.is_legendary) === 1 &&
@@ -5114,24 +5206,21 @@ function renderPlayerLiveMap(
     }
     token.classList.remove("token-fade-out");
 
-    const wasDragging = token.classList.contains("is-dragging");
-    token.className = "player-map-token";
-    if (wasDragging) token.classList.add("is-dragging");
-    if (combatant.kind === "character") token.classList.add("token-pc");
-    else if (isAllyCombatant(combatant)) token.classList.add("token-npc");
-    else token.classList.add("token-enemy");
+    token.classList.add("player-map-token");
+    const isPcToken = combatant.kind === "character";
+    const isNpcToken = !isPcToken && isAllyCombatant(combatant);
+    const isEnemyToken = !isPcToken && !isNpcToken;
+    token.classList.toggle("token-pc", isPcToken);
+    token.classList.toggle("token-npc", isNpcToken);
+    token.classList.toggle("token-enemy", isEnemyToken);
 
     token.title = combatant.name;
     token.dataset.combatantId = String(combatant.id);
     token.style.left = `${pos.x}px`;
     token.style.top = `${pos.y}px`;
     token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
-    if (combatant.id === activeCombatantId) {
-      token.classList.add("is-active");
-    }
-    if (hasPlayerRevealMoment(combatant.id)) {
-      token.classList.add("reveal-moment-token");
-    }
+    token.classList.toggle("is-active", isSameCombatantId(combatant.id, activeCombatantId));
+    token.classList.toggle("reveal-moment-token", hasPlayerRevealMoment(combatant.id));
 
     const icon = token.querySelector(".player-map-token-icon");
     if (!(icon instanceof HTMLImageElement)) continue;
@@ -7273,38 +7362,48 @@ function bindEvents() {
   }
 
   document.addEventListener("mouseover", (event) => {
-    const chip = event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    const chip =
+      event.target instanceof Element
+        ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
+        : null;
     if (!(chip instanceof HTMLElement)) return;
-    showConditionTooltip(chip);
+    showTooltipForElement(chip);
   });
 
   document.addEventListener("mouseout", (event) => {
     if (!conditionTooltipChip) return;
     const targetChip =
-      event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+      event.target instanceof Element
+        ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
+        : null;
     if (targetChip !== conditionTooltipChip) return;
     const relatedChip =
       event.relatedTarget instanceof Element
-        ? event.relatedTarget.closest(".condition-chip")
+        ? event.relatedTarget.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
     if (relatedChip === conditionTooltipChip) return;
     hideConditionTooltip();
   });
 
   document.addEventListener("focusin", (event) => {
-    const chip = event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+    const chip =
+      event.target instanceof Element
+        ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
+        : null;
     if (!(chip instanceof HTMLElement)) return;
-    showConditionTooltip(chip);
+    showTooltipForElement(chip);
   });
 
   document.addEventListener("focusout", (event) => {
     if (!conditionTooltipChip) return;
     const targetChip =
-      event.target instanceof Element ? event.target.closest(".condition-chip") : null;
+      event.target instanceof Element
+        ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
+        : null;
     if (targetChip !== conditionTooltipChip) return;
     const relatedChip =
       event.relatedTarget instanceof Element
-        ? event.relatedTarget.closest(".condition-chip")
+        ? event.relatedTarget.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
     if (relatedChip === conditionTooltipChip) return;
     hideConditionTooltip();

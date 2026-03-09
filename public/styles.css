@@ -1230,6 +1230,30 @@ body.page-player #playerLiveWrap {
   background: linear-gradient(180deg, #d1a073, #99613a);
 }
 
+.player-turn-resources {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.32rem;
+  flex-wrap: wrap;
+}
+
+.player-turn-resource-btn {
+  border: 1px solid rgba(101, 186, 124, 0.85);
+  background: rgba(40, 98, 57, 0.78);
+  color: #eefcf1;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  padding: 0.18rem 0.48rem;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.player-turn-resource-btn.used {
+  border-color: rgba(194, 98, 110, 0.88);
+  background: rgba(125, 43, 54, 0.84);
+  color: #ffeef0;
+}
+
 .edit-add-layout {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(560px, 2.3fr);
@@ -1779,12 +1803,12 @@ body.page-player #playerLiveWrap {
 
 .run-map-token.token-pc.is-active {
   border-width: 3px;
-  animation: token-glow-pulse-blue 1.9s ease-in-out infinite;
+  animation: none;
   box-shadow:
     0 0 0 2px rgba(5, 12, 20, 0.5),
     0 0 0 3px rgba(74, 132, 196, 1),
-    0 0 26px rgba(236, 252, 255, 1),
-    0 0 56px rgba(154, 214, 255, 1);
+    0 0 34px rgba(240, 254, 255, 1),
+    0 0 70px rgba(170, 223, 255, 1);
 }
 
 .run-map-token.token-enemy.is-active {
@@ -1799,12 +1823,12 @@ body.page-player #playerLiveWrap {
 
 .run-map-token.token-npc.is-active {
   border-width: 3px;
-  animation: token-glow-pulse-green 1.9s ease-in-out infinite;
+  animation: none;
   box-shadow:
     0 0 0 2px rgba(5, 20, 12, 0.5),
     0 0 0 3px rgba(62, 136, 96, 1),
-    0 0 26px rgba(232, 255, 242, 1),
-    0 0 56px rgba(122, 208, 160, 1);
+    0 0 34px rgba(242, 255, 248, 1),
+    0 0 70px rgba(142, 222, 178, 1);
 }
 
 #runMapImage {
@@ -2315,6 +2339,11 @@ body.page-player #playerLiveWrap {
   font-style: italic;
 }
 
+.condition-tooltip-action-label {
+  font-weight: 700;
+  font-style: italic;
+}
+
 .turn-active {
   border-color: #7db0ff !important;
   background: #5e86bd !important;
@@ -2808,12 +2837,12 @@ li.turn-active.map-token-hover-linked {
 
 .player-map-token.token-pc.is-active {
   border-width: 3px;
-  animation: token-glow-pulse-blue 1.9s ease-in-out infinite;
+  animation: none;
   box-shadow:
     0 0 0 2px rgba(5, 12, 20, 0.5),
     0 0 0 3px rgba(74, 132, 196, 1),
-    0 0 26px rgba(236, 252, 255, 1),
-    0 0 56px rgba(154, 214, 255, 1);
+    0 0 34px rgba(240, 254, 255, 1),
+    0 0 70px rgba(170, 223, 255, 1);
 }
 
 .player-map-token.token-enemy.is-active {
@@ -2828,12 +2857,12 @@ li.turn-active.map-token-hover-linked {
 
 .player-map-token.token-npc.is-active {
   border-width: 3px;
-  animation: token-glow-pulse-green 1.9s ease-in-out infinite;
+  animation: none;
   box-shadow:
     0 0 0 2px rgba(5, 20, 12, 0.5),
     0 0 0 3px rgba(62, 136, 96, 1),
-    0 0 26px rgba(232, 255, 242, 1),
-    0 0 56px rgba(122, 208, 160, 1);
+    0 0 34px rgba(242, 255, 248, 1),
+    0 0 70px rgba(142, 222, 178, 1);
 }
 
 @keyframes token-glow-pulse-blue {
