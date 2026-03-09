@@ -88,6 +88,7 @@ const state = {
   adminMemberSearchQuery: "",
   campaignLiveScenarioId: null,
   playerLiveData: null,
+  playerLiveLastActiveCombatantId: null,
   userSettings: null,
   playerLivePollTimer: null,
   playerLiveEventSource: null,
@@ -2696,6 +2697,20 @@ function scrollRunInitiativeToActive({ smooth = true } = {}) {
   });
 }
 
+function scrollPlayerInitiativeToActive({ smooth = true } = {}) {
+  if (!els.playerLiveCombatantList) return;
+  const activeRow = els.playerLiveCombatantList.querySelector("li.turn-active");
+  if (!(activeRow instanceof HTMLElement)) return;
+  const behavior = smooth ? "smooth" : "auto";
+  window.requestAnimationFrame(() => {
+    activeRow.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior
+    });
+  });
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -4774,6 +4789,7 @@ function renderPlayerHome() {
   els.playerWaitingWrap.classList.toggle("hidden", hasShared);
   els.playerLiveWrap.classList.toggle("hidden", !hasShared);
   if (!hasShared) {
+    state.playerLiveLastActiveCombatantId = null;
     state.playerVisibleCombatantIdsByScenario = {};
     return;
   }
@@ -4909,6 +4925,15 @@ function renderPlayerHome() {
     applyConditionStyleReadonly(li, combatant);
 
     els.playerLiveCombatantList.appendChild(li);
+  }
+
+  if (isMapMode) {
+    const activeChanged =
+      Number(shared.activeCombatantId) !== Number(state.playerLiveLastActiveCombatantId);
+    scrollPlayerInitiativeToActive({ smooth: activeChanged });
+    state.playerLiveLastActiveCombatantId = shared.activeCombatantId ?? null;
+  } else {
+    state.playerLiveLastActiveCombatantId = shared.activeCombatantId ?? null;
   }
 
   if (isMapMode) {
