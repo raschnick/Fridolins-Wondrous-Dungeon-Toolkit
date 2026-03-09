@@ -2682,6 +2682,20 @@ function focusPreviewOnActiveNonPc() {
   }
 }
 
+function scrollRunInitiativeToActive({ smooth = true } = {}) {
+  if (!els.runOrderList) return;
+  const activeRow = els.runOrderList.querySelector("li.turn-active");
+  if (!(activeRow instanceof HTMLElement)) return;
+  const behavior = smooth ? "smooth" : "auto";
+  window.requestAnimationFrame(() => {
+    activeRow.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior
+    });
+  });
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -6846,6 +6860,7 @@ function bindEvents() {
       focusPreviewOnActiveNonPc();
       state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
       renderScenarioRunPage();
+      scrollRunInitiativeToActive({ smooth: true });
     } catch (error) {
       setStatus(error.message, "error");
     }
