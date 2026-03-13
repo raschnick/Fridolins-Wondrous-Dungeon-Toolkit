@@ -1,0 +1,96 @@
+name: Build-scan-push
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_NAME:
+        required: true
+        type: string
+      IMAGE_TAG:
+        required: true
+        type: string
+      DOCKER_REGISTRY:
+        required: false
+        type: string
+        default: "cb.van-de-loo.ch"
+      DOCKERBUILD_PATH:
+        required: false
+        type: string
+        default: "dockerbuild"
+      DOCKERFILE:
+        required: false
+        type: string
+        default: "Dockerfile"
+      TRIVY_SCANNERS:
+        required: false
+        type: string
+        default: "vuln,secret,misconfig"
+      TRIVY_SEVERITY:
+        required: false
+        type: string
+        default: "HIGH,CRITICAL"
+      TRIVY_IGNORE_VULNS:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CI_BOT_USERNAME:
+        required: true
+      CI_BOT_GENERAL_CI_TOKEN:
+        required: true
+
+jobs:
+  build-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next tag
+        id: tag
+        run: |
+          git fetch --tags
+          latest=$(git tag --sort=-v:refname | head -n1)
+          latest=${latest:-0.0.0}
+          IFS='.' read major minor patch <<< "$latest"
+          patch=$((patch+1))
+          new_tag="$major.$minor.$patch"
+          echo "Calculated tag=$new_tag"
+          echo "NEW_TAG=$new_tag" >> "$GITHUB_ENV"
+
+      - name: Build Docker image
+        run: |
+          docker build -f "${{ inputs.DOCKERBUILD_PATH }}/${{ inputs.DOCKERFILE }}" -t "${{ inputs.DOCKER_REGISTRY }}/${{ inputs.IMAGE_NAME }}:${{ env.NEW_TAG }}" "${{ inputs.DOCKERBUILD_PATH }}"
+
+      - name: Download Trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Write Trivy ignore list
+        if: ${{ inputs.TRIVY_IGNORE_VULNS != '' }}
+        run: echo "${{ inputs.TRIVY_IGNORE_VULNS }}" | tr ',' '\n' > .trivyignore
+
+      - name: Scan Docker image with Trivy
+        run: |
+          trivy image \
+            --exit-code 1 \
+            --scanners ${{ inputs.TRIVY_SCANNERS }} \
+            --severity ${{ inputs.TRIVY_SEVERITY }} \
+            --cache-dir .trivycache/ \
+            --no-progress \
+            "${{ inputs.DOCKER_REGISTRY }}/${{ inputs.IMAGE_NAME }}:${{ env.NEW_TAG }}"
+
+      - name: Log in to Docker registry
+        run: echo "${{ secrets.CI_BOT_GENERAL_CI_TOKEN }}" | docker login --username "${{ secrets.CI_BOT_USERNAME }}" --password-stdin ${{ inputs.DOCKER_REGISTRY }}
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ inputs.DOCKER_REGISTRY }}/${{ inputs.IMAGE_NAME }}:${{ env.NEW_TAG }}
+
+      - name: Push git tag
+        run: |
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@van-de-loo.ch"
+          git tag ${{ env.NEW_TAG }}
+          git push origin ${{ env.NEW_TAG }}
