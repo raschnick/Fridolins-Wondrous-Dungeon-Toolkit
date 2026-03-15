@@ -36,12 +36,27 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_campaign_members_user
       ON campaign_members (user_id);
 
+    CREATE TABLE IF NOT EXISTS campaign_scene_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      image_data TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_campaign_scene_images_campaign
+      ON campaign_scene_images (campaign_id, updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS campaign_live_state (
       campaign_id INTEGER PRIMARY KEY,
       shared_scenario_id INTEGER,
+      shared_scene_image_id INTEGER,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
-      FOREIGN KEY (shared_scenario_id) REFERENCES combat_scenarios(id) ON DELETE SET NULL
+      FOREIGN KEY (shared_scenario_id) REFERENCES combat_scenarios(id) ON DELETE SET NULL,
+      FOREIGN KEY (shared_scene_image_id) REFERENCES campaign_scene_images(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS campaign_stats (
@@ -68,9 +83,11 @@ function initDb() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'player',
       active INTEGER NOT NULL DEFAULT 1,
+      active_campaign_id INTEGER,
       profile_image_data TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (active_campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS user_sessions (
@@ -214,6 +231,19 @@ function initDb() {
     .prepare("PRAGMA table_info(combat_scenarios)")
     .all()
     .map((column) => column.name);
+  const campaignLiveColumns = db
+    .prepare("PRAGMA table_info(campaign_live_state)")
+    .all()
+    .map((column) => column.name);
+  if (!campaignLiveColumns.includes("shared_scene_image_id")) {
+    db.exec("ALTER TABLE campaign_live_state ADD COLUMN shared_scene_image_id INTEGER");
+  }
+  db.exec(
+    `UPDATE campaign_live_state
+     SET shared_scene_image_id = NULL
+     WHERE shared_scene_image_id IS NOT NULL
+       AND shared_scene_image_id NOT IN (SELECT id FROM campaign_scene_images)`
+  );
 
   if (!scenarioColumns.includes("current_round")) {
     db.exec(
@@ -276,11 +306,25 @@ function initDb() {
   if (!userColumns.includes("active")) {
     db.exec("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
   }
+  if (!userColumns.includes("active_campaign_id")) {
+    db.exec("ALTER TABLE users ADD COLUMN active_campaign_id INTEGER");
+  }
   if (!userColumns.includes("profile_image_data")) {
     db.exec("ALTER TABLE users ADD COLUMN profile_image_data TEXT NOT NULL DEFAULT ''");
   }
   db.exec("UPDATE users SET role = 'player' WHERE role IS NULL OR trim(role) = ''");
   db.exec("UPDATE users SET active = 1 WHERE active NOT IN (0, 1) OR active IS NULL");
+  db.exec(
+    `UPDATE users
+     SET active_campaign_id = NULL
+     WHERE active_campaign_id IS NOT NULL
+       AND active_campaign_id NOT IN (
+         SELECT cm.campaign_id
+         FROM campaign_members cm
+         WHERE cm.user_id = users.id
+       )`
+  );
+  db.exec("UPDATE users SET active_campaign_id = NULL WHERE role = 'admin'");
   db.exec("UPDATE users SET profile_image_data = '' WHERE profile_image_data IS NULL");
   db.exec("DELETE FROM user_sessions WHERE expires_at <= datetime('now')");
   db.exec(

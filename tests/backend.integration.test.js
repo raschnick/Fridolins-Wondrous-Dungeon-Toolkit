@@ -159,6 +159,73 @@ test("allows player access to /api/player/live", async () => {
   assert.ok(Object.prototype.hasOwnProperty.call(response.json, "shared"));
 });
 
+test("player can switch active campaign for initiative/map/scene live data", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const playerIdentity = await createPlayer(admin, `active_campaign_${Date.now()}`);
+  const player = await login(playerIdentity.username, playerIdentity.password);
+
+  const campaignA = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("ActiveCampaignA")
+  });
+  assert.equal(campaignA.status, 201);
+  const campaignB = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("ActiveCampaignB")
+  });
+  assert.equal(campaignB.status, 201);
+
+  let response = await admin.request("POST", `/api/campaigns/${campaignA.json.id}/members`, {
+    userId: playerIdentity.id,
+    role: "player"
+  });
+  assert.equal(response.status, 204);
+  response = await admin.request("POST", `/api/campaigns/${campaignB.json.id}/members`, {
+    userId: playerIdentity.id,
+    role: "player"
+  });
+  assert.equal(response.status, 204);
+
+  const scenarioA = await admin.request(
+    "POST",
+    `/api/campaigns/${campaignA.json.id}/scenarios`,
+    { name: "Active A Encounter", notes: "" }
+  );
+  assert.equal(scenarioA.status, 201);
+  const scenarioB = await admin.request(
+    "POST",
+    `/api/campaigns/${campaignB.json.id}/scenarios`,
+    { name: "Active B Encounter", notes: "" }
+  );
+  assert.equal(scenarioB.status, 201);
+
+  response = await admin.request("POST", `/api/scenarios/${scenarioA.json.id}/share`);
+  assert.equal(response.status, 200);
+  response = await admin.request("POST", `/api/scenarios/${scenarioB.json.id}/share`);
+  assert.equal(response.status, 200);
+
+  const settings = await player.request("GET", "/api/users/me/settings");
+  assert.equal(settings.status, 200);
+  assert.ok(Array.isArray(settings.json.campaigns));
+  assert.equal(settings.json.campaigns.length, 2);
+  assert.ok(Number.isInteger(settings.json.activeCampaignId));
+
+  const initialLive = await player.request("GET", "/api/player/live");
+  assert.equal(initialLive.status, 200);
+  assert.equal(initialLive.json.activeCampaignId, settings.json.activeCampaignId);
+  assert.equal(initialLive.json.shared.campaignId, settings.json.activeCampaignId);
+
+  const otherCampaignId =
+    settings.json.activeCampaignId === campaignA.json.id ? campaignB.json.id : campaignA.json.id;
+  const switchActive = await player.request("POST", "/api/users/me/active-campaign", {
+    campaignId: otherCampaignId
+  });
+  assert.equal(switchActive.status, 204);
+
+  const switchedLive = await player.request("GET", "/api/player/live");
+  assert.equal(switchedLive.status, 200);
+  assert.equal(switchedLive.json.activeCampaignId, otherCampaignId);
+  assert.equal(switchedLive.json.shared.campaignId, otherCampaignId);
+});
+
 test("logs out session after username change", async () => {
   const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
   const { username, password } = await createPlayer(admin, "rename");

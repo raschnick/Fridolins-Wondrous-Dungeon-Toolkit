@@ -78,6 +78,10 @@ const state = {
   },
   playerTurnResourcesByKey: {},
   runPreviewEnemyId: null,
+  sceneImages: [],
+  sceneSearchQuery: "",
+  selectedSceneId: null,
+  draftSceneImageData: "",
   campaigns: [],
   campaignSummaries: {},
   adminUsers: [],
@@ -87,6 +91,8 @@ const state = {
   adminUserSearchQuery: "",
   adminMemberSearchQuery: "",
   campaignLiveScenarioId: null,
+  campaignLiveSceneImageId: null,
+  lastHomeCampaignId: null,
   playerLiveData: null,
   playerLiveLastActiveCombatantId: null,
   userSettings: null,
@@ -134,6 +140,7 @@ const els = {
   loginPageLogo: document.getElementById("loginPageLogo"),
   pageWelcome: document.getElementById("pageWelcome"),
   pagePlayerHome: document.getElementById("pagePlayerHome"),
+  pageScene: document.getElementById("pageScene"),
   pageSettings: document.getElementById("pageSettings"),
   pageMonsters: document.getElementById("pageMonsters"),
   pageAnalytics: document.getElementById("pageAnalytics"),
@@ -150,8 +157,10 @@ const els = {
   pageScenarioCompletedEdit: document.getElementById("pageScenarioCompletedEdit"),
   pageScenarioRun: document.getElementById("pageScenarioRun"),
   mainHomeBtn: document.getElementById("mainHomeBtn"),
+  mainSceneBtn: document.getElementById("mainSceneBtn"),
   mainPlayerInitiativeBtn: document.getElementById("mainPlayerInitiativeBtn"),
   mainPlayerMapBtn: document.getElementById("mainPlayerMapBtn"),
+  mainPlayerSceneBtn: document.getElementById("mainPlayerSceneBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
   userMenu: document.getElementById("userMenu"),
@@ -170,6 +179,9 @@ const els = {
   playerLiveRound: document.getElementById("playerLiveRound"),
   playerLiveInitiativeWrap: document.getElementById("playerLiveInitiativeWrap"),
   playerLiveMapWrap: document.getElementById("playerLiveMapWrap"),
+  playerLiveSceneWrap: document.getElementById("playerLiveSceneWrap"),
+  playerLiveSceneHint: document.getElementById("playerLiveSceneHint"),
+  playerLiveSceneImage: document.getElementById("playerLiveSceneImage"),
   playerLiveMapHint: document.getElementById("playerLiveMapHint"),
   playerMapViewport: document.getElementById("playerMapViewport"),
   playerMapControls: document.getElementById("playerMapControls"),
@@ -188,6 +200,9 @@ const els = {
   settingsProfileImageFile: document.getElementById("settingsProfileImageFile"),
   settingsUsernameInput: document.getElementById("settingsUsernameInput"),
   saveSettingsUsernameBtn: document.getElementById("saveSettingsUsernameBtn"),
+  settingsCampaignSection: document.getElementById("settingsCampaignSection"),
+  settingsActiveCampaignSelect: document.getElementById("settingsActiveCampaignSelect"),
+  saveSettingsActiveCampaignBtn: document.getElementById("saveSettingsActiveCampaignBtn"),
   settingsNewPasswordInput: document.getElementById("settingsNewPasswordInput"),
   settingsConfirmPasswordInput: document.getElementById("settingsConfirmPasswordInput"),
   saveSettingsPasswordBtn: document.getElementById("saveSettingsPasswordBtn"),
@@ -240,6 +255,22 @@ const els = {
   createCampaignModalForm: document.getElementById("createCampaignModalForm"),
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
+  scenePageTitle: document.getElementById("scenePageTitle"),
+  sceneCampaignSelect: document.getElementById("sceneCampaignSelect"),
+  goSceneViewBtn: document.getElementById("goSceneViewBtn"),
+  backToCampaignFromSceneBtn: document.getElementById("backToCampaignFromSceneBtn"),
+  sceneSearchInput: document.getElementById("sceneSearchInput"),
+  shareSceneBtn: document.getElementById("shareSceneBtn"),
+  createSceneForm: document.getElementById("createSceneForm"),
+  sceneNameInput: document.getElementById("sceneNameInput"),
+  sceneImageFile: document.getElementById("sceneImageFile"),
+  sceneDraftImagePreview: document.getElementById("sceneDraftImagePreview"),
+  addSceneBtn: document.getElementById("addSceneBtn"),
+  sceneList: document.getElementById("sceneList"),
+  scenePreviewTitle: document.getElementById("scenePreviewTitle"),
+  scenePreviewHint: document.getElementById("scenePreviewHint"),
+  scenePreviewImage: document.getElementById("scenePreviewImage"),
+  deleteSceneBtn: document.getElementById("deleteSceneBtn"),
   completedScenarioPageTitle: document.getElementById("completedScenarioPageTitle"),
   adminCreateUserForm: document.getElementById("adminCreateUserForm"),
   adminNewUsername: document.getElementById("adminNewUsername"),
@@ -881,6 +912,17 @@ function setScenarioMapPreview(dataUrl) {
   } else {
     els.editScenarioMapPreview.src = "";
     els.editScenarioMapPreview.classList.add("hidden");
+  }
+}
+
+function setSceneDraftImagePreview(dataUrl) {
+  if (!els.sceneDraftImagePreview) return;
+  if (dataUrl) {
+    els.sceneDraftImagePreview.src = dataUrl;
+    els.sceneDraftImagePreview.classList.remove("hidden");
+  } else {
+    els.sceneDraftImagePreview.src = "";
+    els.sceneDraftImagePreview.classList.add("hidden");
   }
 }
 
@@ -1613,6 +1655,7 @@ function parseRoute(pathname) {
     return { page: "player-home", playerMode: "initiative" };
   }
   if (path === "/player/map") return { page: "player-home", playerMode: "map" };
+  if (path === "/player/scene") return { page: "player-home", playerMode: "scene" };
   if (path === "/") return { page: "welcome" };
   if (path === "/library") return { page: "monsters" };
   if (path === "/monsters") return { page: "monsters" };
@@ -1627,6 +1670,11 @@ function parseRoute(pathname) {
   match = path.match(/^\/campaigns\/(\d+)\/completed$/);
   if (match) {
     return { page: "campaign-completed", campaignId: Number(match[1]) };
+  }
+
+  match = path.match(/^\/campaigns\/(\d+)\/scene$/);
+  if (match) {
+    return { page: "campaign-scene", campaignId: Number(match[1]) };
   }
 
   match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|initiative|map|run)$/);
@@ -1658,7 +1706,9 @@ function parseRoute(pathname) {
 function routePathFor(page, campaignId = null, scenarioId = null, playerMode = null) {
   if (page === "login") return "/login";
   if (page === "player-home") {
-    return playerMode === "map" ? "/player/map" : "/player/initiative";
+    if (playerMode === "map") return "/player/map";
+    if (playerMode === "scene") return "/player/scene";
+    return "/player/initiative";
   }
   if (page === "settings") return "/settings";
   if (page === "welcome") return "/";
@@ -1670,6 +1720,9 @@ function routePathFor(page, campaignId = null, scenarioId = null, playerMode = n
   }
   if (page === "campaign-completed" && Number.isInteger(campaignId)) {
     return `/campaigns/${campaignId}/completed`;
+  }
+  if (page === "campaign-scene" && Number.isInteger(campaignId)) {
+    return `/campaigns/${campaignId}/scene`;
   }
   if (
     (
@@ -1747,7 +1800,12 @@ async function applyRoute(route, { replace = false } = {}) {
   }
 
   if (route.page === "player-home") {
-    state.playerLiveViewMode = route.playerMode === "map" ? "map" : "initiative";
+    state.playerLiveViewMode =
+      route.playerMode === "map"
+        ? "map"
+        : route.playerMode === "scene"
+          ? "scene"
+          : "initiative";
     try {
       await loadPlayerLive();
     } catch (error) {
@@ -1866,6 +1924,19 @@ async function applyRoute(route, { replace = false } = {}) {
     return;
   }
 
+  if (route.page === "campaign-scene") {
+    try {
+      await loadSceneImages(route.campaignId);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+    if (!isCurrent()) return;
+    renderScenePage();
+    showPage("campaign-scene");
+    await syncHistory(routePathFor("campaign-scene", route.campaignId), { replace });
+    return;
+  }
+
   if (!Number.isInteger(route.scenarioId)) {
     await safeNavigate(routePathFor("campaign", route.campaignId), "Invalid scenario route.");
     return;
@@ -1949,6 +2020,7 @@ function showPage(page) {
   els.pageAnalytics.classList.toggle("hidden", page !== "analytics");
   els.pageAdmin.classList.toggle("hidden", page !== "admin");
   els.pageCampaign.classList.toggle("hidden", page !== "campaign");
+  els.pageScene.classList.toggle("hidden", page !== "campaign-scene");
   els.pageCampaignCompleted.classList.toggle("hidden", page !== "campaign-completed");
   els.pageScenarioEdit.classList.toggle("hidden", page !== "scenario-edit");
   els.pageScenarioCompletedEdit.classList.toggle("hidden", page !== "scenario-completed-edit");
@@ -1961,8 +2033,10 @@ function renderMainSections() {
   const isAuthed = Boolean(state.authUser);
   const isPlayer = isAuthed && state.authUser?.role !== "admin";
   els.mainHomeBtn.classList.toggle("hidden", !isAuthed || isPlayer);
+  els.mainSceneBtn.classList.toggle("hidden", !isAuthed || isPlayer);
   els.mainPlayerInitiativeBtn.classList.toggle("hidden", !isPlayer);
   els.mainPlayerMapBtn.classList.toggle("hidden", !isPlayer);
+  els.mainPlayerSceneBtn.classList.toggle("hidden", !isPlayer);
   els.userMenu.classList.toggle("hidden", !isAuthed);
   const showLibrary = isAuthed && state.authUser?.role === "admin";
   const showAnalytics = isAuthed;
@@ -1982,6 +2056,7 @@ function renderMainSections() {
     state.page === "welcome" ||
     state.page === "player-home" ||
     state.page === "campaign" ||
+    state.page === "campaign-scene" ||
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
     state.page === "scenario-completed-edit" ||
@@ -1991,12 +2066,17 @@ function renderMainSections() {
   const inPlayerHome = state.page === "player-home";
   els.mainPlayerInitiativeBtn.classList.toggle(
     "active",
-    inPlayerHome && state.playerLiveViewMode !== "map"
+    inPlayerHome && state.playerLiveViewMode === "initiative"
   );
   els.mainPlayerMapBtn.classList.toggle(
     "active",
     inPlayerHome && state.playerLiveViewMode === "map"
   );
+  els.mainPlayerSceneBtn.classList.toggle(
+    "active",
+    inPlayerHome && state.playerLiveViewMode === "scene"
+  );
+  els.mainSceneBtn.classList.toggle("active", state.page === "campaign-scene");
   els.mainMonstersBtn.classList.toggle("active", state.page === "monsters");
   els.mainAnalyticsBtn.classList.toggle("active", state.page === "analytics");
 }
@@ -2009,6 +2089,7 @@ function renderNav() {
   const inHomePath =
     state.page === "welcome" ||
     state.page === "campaign" ||
+    state.page === "campaign-scene" ||
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
     state.page === "scenario-completed-edit" ||
@@ -2041,6 +2122,7 @@ function renderNav() {
     Boolean(campaign) &&
     (
       state.page === "campaign" ||
+      state.page === "campaign-scene" ||
       state.page === "campaign-completed" ||
       state.page === "scenario-edit" ||
       state.page === "scenario-completed-edit" ||
@@ -2138,6 +2220,7 @@ function renderWelcomeCampaigns() {
     li.appendChild(row);
 
     const openCampaign = async () => {
+      state.lastHomeCampaignId = campaign.id;
       await navigateToPage("campaign", { campaignId: campaign.id });
     };
     li.addEventListener("click", openCampaign);
@@ -4531,6 +4614,128 @@ function renderCampaignPage() {
   renderNav();
 }
 
+function selectedSceneImage() {
+  if (!Number.isInteger(state.selectedSceneId)) return null;
+  return state.sceneImages.find((scene) => scene.id === state.selectedSceneId) || null;
+}
+
+function preferredSceneCampaignId() {
+  const validCampaignIds = new Set(
+    (Array.isArray(state.campaigns) ? state.campaigns : [])
+      .map((campaign) => campaign.id)
+      .filter((id) => Number.isInteger(id))
+  );
+  if (Number.isInteger(state.selectedCampaignId) && validCampaignIds.has(state.selectedCampaignId)) {
+    return state.selectedCampaignId;
+  }
+  if (Number.isInteger(state.lastHomeCampaignId) && validCampaignIds.has(state.lastHomeCampaignId)) {
+    return state.lastHomeCampaignId;
+  }
+  const firstCampaignId = state.campaigns?.[0]?.id;
+  return Number.isInteger(firstCampaignId) ? firstCampaignId : null;
+}
+
+async function loadSceneImages(campaignId) {
+  if (!Number.isInteger(campaignId)) {
+    state.sceneImages = [];
+    state.selectedSceneId = null;
+    return;
+  }
+  const scenes = await api(`/api/campaigns/${campaignId}/scenes`);
+  state.sceneImages = Array.isArray(scenes) ? scenes : [];
+  if (!state.sceneImages.some((scene) => scene.id === state.selectedSceneId)) {
+    state.selectedSceneId = state.sceneImages[0]?.id ?? null;
+  }
+}
+
+function renderScenePage() {
+  const campaign = selectedCampaign();
+  els.scenePageTitle.textContent = campaign ? `Scene View: ${campaign.name}` : "Scene View";
+  if (els.sceneCampaignSelect) {
+    const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
+    const previousValue = els.sceneCampaignSelect.value;
+    els.sceneCampaignSelect.innerHTML = "";
+    if (campaigns.length === 0) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "No campaigns";
+      els.sceneCampaignSelect.appendChild(option);
+      els.sceneCampaignSelect.disabled = true;
+    } else {
+      for (const entry of campaigns) {
+        const option = document.createElement("option");
+        option.value = String(entry.id);
+        option.textContent = entry.name;
+        els.sceneCampaignSelect.appendChild(option);
+      }
+      const selectedValue = Number.isInteger(state.selectedCampaignId)
+        ? String(state.selectedCampaignId)
+        : previousValue;
+      if (selectedValue && campaigns.some((entry) => String(entry.id) === selectedValue)) {
+        els.sceneCampaignSelect.value = selectedValue;
+      } else {
+        els.sceneCampaignSelect.value = String(campaigns[0].id);
+      }
+      els.sceneCampaignSelect.disabled = false;
+    }
+  }
+  setSceneDraftImagePreview(state.draftSceneImageData || "");
+  if (els.sceneSearchInput && els.sceneSearchInput.value !== state.sceneSearchQuery) {
+    els.sceneSearchInput.value = state.sceneSearchQuery;
+  }
+
+  const query = state.sceneSearchQuery.trim().toLowerCase();
+  const filtered = query
+    ? state.sceneImages.filter((scene) => `${scene.name || ""}`.toLowerCase().includes(query))
+    : [...state.sceneImages];
+
+  if (!filtered.some((scene) => scene.id === state.selectedSceneId)) {
+    state.selectedSceneId = filtered[0]?.id ?? null;
+  }
+
+  els.sceneList.innerHTML = "";
+  if (filtered.length === 0) {
+    els.sceneList.innerHTML = "<li>No scenes yet.</li>";
+  } else {
+    for (const scene of filtered) {
+      const li = document.createElement("li");
+      li.className = "list-row";
+      li.dataset.sceneId = String(scene.id);
+      const label = document.createElement("span");
+      label.textContent = scene.name || "Unnamed Scene";
+      li.appendChild(label);
+      if (scene.id === state.campaignLiveSceneImageId) {
+        const dot = document.createElement("span");
+        dot.className = "scenario-shared-dot";
+        dot.title = "Shared with players";
+        li.appendChild(dot);
+      }
+      if (scene.id === state.selectedSceneId) {
+        li.classList.add("active");
+      }
+      li.tabIndex = 0;
+      els.sceneList.appendChild(li);
+    }
+  }
+
+  const selected = selectedSceneImage();
+  const hasSelected = Boolean(selected);
+  els.scenePreviewTitle.textContent = hasSelected ? selected.name : "Preview";
+  els.scenePreviewHint.classList.toggle("hidden", hasSelected);
+  if (hasSelected && selected.image_data) {
+    els.scenePreviewImage.src = selected.image_data;
+    els.scenePreviewImage.classList.remove("hidden");
+  } else {
+    els.scenePreviewImage.src = "";
+    els.scenePreviewImage.classList.add("hidden");
+  }
+  els.deleteSceneBtn.classList.toggle("hidden", !hasSelected);
+
+  const isSelectedShared = hasSelected && selected.id === state.campaignLiveSceneImageId;
+  els.shareSceneBtn.disabled = !hasSelected;
+  els.shareSceneBtn.textContent = isSelectedShared ? "Stop Sharing" : "Share with Players";
+}
+
 function formatConditionLabel(conditionKey) {
   const raw = `${conditionKey || ""}`.trim();
   if (!raw) return "";
@@ -4771,6 +4976,7 @@ async function loadCampaigns() {
 async function loadCampaignLiveState(campaignId) {
   if (!Number.isInteger(campaignId)) {
     state.campaignLiveScenarioId = null;
+    state.campaignLiveSceneImageId = null;
     return;
   }
   try {
@@ -4778,31 +4984,65 @@ async function loadCampaignLiveState(campaignId) {
     state.campaignLiveScenarioId = Number.isInteger(live?.shared_scenario_id)
       ? live.shared_scenario_id
       : null;
+    state.campaignLiveSceneImageId = Number.isInteger(live?.shared_scene_image_id)
+      ? live.shared_scene_image_id
+      : null;
   } catch (_error) {
     state.campaignLiveScenarioId = null;
+    state.campaignLiveSceneImageId = null;
   }
 }
 
 function renderPlayerHome() {
   const shared = state.playerLiveData?.shared || null;
-  const hasShared = Boolean(shared);
-  els.playerWaitingWrap.classList.toggle("hidden", hasShared);
-  els.playerLiveWrap.classList.toggle("hidden", !hasShared);
-  if (!hasShared) {
+  const sharedScene = state.playerLiveData?.scene || null;
+  const isMapMode = state.playerLiveViewMode === "map";
+  const isSceneMode = state.playerLiveViewMode === "scene";
+  const hasEncounter = Boolean(shared);
+  const hasScene = Boolean(sharedScene && sharedScene.imageData);
+  const hasContentForMode = isSceneMode ? hasScene : hasEncounter;
+  if (els.playerWaitingTitle) {
+    els.playerWaitingTitle.textContent = isSceneMode
+      ? "Waiting for your genius DM to show a magical scene!"
+      : "Waiting for your genius DM to fire up an awesome encounter!";
+  }
+
+  els.playerWaitingWrap.classList.toggle("hidden", hasContentForMode);
+  els.playerLiveWrap.classList.toggle("hidden", !hasContentForMode);
+  if (!hasContentForMode) {
     state.playerLiveLastActiveCombatantId = null;
     state.playerVisibleCombatantIdsByScenario = {};
     return;
   }
 
-  updatePlayerRevealMomentsFromShared(shared);
+  if (hasEncounter) {
+    updatePlayerRevealMomentsFromShared(shared);
+  } else {
+    state.playerVisibleCombatantIdsByScenario = {};
+  }
 
-  const isMapMode = state.playerLiveViewMode === "map";
   if (!isMapMode) {
     state.playerMap.hoverCombatantId = null;
   }
   els.playerLiveWrap.classList.toggle("player-map-mode", isMapMode);
-  els.playerLiveInitiativeWrap.classList.remove("hidden");
+  els.playerLiveInitiativeWrap.classList.toggle("hidden", isSceneMode);
   els.playerLiveMapWrap.classList.toggle("hidden", !isMapMode);
+  els.playerLiveSceneWrap.classList.toggle("hidden", !isSceneMode);
+
+  if (isSceneMode) {
+    els.playerLiveEncounterName.textContent = sharedScene?.name || "Scene View";
+    els.playerLiveRound.textContent = "";
+    if (sharedScene?.imageData) {
+      els.playerLiveSceneImage.src = sharedScene.imageData;
+      els.playerLiveSceneImage.classList.remove("hidden");
+      els.playerLiveSceneHint.classList.add("hidden");
+    } else {
+      els.playerLiveSceneImage.src = "";
+      els.playerLiveSceneImage.classList.add("hidden");
+      els.playerLiveSceneHint.classList.remove("hidden");
+    }
+    return;
+  }
 
   els.playerLiveEncounterName.textContent = shared.name || "Shared Encounter";
   els.playerLiveRound.textContent = `Round ${shared.round ?? 1}`;
@@ -4975,7 +5215,39 @@ function renderSettingsPage() {
   if (els.settingsProfileImageFile) els.settingsProfileImageFile.value = "";
   els.settingsClaimList.innerHTML = "";
   const isAdmin = state.authUser?.role === "admin";
+  if (els.settingsCampaignSection) {
+    els.settingsCampaignSection.classList.toggle("hidden", isAdmin);
+  }
   els.settingsClaimSection.classList.toggle("hidden", isAdmin);
+
+  if (els.settingsActiveCampaignSelect && els.saveSettingsActiveCampaignBtn) {
+    const campaigns = Array.isArray(state.userSettings?.campaigns)
+      ? state.userSettings.campaigns
+      : [];
+    const activeCampaignId = Number(state.userSettings?.activeCampaignId);
+    els.settingsActiveCampaignSelect.innerHTML = "";
+    if (!isAdmin && campaigns.length > 0) {
+      for (const campaign of campaigns) {
+        const option = document.createElement("option");
+        option.value = String(campaign.id);
+        option.textContent = campaign.name || `Campaign ${campaign.id}`;
+        els.settingsActiveCampaignSelect.appendChild(option);
+      }
+      const selectedCampaignId = campaigns.some((campaign) => campaign.id === activeCampaignId)
+        ? activeCampaignId
+        : campaigns[0].id;
+      els.settingsActiveCampaignSelect.value = String(selectedCampaignId);
+      els.settingsActiveCampaignSelect.disabled = false;
+      els.saveSettingsActiveCampaignBtn.disabled = false;
+    } else {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "No campaigns";
+      els.settingsActiveCampaignSelect.appendChild(option);
+      els.settingsActiveCampaignSelect.disabled = true;
+      els.saveSettingsActiveCampaignBtn.disabled = true;
+    }
+  }
 
   if (!state.userSettings || !Array.isArray(state.userSettings.characters)) {
     els.settingsClaimList.innerHTML = "<li>No claimable characters found.</li>";
@@ -5818,6 +6090,8 @@ async function loadCampaignData() {
   if (!state.selectedCampaignId) {
     state.characters = [];
     state.scenarios = [];
+    state.sceneImages = [];
+    state.selectedSceneId = null;
     state.selectedScenarioId = null;
     await safeLoadCombatState();
     renderCampaignPage();
@@ -6036,6 +6310,18 @@ function bindEvents() {
     if (!els.editScenarioMapPreview.src) return;
     openImageModal(els.editScenarioMapPreview.src);
   });
+  els.scenePreviewImage?.addEventListener("click", () => {
+    if (!els.scenePreviewImage.src) return;
+    openImageModal(els.scenePreviewImage.src);
+  });
+  els.sceneDraftImagePreview?.addEventListener("click", () => {
+    if (!els.sceneDraftImagePreview.src) return;
+    openImageModal(els.sceneDraftImagePreview.src);
+  });
+  els.playerLiveSceneImage?.addEventListener("click", () => {
+    if (!els.playerLiveSceneImage.src) return;
+    openImageModal(els.playerLiveSceneImage.src);
+  });
   els.campaignActionCloseBtn.addEventListener("click", closeCampaignActionModal);
   els.campaignActionModal.addEventListener("click", (event) => {
     if (event.target === els.campaignActionModal) closeCampaignActionModal();
@@ -6059,6 +6345,20 @@ function bindEvents() {
     openCampaignActionModal("scenario");
   });
 
+  els.goSceneViewBtn.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign-scene", {
+      campaignId: state.selectedCampaignId
+    });
+  });
+
+  els.backToCampaignFromSceneBtn.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign", {
+      campaignId: state.selectedCampaignId
+    });
+  });
+
   els.viewCompletedScenariosBtn.addEventListener("click", async () => {
     if (!state.selectedCampaignId) return;
     await navigateToPage("campaign-completed", {
@@ -6073,6 +6373,130 @@ function bindEvents() {
     });
   });
 
+  els.sceneSearchInput?.addEventListener("input", () => {
+    state.sceneSearchQuery = `${els.sceneSearchInput.value || ""}`;
+    renderScenePage();
+  });
+
+  els.sceneCampaignSelect?.addEventListener("change", async () => {
+    const campaignId = Number(els.sceneCampaignSelect.value);
+    if (!Number.isInteger(campaignId)) return;
+    if (campaignId === state.selectedCampaignId) return;
+    await navigateToPage("campaign-scene", { campaignId });
+  });
+
+  els.sceneList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const row = target.closest("li[data-scene-id]");
+    if (!(row instanceof HTMLElement)) return;
+    const sceneId = Number(row.dataset.sceneId);
+    if (!Number.isInteger(sceneId)) return;
+    state.selectedSceneId = sceneId;
+    renderScenePage();
+  });
+
+  els.sceneList?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const row = target.closest("li[data-scene-id]");
+    if (!(row instanceof HTMLElement)) return;
+    event.preventDefault();
+    const sceneId = Number(row.dataset.sceneId);
+    if (!Number.isInteger(sceneId)) return;
+    state.selectedSceneId = sceneId;
+    renderScenePage();
+  });
+
+  els.sceneImageFile?.addEventListener("change", async () => {
+    const file = els.sceneImageFile.files?.[0];
+    if (!file) {
+      state.draftSceneImageData = "";
+      setSceneDraftImagePreview("");
+      return;
+    }
+    try {
+      state.draftSceneImageData = await readFileAsDataUrl(file);
+      setSceneDraftImagePreview(state.draftSceneImageData);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.createSceneForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.selectedCampaignId) return;
+    const name = `${els.sceneNameInput.value || ""}`.trim();
+    if (!name) {
+      setStatus("Scene name is required.");
+      return;
+    }
+    try {
+      let imageData = `${state.draftSceneImageData || ""}`.trim();
+      if (!imageData) {
+        const file = els.sceneImageFile.files?.[0];
+        if (file) {
+          imageData = await readFileAsDataUrl(file);
+        }
+      }
+      if (!imageData) {
+        setStatus("Scene image is required.");
+        return;
+      }
+      const created = await api(`/api/campaigns/${state.selectedCampaignId}/scenes`, {
+        method: "POST",
+        body: JSON.stringify({ name, imageData })
+      });
+      els.sceneNameInput.value = "";
+      els.sceneImageFile.value = "";
+      state.draftSceneImageData = "";
+      setSceneDraftImagePreview("");
+      await loadSceneImages(state.selectedCampaignId);
+      state.selectedSceneId = created?.id ?? state.selectedSceneId;
+      renderScenePage();
+      setStatus("Scene added.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.shareSceneBtn?.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    const selected = selectedSceneImage();
+    if (!selected) return;
+    const isSharedCurrent = selected.id === state.campaignLiveSceneImageId;
+    try {
+      await api(`/api/campaigns/${state.selectedCampaignId}/scene/share`, {
+        method: "POST",
+        body: JSON.stringify({ sceneId: isSharedCurrent ? null : selected.id })
+      });
+      await loadCampaignLiveState(state.selectedCampaignId);
+      renderScenePage();
+      setStatus(isSharedCurrent ? "Stopped sharing scene." : "Scene shared with players.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.deleteSceneBtn?.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    const selected = selectedSceneImage();
+    if (!selected) return;
+    if (!window.confirm(`Delete scene "${selected.name}"?`)) return;
+    try {
+      await api(`/api/campaigns/${state.selectedCampaignId}/scenes/${selected.id}`, {
+        method: "DELETE"
+      });
+      await loadCampaignLiveState(state.selectedCampaignId);
+      await loadSceneImages(state.selectedCampaignId);
+      renderScenePage();
+      setStatus("Scene deleted.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   els.addCampaignBtn.addEventListener("click", () => {
     openCampaignActionModal("campaign");
   });
@@ -6084,11 +6508,31 @@ function bindEvents() {
       navigateToPath("/player/initiative");
     }
   });
+  els.mainSceneBtn.addEventListener("click", async () => {
+    if (state.authUser?.role !== "admin") return;
+    try {
+      if (!Array.isArray(state.campaigns) || state.campaigns.length === 0) {
+        await loadCampaigns();
+      }
+      const campaignId = preferredSceneCampaignId();
+      if (!Number.isInteger(campaignId)) {
+        setStatus("No campaigns available yet.");
+        await navigateToPage("welcome");
+        return;
+      }
+      await navigateToPage("campaign-scene", { campaignId });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
   els.mainPlayerInitiativeBtn.addEventListener("click", async () => {
     await navigateToPath("/player/initiative");
   });
   els.mainPlayerMapBtn.addEventListener("click", async () => {
     await navigateToPath("/player/map");
+  });
+  els.mainPlayerSceneBtn.addEventListener("click", async () => {
+    await navigateToPath("/player/scene");
   });
 
   els.playerRefreshBtn.addEventListener("click", () => {
@@ -6140,6 +6584,7 @@ function bindEvents() {
       // logout should still proceed client-side
     }
     state.authUser = null;
+    state.lastHomeCampaignId = null;
     setLoginStatus("");
     showPage("login");
   });
@@ -6162,6 +6607,30 @@ function bindEvents() {
       state.authUser = null;
       setLoginStatus("Name changed. Please sign in again.");
       await navigateToPath("/login", { replace: true });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.saveSettingsActiveCampaignBtn?.addEventListener("click", async () => {
+    if (state.authUser?.role === "admin") return;
+    const campaignId = Number(els.settingsActiveCampaignSelect?.value);
+    if (!Number.isInteger(campaignId)) {
+      setStatus("Select a valid campaign.");
+      return;
+    }
+    try {
+      await api("/api/users/me/active-campaign", {
+        method: "POST",
+        body: JSON.stringify({ campaignId })
+      });
+      await loadUserSettings();
+      await loadPlayerLive();
+      renderSettingsPage();
+      if (state.page === "player-home") {
+        renderPlayerHome();
+      }
+      setStatus("Active campaign updated.", "success");
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -6488,7 +6957,12 @@ function bindEvents() {
   });
 
   document.addEventListener("paste", async (event) => {
-    if (state.page !== "monsters" && state.page !== "scenario-edit" && state.page !== "settings") {
+    if (
+      state.page !== "monsters" &&
+      state.page !== "scenario-edit" &&
+      state.page !== "settings" &&
+      state.page !== "campaign-scene"
+    ) {
       return;
     }
     if (state.page === "settings") {
@@ -6502,6 +6976,35 @@ function bindEvents() {
         state.draftSettingsProfileImageData = await readFileAsDataUrl(file);
         setSettingsProfileImagePreview(state.draftSettingsProfileImageData);
         setStatus("Pasted profile image.", "success");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+    if (state.page === "campaign-scene") {
+      const target = event.target;
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+        return;
+      }
+      if (target instanceof HTMLInputElement && target.type !== "file") {
+        return;
+      }
+      if (target instanceof HTMLElement && target.isContentEditable) {
+        return;
+      }
+      const items = event.clipboardData?.items || [];
+      const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      try {
+        state.draftSceneImageData = await readFileAsDataUrl(file);
+        if (els.sceneImageFile) {
+          els.sceneImageFile.value = "";
+        }
+        setSceneDraftImagePreview(state.draftSceneImageData);
+        setStatus("Pasted scene image.", "success");
       } catch (error) {
         setStatus(error.message, "error");
       }

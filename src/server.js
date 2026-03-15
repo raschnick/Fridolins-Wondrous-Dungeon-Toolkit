@@ -64,8 +64,10 @@ function badRequest(res, message) {
 }
 
 function asId(value) {
+  if (value == null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
   const id = Number(value);
-  return Number.isInteger(id) ? id : null;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function getScenario(scenarioId) {
@@ -483,6 +485,7 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "POST" && path === "/users/me/username") return true;
   if (method === "GET" && path === "/users/me/settings") return true;
   if (method === "POST" && path === "/users/me/profile-image") return true;
+  if (method === "POST" && path === "/users/me/active-campaign") return true;
   if (method === "POST" && path === "/users/me/claim-character") return true;
   if (method === "POST" && path === "/users/me/unclaim-character") return true;
   if (method === "GET" && path === "/player/live") return true;
@@ -508,6 +511,58 @@ function hasCampaignMembership(userId, campaignId) {
       )
       .get(campaignId, userId)
   );
+}
+
+function listCampaignsForUser(userId) {
+  return db
+    .prepare(
+      `SELECT c.id, c.name
+       FROM campaign_members cm
+       JOIN campaigns c ON c.id = cm.campaign_id
+       WHERE cm.user_id = ?
+       ORDER BY c.name ASC, c.id ASC`
+    )
+    .all(userId);
+}
+
+function getStoredActiveCampaignIdForUser(userId) {
+  const row = db
+    .prepare("SELECT active_campaign_id FROM users WHERE id = ?")
+    .get(userId);
+  const activeCampaignId = Number(row?.active_campaign_id);
+  return Number.isInteger(activeCampaignId) ? activeCampaignId : null;
+}
+
+function setStoredActiveCampaignIdForUser(userId, activeCampaignId) {
+  const normalized = Number.isInteger(activeCampaignId) ? activeCampaignId : null;
+  db.prepare("UPDATE users SET active_campaign_id = ?, updated_at = datetime('now') WHERE id = ?").run(
+    normalized,
+    userId
+  );
+}
+
+function ensureValidActiveCampaignForUser(userId) {
+  const campaigns = listCampaignsForUser(userId);
+  const availableIds = new Set(campaigns.map((campaign) => campaign.id));
+  const storedActiveCampaignId = getStoredActiveCampaignIdForUser(userId);
+
+  let activeCampaignId = null;
+  if (Number.isInteger(storedActiveCampaignId) && availableIds.has(storedActiveCampaignId)) {
+    activeCampaignId = storedActiveCampaignId;
+  } else if (campaigns.length > 0) {
+    activeCampaignId = campaigns[0].id;
+  }
+
+  const normalizedStored = Number.isInteger(storedActiveCampaignId) ? storedActiveCampaignId : null;
+  const normalizedNext = Number.isInteger(activeCampaignId) ? activeCampaignId : null;
+  if (normalizedStored !== normalizedNext) {
+    setStoredActiveCampaignIdForUser(userId, normalizedNext);
+  }
+
+  return {
+    campaigns,
+    activeCampaignId: normalizedNext
+  };
 }
 
 function canAccessCampaign(user, campaignId) {
@@ -560,10 +615,13 @@ function getCampaignLiveState(campaignId) {
       `SELECT
         cls.campaign_id,
         cls.shared_scenario_id,
+        cls.shared_scene_image_id,
         cls.updated_at,
-        cs.name AS shared_scenario_name
+        cs.name AS shared_scenario_name,
+        csi.name AS shared_scene_image_name
        FROM campaign_live_state cls
        LEFT JOIN combat_scenarios cs ON cs.id = cls.shared_scenario_id
+       LEFT JOIN campaign_scene_images csi ON csi.id = cls.shared_scene_image_id
        WHERE cls.campaign_id = ?`
     )
     .get(campaignId);
@@ -571,80 +629,123 @@ function getCampaignLiveState(campaignId) {
     return {
       campaign_id: campaignId,
       shared_scenario_id: null,
+      shared_scene_image_id: null,
       shared_scenario_name: null,
+      shared_scene_image_name: null,
       updated_at: null
     };
   }
   return row;
 }
 
-function latestSharedScenarioForUser(userId) {
+function liveStateForCampaign(campaignId) {
+  if (!Number.isInteger(campaignId)) return null;
   return db
     .prepare(
       `SELECT
         cls.campaign_id,
         cls.shared_scenario_id AS scenario_id,
+        cls.shared_scene_image_id AS scene_image_id,
         cls.updated_at
        FROM campaign_live_state cls
-       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
-       WHERE cm.user_id = ?
-         AND cls.shared_scenario_id IS NOT NULL
-       ORDER BY cls.updated_at DESC
+       WHERE cls.campaign_id = ?
+         AND (cls.shared_scenario_id IS NOT NULL OR cls.shared_scene_image_id IS NOT NULL)
        LIMIT 1`
     )
-    .get(userId);
+    .get(campaignId);
 }
 
 function buildPlayerLiveSnapshotForUser(userId) {
-  const shared = latestSharedScenarioForUser(userId);
-  if (!shared || !Number.isInteger(shared.scenario_id)) {
-    return { shared: null };
+  const activeCampaign = ensureValidActiveCampaignForUser(userId);
+  if (!Number.isInteger(activeCampaign.activeCampaignId)) {
+    return {
+      shared: null,
+      scene: null,
+      activeCampaignId: null
+    };
+  }
+  const shared = liveStateForCampaign(activeCampaign.activeCampaignId);
+  const payload = {
+    shared: null,
+    scene: null,
+    activeCampaignId: activeCampaign.activeCampaignId
+  };
+  if (!shared) return payload;
+
+  if (Number.isInteger(shared.scenario_id)) {
+    const scenario = getScenario(shared.scenario_id);
+    if (scenario) {
+      const combatants = listCombatants(scenario.id);
+      const combatState = normalizeCombatState(scenario, combatants);
+      const visibleCombatants = combatants.filter((combatant) => Number(combatant.player_visible) !== 0);
+      const active =
+        visibleCombatants.find((combatant) => combatant.id === combatState.activeCombatantId) || null;
+      payload.shared = {
+        campaignId: scenario.campaign_id,
+        scenarioId: scenario.id,
+        name: scenario.name,
+        notes: scenario.notes || "",
+        mapImageData: scenario.map_image_data || "",
+        mapTokensJson: scenario.map_tokens_json || "",
+        mapFogData: scenario.map_fog_data || "",
+        mapLastPingJson: scenario.map_last_ping_json || "",
+        mapTokenSize: Number.isInteger(Number(scenario.map_token_size))
+          ? Number(scenario.map_token_size)
+          : 44,
+        round: combatState.round,
+        turnIndex: combatState.turnIndex,
+        activeCombatantId: combatState.activeCombatantId,
+        activeCombatantName: active ? active.name : null,
+        combatants: visibleCombatants.map((combatant) => ({
+          id: combatant.id,
+          name: combatant.name,
+          initiative: combatant.initiative,
+          kind: combatant.kind,
+          enemy_role: combatant.enemy_role,
+          monster_size: combatant.monster_size,
+          monster_token_image_data: combatant.monster_token_image_data || "",
+          claimed_profile_image_data: combatant.claimed_profile_image_data || "",
+          character_class: combatant.character_class,
+          reaction_available: combatant.reaction_available,
+          is_legendary: combatant.is_legendary,
+          legendary_actions_count: combatant.legendary_actions_count,
+          legendary_actions_remaining: combatant.legendary_actions_remaining,
+          is_defeated:
+            combatant.kind === "enemy" &&
+            Number.isFinite(Number(combatant.hp)) &&
+            Number(combatant.hp) <= 0
+              ? 1
+              : 0,
+          condition_keys: Array.isArray(combatant.condition_keys) ? combatant.condition_keys : []
+        }))
+      };
+    }
   }
 
-  const scenario = getScenario(shared.scenario_id);
-  if (!scenario) return { shared: null };
-  const combatants = listCombatants(scenario.id);
-  const combatState = normalizeCombatState(scenario, combatants);
-  const visibleCombatants = combatants.filter((combatant) => Number(combatant.player_visible) !== 0);
-  const active = visibleCombatants.find((combatant) => combatant.id === combatState.activeCombatantId) || null;
-
-  return {
-    shared: {
-      campaignId: scenario.campaign_id,
-      scenarioId: scenario.id,
-      name: scenario.name,
-      notes: scenario.notes || "",
-      mapImageData: scenario.map_image_data || "",
-      mapTokensJson: scenario.map_tokens_json || "",
-      mapFogData: scenario.map_fog_data || "",
-      mapLastPingJson: scenario.map_last_ping_json || "",
-      mapTokenSize: Number.isInteger(Number(scenario.map_token_size)) ? Number(scenario.map_token_size) : 44,
-      round: combatState.round,
-      turnIndex: combatState.turnIndex,
-      activeCombatantId: combatState.activeCombatantId,
-      activeCombatantName: active ? active.name : null,
-      combatants: visibleCombatants.map((combatant) => ({
-        id: combatant.id,
-        name: combatant.name,
-        initiative: combatant.initiative,
-        kind: combatant.kind,
-        enemy_role: combatant.enemy_role,
-        monster_size: combatant.monster_size,
-        monster_token_image_data: combatant.monster_token_image_data || "",
-        claimed_profile_image_data: combatant.claimed_profile_image_data || "",
-        character_class: combatant.character_class,
-        reaction_available: combatant.reaction_available,
-        is_legendary: combatant.is_legendary,
-        legendary_actions_count: combatant.legendary_actions_count,
-        legendary_actions_remaining: combatant.legendary_actions_remaining,
-        is_defeated:
-          combatant.kind === "enemy" && Number.isFinite(Number(combatant.hp)) && Number(combatant.hp) <= 0
-            ? 1
-            : 0,
-        condition_keys: Array.isArray(combatant.condition_keys) ? combatant.condition_keys : []
-      }))
+  if (Number.isInteger(shared.scene_image_id)) {
+    const scene = db
+      .prepare(
+        `SELECT id, campaign_id, name, image_data, updated_at
+         FROM campaign_scene_images
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(shared.scene_image_id);
+    if (scene) {
+      payload.scene = {
+        id: scene.id,
+        campaignId: scene.campaign_id,
+        name: scene.name,
+        imageData: scene.image_data || "",
+        updatedAt: scene.updated_at || null
+      };
     }
-  };
+  }
+
+  if (!payload.shared && !payload.scene) {
+    return payload;
+  }
+  return payload;
 }
 
 function beginSseStream(res) {
@@ -1004,7 +1105,12 @@ app.get("/api/users/me/settings", (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found." });
 
   let characters = [];
+  let campaigns = [];
+  let activeCampaignId = null;
   if (!isAdminUser(req.authUser)) {
+    const activeCampaign = ensureValidActiveCampaignForUser(req.authUser.id);
+    campaigns = activeCampaign.campaigns;
+    activeCampaignId = activeCampaign.activeCampaignId;
     characters = db
       .prepare(
         `SELECT
@@ -1032,6 +1138,8 @@ app.get("/api/users/me/settings", (req, res) => {
       role: user.role,
       profileImageData: user.profile_image_data || ""
     },
+    campaigns,
+    activeCampaignId,
     characters
   });
 });
@@ -1066,6 +1174,20 @@ app.post("/api/users/me/profile-image", (req, res) => {
   db.prepare(
     "UPDATE users SET profile_image_data = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(profileImageData, req.authUser.id);
+  return res.status(204).send();
+});
+
+app.post("/api/users/me/active-campaign", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return badRequest(res, "Admins don't have an active campaign.");
+  }
+  const campaignId = asId(req.body?.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!hasCampaignMembership(req.authUser.id, campaignId)) {
+    return res.status(403).json({ error: "Campaign access denied." });
+  }
+  setStoredActiveCampaignIdForUser(req.authUser.id, campaignId);
+  schedulePlayerLivePushForUser(req.authUser.id);
   return res.status(204).send();
 });
 
@@ -1503,7 +1625,21 @@ app.delete("/api/campaigns/:campaignId", (req, res) => {
   const existing = db.prepare("SELECT id FROM campaigns WHERE id = ?").get(campaignId);
   if (!existing) return badRequest(res, "Campaign not found.");
 
+  const affectedUserIds = db
+    .prepare(
+      `SELECT DISTINCT user_id
+       FROM campaign_members
+       WHERE campaign_id = ?`
+    )
+    .all(campaignId)
+    .map((row) => row.user_id)
+    .filter((userId) => Number.isInteger(userId));
+
   db.prepare("DELETE FROM campaigns WHERE id = ?").run(campaignId);
+  for (const userId of affectedUserIds) {
+    ensureValidActiveCampaignForUser(userId);
+    schedulePlayerLivePushForUser(userId);
+  }
   res.status(204).send();
 });
 
@@ -1536,6 +1672,111 @@ app.get("/api/campaigns/:campaignId/live", (req, res) => {
   res.json(getCampaignLiveState(campaignId));
 });
 
+app.get("/api/campaigns/:campaignId/scenes", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const scenes = db
+    .prepare(
+      `SELECT id, campaign_id, name, image_data, created_at, updated_at
+       FROM campaign_scene_images
+       ORDER BY updated_at DESC, id DESC`
+    )
+    .all();
+  res.json(scenes);
+});
+
+app.post("/api/campaigns/:campaignId/scenes", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const name = `${req.body?.name || ""}`.trim();
+  const imageData = `${req.body?.imageData || ""}`.trim();
+  if (!name) return badRequest(res, "Scene name is required.");
+  if (!imageData) return badRequest(res, "Scene image is required.");
+  if (imageData.length > 10_000_000) return badRequest(res, "Scene image is too large.");
+  const result = db
+    .prepare(
+      `INSERT INTO campaign_scene_images (campaign_id, name, image_data, created_at, updated_at)
+       VALUES (?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .run(campaignId, name, imageData);
+  const scene = db
+    .prepare(
+      `SELECT id, campaign_id, name, image_data, created_at, updated_at
+       FROM campaign_scene_images
+       WHERE id = ?`
+    )
+    .get(result.lastInsertRowid);
+  res.status(201).json(scene);
+});
+
+app.delete("/api/campaigns/:campaignId/scenes/:sceneId", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  const sceneId = asId(req.params.sceneId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (sceneId === null) return badRequest(res, "Invalid scene id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+
+  const scene = db.prepare("SELECT id FROM campaign_scene_images WHERE id = ?").get(sceneId);
+  if (!scene) return badRequest(res, "Scene not found.");
+
+  const affectedCampaignIds = db
+    .prepare(
+      `SELECT campaign_id
+       FROM campaign_live_state
+       WHERE shared_scene_image_id = ?`
+    )
+    .all(sceneId)
+    .map((row) => row.campaign_id)
+    .filter((value) => Number.isInteger(value));
+
+  db.prepare("DELETE FROM campaign_scene_images WHERE id = ?").run(sceneId);
+  db.prepare(
+    `UPDATE campaign_live_state
+     SET shared_scene_image_id = NULL,
+         updated_at = datetime('now')
+     WHERE shared_scene_image_id = ?`
+  ).run(sceneId);
+  for (const affectedCampaignId of affectedCampaignIds) {
+    notifyPlayerLiveForCampaign(affectedCampaignId);
+  }
+  res.status(204).send();
+});
+
+app.post("/api/campaigns/:campaignId/scene/share", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const sceneId = asId(req.body?.sceneId);
+  if (sceneId === null) {
+    db.prepare(
+      `INSERT INTO campaign_live_state (campaign_id, shared_scene_image_id, updated_at)
+       VALUES (?, NULL, datetime('now'))
+       ON CONFLICT(campaign_id) DO UPDATE SET
+         shared_scene_image_id = NULL,
+         updated_at = datetime('now')`
+    ).run(campaignId);
+    notifyPlayerLiveForCampaign(campaignId);
+    return res.json(getCampaignLiveState(campaignId));
+  }
+
+  const scene = db
+    .prepare("SELECT id FROM campaign_scene_images WHERE id = ?")
+    .get(sceneId);
+  if (!scene) return badRequest(res, "Scene not found.");
+
+  db.prepare(
+    `INSERT INTO campaign_live_state (campaign_id, shared_scene_image_id, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(campaign_id) DO UPDATE SET
+       shared_scene_image_id = excluded.shared_scene_image_id,
+       updated_at = datetime('now')`
+  ).run(campaignId, sceneId);
+  notifyPlayerLiveForCampaign(campaignId);
+  res.json(getCampaignLiveState(campaignId));
+});
+
 app.post("/api/campaigns/:campaignId/members", requireAdmin, (req, res) => {
   const campaignId = asId(req.params.campaignId);
   const userId = asId(req.body?.userId);
@@ -1552,6 +1793,7 @@ app.post("/api/campaigns/:campaignId/members", requireAdmin, (req, res) => {
   db.prepare(
     "INSERT OR REPLACE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?, ?, ?, datetime('now'))"
   ).run(campaignId, userId, role);
+  ensureValidActiveCampaignForUser(userId);
   schedulePlayerLivePushForUser(userId);
   notifyPlayerLiveForCampaign(campaignId);
   res.status(204).send();
@@ -1568,6 +1810,7 @@ app.delete("/api/campaigns/:campaignId/members/:userId", requireAdmin, (req, res
     campaignId,
     userId
   );
+  ensureValidActiveCampaignForUser(userId);
   schedulePlayerLivePushForUser(userId);
   notifyPlayerLiveForCampaign(campaignId);
   res.status(204).send();
@@ -1652,7 +1895,7 @@ app.post("/api/scenarios/:scenarioId/share", (req, res) => {
 
 app.get("/api/player/live", (req, res) => {
   if (isAdminUser(req.authUser)) {
-    return res.json({ shared: null });
+    return res.json({ shared: null, scene: null });
   }
   return res.json(buildPlayerLiveSnapshotForUser(req.authUser.id));
 });
@@ -1700,19 +1943,21 @@ app.post("/api/player/live/map-token", (req, res) => {
     return badRequest(res, "Invalid token position.");
   }
 
+  const activeCampaign = ensureValidActiveCampaignForUser(req.authUser.id);
+  if (!Number.isInteger(activeCampaign.activeCampaignId)) {
+    return res.status(403).json({ error: "No active campaign selected." });
+  }
   const shared = db
     .prepare(
       `SELECT
         cls.campaign_id,
         cls.shared_scenario_id AS scenario_id
        FROM campaign_live_state cls
-       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
-       WHERE cm.user_id = ?
+       WHERE cls.campaign_id = ?
          AND cls.shared_scenario_id IS NOT NULL
-       ORDER BY cls.updated_at DESC
        LIMIT 1`
     )
-    .get(req.authUser.id);
+    .get(activeCampaign.activeCampaignId);
   if (!shared || !Number.isInteger(shared.scenario_id)) {
     return res.status(403).json({ error: "No shared encounter available." });
   }
@@ -1783,19 +2028,21 @@ app.post("/api/player/live/map-ping", (req, res) => {
     return badRequest(res, "Invalid ping position.");
   }
 
+  const activeCampaign = ensureValidActiveCampaignForUser(req.authUser.id);
+  if (!Number.isInteger(activeCampaign.activeCampaignId)) {
+    return res.status(403).json({ error: "No active campaign selected." });
+  }
   const shared = db
     .prepare(
       `SELECT
         cls.campaign_id,
         cls.shared_scenario_id AS scenario_id
        FROM campaign_live_state cls
-       JOIN campaign_members cm ON cm.campaign_id = cls.campaign_id
-       WHERE cm.user_id = ?
+       WHERE cls.campaign_id = ?
          AND cls.shared_scenario_id IS NOT NULL
-       ORDER BY cls.updated_at DESC
        LIMIT 1`
     )
-    .get(req.authUser.id);
+    .get(activeCampaign.activeCampaignId);
   if (!shared || !Number.isInteger(shared.scenario_id)) {
     return res.status(403).json({ error: "No shared encounter available." });
   }

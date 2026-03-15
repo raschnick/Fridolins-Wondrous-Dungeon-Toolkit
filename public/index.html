@@ -19,8 +19,10 @@
         />
         <nav class="main-sections">
           <button id="mainHomeBtn" type="button">Home</button>
+          <button id="mainSceneBtn" type="button">Scene View</button>
           <button id="mainPlayerInitiativeBtn" type="button" class="hidden">Initiative View</button>
           <button id="mainPlayerMapBtn" type="button" class="hidden">Map View</button>
+          <button id="mainPlayerSceneBtn" type="button" class="hidden">Scene View</button>
           <button id="mainMonstersBtn" type="button">Library</button>
           <button id="mainAnalyticsBtn" type="button">Analytics</button>
         </nav>
@@ -139,6 +141,10 @@
               </div>
             </div>
           </div>
+          <div id="playerLiveSceneWrap" class="hidden">
+            <p id="playerLiveSceneHint" class="hint hidden">No scene shared for your current campaign.</p>
+            <img id="playerLiveSceneImage" class="monster-image hidden player-live-scene-image" alt="Shared scene view" />
+          </div>
         </div>
       </section>
 
@@ -167,6 +173,15 @@
             />
             <button id="saveSettingsUsernameBtn" type="button">Save Name</button>
           </div>
+        </section>
+        <section id="settingsCampaignSection" class="subpanel">
+          <h3>Active Campaign</h3>
+          <label for="settingsActiveCampaignSelect">Campaign</label>
+          <div class="row">
+            <select id="settingsActiveCampaignSelect"></select>
+            <button id="saveSettingsActiveCampaignBtn" type="button">Save Campaign</button>
+          </div>
+          <p class="hint">Initiative, map, and scene views use this campaign.</p>
         </section>
         <section id="settingsPasswordSection" class="subpanel">
           <h3>Change Password</h3>
@@ -362,7 +377,10 @@
         <div class="panel">
           <div class="row between">
             <h2 id="campaignPageTitle">Campaign</h2>
-            <button id="deleteCampaignBtn" type="button" class="delete-btn">Delete Campaign</button>
+            <div class="row">
+              <button id="goSceneViewBtn" type="button">Scene View</button>
+              <button id="deleteCampaignBtn" type="button" class="delete-btn">Delete Campaign</button>
+            </div>
           </div>
         </div>
 
@@ -406,6 +424,52 @@
               aria-label="Search scenarios"
             />
             <ul id="scenarioList" class="list"></ul>
+          </article>
+        </section>
+      </section>
+
+      <section id="pageScene" class="page hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2 id="scenePageTitle">Scene View</h2>
+            <button id="backToCampaignFromSceneBtn" type="button">Back to Campaign</button>
+          </div>
+          <div class="row between">
+            <select id="sceneCampaignSelect" aria-label="Select campaign for scene sharing"></select>
+            <input
+              id="sceneSearchInput"
+              type="search"
+              placeholder="Search scenes"
+              aria-label="Search scenes"
+            />
+            <button id="shareSceneBtn" type="button">Share with Players</button>
+          </div>
+        </div>
+
+        <section class="grid scene-view-grid">
+          <article class="panel">
+            <h3>Add Scene</h3>
+            <form id="createSceneForm" class="stacked-form">
+              <input id="sceneNameInput" type="text" placeholder="Scene name" required />
+              <input id="sceneImageFile" type="file" accept="image/*" />
+              <p class="hint">Choose an image or paste with Cmd/Ctrl+V.</p>
+              <img
+                id="sceneDraftImagePreview"
+                class="monster-image hidden scene-upload-preview"
+                alt="Scene upload preview"
+              />
+              <button id="addSceneBtn" type="submit">Add Scene</button>
+            </form>
+            <ul id="sceneList" class="list selectable"></ul>
+          </article>
+
+          <article class="panel">
+            <div class="row between">
+              <h3 id="scenePreviewTitle">Preview</h3>
+              <button id="deleteSceneBtn" type="button" class="delete-btn hidden">Delete</button>
+            </div>
+            <p id="scenePreviewHint" class="hint">Select a scene to preview and share it with players.</p>
+            <img id="scenePreviewImage" class="monster-image hidden scene-preview-image" alt="Scene preview image" />
           </article>
         </section>
       </section>
