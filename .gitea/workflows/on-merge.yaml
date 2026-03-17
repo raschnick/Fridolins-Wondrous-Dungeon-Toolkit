@@ -1,0 +1,17 @@
+name: Build on merge
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  build-scan-push:
+    if: github.event.pull_request.merged == true
+    uses: ./.gitea/workflows/template_build-scan-push.yaml
+    with:
+      IMAGE_NAME: ${{ gitea.repository }}
+    secrets:
+      CI_BOT_USERNAME: ${{ secrets.CI_BOT_USERNAME }}
+      CI_BOT_GENERAL_CI_TOKEN: ${{ secrets.CI_BOT_GENERAL_CI_TOKEN }}
