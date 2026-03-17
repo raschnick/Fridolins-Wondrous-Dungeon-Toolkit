@@ -23,3 +23,5 @@ data/*.sqlite
 data/*.sqlite-*
 *.sqlite
 *.sqlite-*
+data/*.sqlite_*
+*.sqlite_*
