@@ -30,6 +30,30 @@ Default SQLite database path:
 
 `/Users/rani/dev/Fridolins Wondrous Dungeon Toolkit/data/itracker.sqlite`
 
+## Docker
+
+### Build
+```bash
+docker build -t wdt:0.1.0 .
+```
+
+### Run
+```bash
+docker run \
+  -p 3000:3000 \
+  -v $(pwd)/data:/app/data \
+  -e WDT_ADMIN_USERNAME=administrator \
+  -e WDT_ADMIN_PASSWORD=supersecret \
+  wdt:0.1.0
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `WDT_ADMIN_USERNAME` | `admin` | Initial admin database username |
+| `WDT_ADMIN_PASSWORD` | `admin` | Initial admin database password |
+
 ## URL routes
 
 - `/` -> Home

@@ -10,8 +10,10 @@ const port = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = "fwdt_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const STREAM_KEEPALIVE_MS = 15000;
-const DEFAULT_ADMIN_USERNAME = "fridolin";
-const DEFAULT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
+const DEFAULT_ADMIN_USERNAME =
+  process.env.WDT_ADMIN_USERNAME || "admin";
+const DEFAULT_ADMIN_PASSWORD =
+  process.env.WDT_ADMIN_PASSWORD || "admin";
 
 let nextStreamClientId = 1;
 const playerLiveSubscribersByUser = new Map();
