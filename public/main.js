@@ -257,6 +257,7 @@ const els = {
   campaignPageTitle: document.getElementById("campaignPageTitle"),
   scenePageTitle: document.getElementById("scenePageTitle"),
   sceneCampaignSelect: document.getElementById("sceneCampaignSelect"),
+  openSceneModalBtn: document.getElementById("openSceneModalBtn"),
   goSceneViewBtn: document.getElementById("goSceneViewBtn"),
   backToCampaignFromSceneBtn: document.getElementById("backToCampaignFromSceneBtn"),
   sceneSearchInput: document.getElementById("sceneSearchInput"),
@@ -1401,17 +1402,21 @@ function openCampaignActionModal(mode) {
   const isCampaign = mode === "campaign";
   const isLibraryEntry = mode === "library-entry";
   const isCharacter = mode === "character";
+  const isScene = mode === "scene";
   els.createCampaignModalForm.classList.toggle("hidden", !isCampaign);
   els.createLibraryEntryForm.classList.toggle("hidden", !isLibraryEntry);
   els.createCharacterForm.classList.toggle("hidden", !isCharacter);
+  els.createSceneForm.classList.toggle("hidden", !isScene);
   els.createScenarioForm.classList.toggle(
     "hidden",
-    isCharacter || isCampaign || isLibraryEntry
+    isCharacter || isCampaign || isLibraryEntry || isScene
   );
   if (isCampaign) {
     els.campaignActionTitle.textContent = "Create Campaign";
   } else if (isLibraryEntry) {
     els.campaignActionTitle.textContent = "New Library Entry";
+  } else if (isScene) {
+    els.campaignActionTitle.textContent = "Add Scene";
   } else {
     els.campaignActionTitle.textContent = isCharacter ? "Add Character" : "Add Scenario";
   }
@@ -1440,6 +1445,12 @@ function openCampaignActionModal(mode) {
     els.charName.value = "";
     els.charClass.value = "";
     els.charName.focus();
+  } else if (isScene) {
+    els.sceneNameInput.value = "";
+    els.sceneImageFile.value = "";
+    state.draftSceneImageData = "";
+    setSceneDraftImagePreview("");
+    els.sceneNameInput.focus();
   } else {
     els.scenarioName.value = "";
     els.scenarioNotes.value = "";
@@ -2140,13 +2151,23 @@ function renderNav() {
     inHomePath &&
     Boolean(scenario) &&
     (state.page === "scenario-edit" || state.page === "scenario-run" || state.page === "scenario-map");
+  const showSceneCrumb = inHomePath && Boolean(campaign) && state.page === "campaign-scene";
   const showCompletedScenarioCrumb =
     inHomePath &&
     Boolean(scenario) &&
     state.page === "scenario-completed-edit";
-  els.navScenarioBtn.classList.toggle("hidden", !(showScenarioCrumb || showCompletedScenarioCrumb));
-  els.navSepScenario.classList.toggle("hidden", !(showScenarioCrumb || showCompletedScenarioCrumb));
-  if ((showScenarioCrumb || showCompletedScenarioCrumb) && scenario) {
+  els.navScenarioBtn.classList.toggle(
+    "hidden",
+    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb)
+  );
+  els.navSepScenario.classList.toggle(
+    "hidden",
+    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb)
+  );
+  if (showSceneCrumb) {
+    els.navScenarioBtn.textContent = "Scene View";
+    els.navScenarioBtn.disabled = true;
+  } else if ((showScenarioCrumb || showCompletedScenarioCrumb) && scenario) {
     els.navScenarioBtn.textContent = scenario.name;
     els.navScenarioBtn.disabled =
       state.page === "scenario-edit" ||
@@ -4650,7 +4671,7 @@ async function loadSceneImages(campaignId) {
 
 function renderScenePage() {
   const campaign = selectedCampaign();
-  els.scenePageTitle.textContent = campaign ? `Scene View: ${campaign.name}` : "Scene View";
+  els.scenePageTitle.textContent = campaign ? campaign.name : "Scene View";
   if (els.sceneCampaignSelect) {
     const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
     const previousValue = els.sceneCampaignSelect.value;
@@ -6345,6 +6366,11 @@ function bindEvents() {
     openCampaignActionModal("scenario");
   });
 
+  els.openSceneModalBtn?.addEventListener("click", () => {
+    if (!state.selectedCampaignId) return;
+    openCampaignActionModal("scene");
+  });
+
   els.goSceneViewBtn.addEventListener("click", async () => {
     if (!state.selectedCampaignId) return;
     await navigateToPage("campaign-scene", {
@@ -6452,6 +6478,7 @@ function bindEvents() {
       els.sceneImageFile.value = "";
       state.draftSceneImageData = "";
       setSceneDraftImagePreview("");
+      closeCampaignActionModal();
       await loadSceneImages(state.selectedCampaignId);
       state.selectedSceneId = created?.id ?? state.selectedSceneId;
       renderScenePage();

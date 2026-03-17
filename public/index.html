@@ -377,10 +377,7 @@
         <div class="panel">
           <div class="row between">
             <h2 id="campaignPageTitle">Campaign</h2>
-            <div class="row">
-              <button id="goSceneViewBtn" type="button">Scene View</button>
-              <button id="deleteCampaignBtn" type="button" class="delete-btn">Delete Campaign</button>
-            </div>
+            <button id="deleteCampaignBtn" type="button" class="delete-btn">Delete Campaign</button>
           </div>
         </div>
 
@@ -405,6 +402,7 @@
             <div class="row between panel-header-actions">
               <h3>Encounters</h3>
               <div class="row">
+                <button id="goSceneViewBtn" type="button">Scene View</button>
                 <button id="viewCompletedScenariosBtn" type="button">Completed Encounters</button>
                 <button
                   id="addScenarioBtn"
@@ -436,30 +434,32 @@
           </div>
           <div class="row between">
             <select id="sceneCampaignSelect" aria-label="Select campaign for scene sharing"></select>
-            <input
-              id="sceneSearchInput"
-              type="search"
-              placeholder="Search scenes"
-              aria-label="Search scenes"
-            />
             <button id="shareSceneBtn" type="button">Share with Players</button>
           </div>
         </div>
 
         <section class="grid scene-view-grid">
           <article class="panel">
-            <h3>Add Scene</h3>
-            <form id="createSceneForm" class="stacked-form">
-              <input id="sceneNameInput" type="text" placeholder="Scene name" required />
-              <input id="sceneImageFile" type="file" accept="image/*" />
-              <p class="hint">Choose an image or paste with Cmd/Ctrl+V.</p>
-              <img
-                id="sceneDraftImagePreview"
-                class="monster-image hidden scene-upload-preview"
-                alt="Scene upload preview"
-              />
-              <button id="addSceneBtn" type="submit">Add Scene</button>
-            </form>
+            <div class="row between panel-header-actions">
+              <h3>Scenes</h3>
+              <div class="row">
+                <input
+                  id="sceneSearchInput"
+                  type="search"
+                  placeholder="Search scenes"
+                  aria-label="Search scenes"
+                />
+                <button
+                  id="openSceneModalBtn"
+                  type="button"
+                  class="add-icon-btn"
+                  aria-label="Add Scene"
+                  title="Add Scene"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              </div>
+            </div>
             <ul id="sceneList" class="list selectable"></ul>
           </article>
 
@@ -753,6 +753,21 @@
               <button type="submit" class="add-icon-btn" aria-label="Add Encounter" title="Add Encounter">
                 <span aria-hidden="true">+</span>
               </button>
+              <button class="campaign-action-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <form id="createSceneForm" class="stacked-form hidden">
+            <input id="sceneNameInput" type="text" placeholder="Scene name" required />
+            <input id="sceneImageFile" type="file" accept="image/*" />
+            <p class="hint">Choose an image or paste with Cmd/Ctrl+V.</p>
+            <img
+              id="sceneDraftImagePreview"
+              class="monster-image hidden scene-upload-preview"
+              alt="Scene upload preview"
+            />
+            <div class="row">
+              <button id="addSceneBtn" type="submit">Add Scene</button>
               <button class="campaign-action-cancel" type="button">Cancel</button>
             </div>
           </form>
