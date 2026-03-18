@@ -60,6 +60,8 @@ const CHARACTER_CLASSES = new Set([
 ]);
 
 const MONSTER_SIZES = new Set(["normal", "large", "huge", "gargantuan"]);
+const DICE_SKIN_ORDER = ["default", "emerald", "obsidian"];
+const DICE_SKIN_KEYS = new Set(DICE_SKIN_ORDER);
 
 function badRequest(res, message) {
   return res.status(400).json({ error: message });
@@ -70,6 +72,38 @@ function asId(value) {
   if (typeof value === "string" && value.trim() === "") return null;
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeDiceSkinKey(value) {
+  const key = `${value || ""}`.trim().toLowerCase();
+  return DICE_SKIN_KEYS.has(key) ? key : "default";
+}
+
+function normalizeAllowedDiceSkinKeys(value) {
+  const values = Array.isArray(value)
+    ? value
+    : `${value || ""}`
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+  const requested = new Set(values.map((entry) => normalizeDiceSkinKey(entry)));
+  requested.add("default");
+  return DICE_SKIN_ORDER.filter((key) => requested.has(key));
+}
+
+function serializeAllowedDiceSkinKeys(value) {
+  return normalizeAllowedDiceSkinKeys(value).join(",");
+}
+
+function getAllowedDiceSkinKeysForUser(user) {
+  if (user?.role === "admin") return [...DICE_SKIN_ORDER];
+  return normalizeAllowedDiceSkinKeys(user?.allowed_dice_skins);
+}
+
+function getEffectiveDiceSkinForUser(user) {
+  const allowed = getAllowedDiceSkinKeysForUser(user);
+  const selected = normalizeDiceSkinKey(user?.dice_skin);
+  return allowed.includes(selected) ? selected : "default";
 }
 
 function getScenario(scenarioId) {
@@ -440,7 +474,9 @@ function loadAuthUser(req, _res, next) {
         u.username,
         u.role,
         u.active,
-        u.profile_image_data
+        u.profile_image_data,
+        u.dice_skin,
+        u.allowed_dice_skins
        FROM user_sessions us
        JOIN users u ON u.id = us.user_id
        WHERE us.token_hash = ?
@@ -449,11 +485,14 @@ function loadAuthUser(req, _res, next) {
     )
     .get(tokenHash);
   if (!session || Number(session.active) !== 1) return next();
+  const allowedDiceSkins = getAllowedDiceSkinKeysForUser(session);
   req.authUser = {
     id: session.user_id,
     username: session.username,
     role: session.role,
     profileImageData: session.profile_image_data || "",
+    diceSkin: getEffectiveDiceSkinForUser(session),
+    availableDiceSkins: allowedDiceSkins,
     sessionId: session.session_id
   };
   return next();
@@ -487,6 +526,7 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "POST" && path === "/users/me/username") return true;
   if (method === "GET" && path === "/users/me/settings") return true;
   if (method === "POST" && path === "/users/me/profile-image") return true;
+  if (method === "POST" && path === "/users/me/dice-skin") return true;
   if (method === "POST" && path === "/users/me/active-campaign") return true;
   if (method === "POST" && path === "/users/me/claim-character") return true;
   if (method === "POST" && path === "/users/me/unclaim-character") return true;
@@ -1023,7 +1063,7 @@ app.post("/api/auth/login", (req, res) => {
 
   const user = db
     .prepare(
-      "SELECT id, username, role, active, password_hash, profile_image_data FROM users WHERE username = ? LIMIT 1"
+      "SELECT id, username, role, active, password_hash, profile_image_data, dice_skin, allowed_dice_skins FROM users WHERE username = ? LIMIT 1"
     )
     .get(username);
   if (!user || Number(user.active) !== 1 || !verifyPassword(password, user.password_hash)) {
@@ -1033,12 +1073,15 @@ app.post("/api/auth/login", (req, res) => {
   db.prepare("DELETE FROM user_sessions WHERE expires_at <= datetime('now')").run();
   const token = createSession(user.id);
   setAuthCookie(res, token);
+  const allowedDiceSkins = getAllowedDiceSkinKeysForUser(user);
   return res.json({
     user: {
       id: user.id,
       username: user.username,
       role: user.role,
-      profileImageData: user.profile_image_data || ""
+      profileImageData: user.profile_image_data || "",
+      diceSkin: getEffectiveDiceSkinForUser(user),
+      availableDiceSkins: allowedDiceSkins
     }
   });
 });
@@ -1063,7 +1106,9 @@ app.get("/api/auth/me", (req, res) => {
       id: req.authUser.id,
       username: req.authUser.username,
       role: req.authUser.role,
-      profileImageData: req.authUser.profileImageData || ""
+      profileImageData: req.authUser.profileImageData || "",
+      diceSkin: normalizeDiceSkinKey(req.authUser.diceSkin),
+      availableDiceSkins: [...(req.authUser.availableDiceSkins || ["default"])]
     }
   });
 });
@@ -1102,9 +1147,12 @@ app.post("/api/users/me/change-password", (req, res) => {
 
 app.get("/api/users/me/settings", (req, res) => {
   const user = db
-    .prepare("SELECT id, username, role, profile_image_data FROM users WHERE id = ?")
+    .prepare(
+      "SELECT id, username, role, profile_image_data, dice_skin, allowed_dice_skins FROM users WHERE id = ?"
+    )
     .get(req.authUser.id);
   if (!user) return res.status(404).json({ error: "User not found." });
+  const availableDiceSkins = getAllowedDiceSkinKeysForUser(user);
 
   let characters = [];
   let campaigns = [];
@@ -1138,7 +1186,9 @@ app.get("/api/users/me/settings", (req, res) => {
       id: user.id,
       username: user.username,
       role: user.role,
-      profileImageData: user.profile_image_data || ""
+      profileImageData: user.profile_image_data || "",
+      diceSkin: getEffectiveDiceSkinForUser(user),
+      availableDiceSkins
     },
     campaigns,
     activeCampaignId,
@@ -1176,6 +1226,26 @@ app.post("/api/users/me/profile-image", (req, res) => {
   db.prepare(
     "UPDATE users SET profile_image_data = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(profileImageData, req.authUser.id);
+  return res.status(204).send();
+});
+
+app.post("/api/users/me/dice-skin", (req, res) => {
+  const rawDiceSkin = `${req.body?.diceSkin || ""}`.trim();
+  if (!rawDiceSkin) return badRequest(res, "Dice skin is required.");
+  const requestedKey = rawDiceSkin.toLowerCase();
+  if (!DICE_SKIN_KEYS.has(requestedKey)) {
+    return badRequest(res, "Invalid dice skin.");
+  }
+  const allowedDiceSkins = Array.isArray(req.authUser?.availableDiceSkins)
+    ? req.authUser.availableDiceSkins
+    : ["default"];
+  if (!allowedDiceSkins.includes(requestedKey)) {
+    return res.status(403).json({ error: "Dice skin is not enabled for this user." });
+  }
+  db.prepare("UPDATE users SET dice_skin = ?, updated_at = datetime('now') WHERE id = ?").run(
+    requestedKey,
+    req.authUser.id
+  );
   return res.status(204).send();
 });
 
@@ -1240,10 +1310,16 @@ app.post("/api/users/me/unclaim-character", (req, res) => {
 app.get("/api/admin/users", requireAdmin, (_req, res) => {
   const users = db
     .prepare(
-      "SELECT id, username, role, active, created_at, updated_at FROM users ORDER BY username ASC"
+      "SELECT id, username, role, active, dice_skin, allowed_dice_skins, created_at, updated_at FROM users ORDER BY username ASC"
     )
     .all();
-  res.json(users);
+  res.json(
+    users.map((user) => ({
+      ...user,
+      diceSkin: getEffectiveDiceSkinForUser(user),
+      allowedDiceSkins: getAllowedDiceSkinKeysForUser(user)
+    }))
+  );
 });
 
 app.post("/api/admin/users", requireAdmin, (req, res) => {
@@ -1282,6 +1358,30 @@ app.post("/api/admin/users/:userId/reset-password", requireAdmin, (req, res) => 
   );
   db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId);
   closeStreamsForUser(userId);
+  return res.status(204).send();
+});
+
+app.post("/api/admin/users/:userId/dice-skins", requireAdmin, (req, res) => {
+  const userId = asId(req.params.userId);
+  if (userId === null) return badRequest(res, "Invalid user id.");
+  const user = db
+    .prepare("SELECT id, role, dice_skin, allowed_dice_skins FROM users WHERE id = ?")
+    .get(userId);
+  if (!user) return badRequest(res, "User not found.");
+  if (user.role === "admin") {
+    return badRequest(res, "Dice skin access is only configurable for player accounts.");
+  }
+
+  const allowedDiceSkins = normalizeAllowedDiceSkinKeys(req.body?.allowedDiceSkins);
+  const effectiveDiceSkin = allowedDiceSkins.includes(normalizeDiceSkinKey(user.dice_skin))
+    ? normalizeDiceSkinKey(user.dice_skin)
+    : "default";
+
+  db.prepare(
+    `UPDATE users
+     SET allowed_dice_skins = ?, dice_skin = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(serializeAllowedDiceSkinKeys(allowedDiceSkins), effectiveDiceSkin, userId);
   return res.status(204).send();
 });
 

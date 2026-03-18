@@ -159,6 +159,43 @@ test("allows player access to /api/player/live", async () => {
   assert.ok(Object.prototype.hasOwnProperty.call(response.json, "shared"));
 });
 
+test("player dice skins are admin-unlocked per user", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const playerIdentity = await createPlayer(admin, "dice_skin");
+  const { username, password, id } = playerIdentity;
+  const player = await login(username, password);
+
+  let response = await player.request("GET", "/api/users/me/settings");
+  assert.equal(response.status, 200);
+  assert.equal(response.json.user.diceSkin, "default");
+  assert.deepEqual(response.json.user.availableDiceSkins, ["default"]);
+
+  response = await player.request("POST", "/api/users/me/dice-skin", {
+    diceSkin: "emerald"
+  });
+  assert.equal(response.status, 403);
+
+  response = await admin.request("POST", `/api/admin/users/${id}/dice-skins`, {
+    allowedDiceSkins: ["default", "emerald"]
+  });
+  assert.equal(response.status, 204);
+
+  response = await player.request("POST", "/api/users/me/dice-skin", {
+    diceSkin: "emerald"
+  });
+  assert.equal(response.status, 204);
+
+  const me = await player.request("GET", "/api/auth/me");
+  assert.equal(me.status, 200);
+  assert.equal(me.json.user.diceSkin, "emerald");
+  assert.deepEqual(me.json.user.availableDiceSkins, ["default", "emerald"]);
+
+  response = await player.request("GET", "/api/users/me/settings");
+  assert.equal(response.status, 200);
+  assert.equal(response.json.user.diceSkin, "emerald");
+  assert.deepEqual(response.json.user.availableDiceSkins, ["default", "emerald"]);
+});
+
 test("player can switch active campaign for initiative/map/scene live data", async () => {
   const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
   const playerIdentity = await createPlayer(admin, `active_campaign_${Date.now()}`);

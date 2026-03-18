@@ -4,11 +4,13 @@
   "description": "Local D&D 5e 2024 initiative tracker basics",
   "main": "src/server.js",
   "scripts": {
+    "postinstall": "node scripts/sync-dice-box.mjs",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test tests/**/*.test.js"
   },
   "dependencies": {
+    "@3d-dice/dice-box": "^1.1.4",
     "better-sqlite3": "11.10.0",
     "express": "4.22.1"
   }

@@ -82,6 +82,11 @@ const state = {
   sceneSearchQuery: "",
   selectedSceneId: null,
   draftSceneImageData: "",
+  diceOverlayOpen: false,
+  dicePool: {},
+  diceRollHistory: [],
+  diceResultToastEntry: null,
+  diceResultToastTimer: null,
   campaigns: [],
   campaignSummaries: {},
   adminUsers: [],
@@ -104,6 +109,7 @@ const state = {
   runMapSyncReconnectTimer: null,
   runMapSyncScenarioId: null,
   playerLiveViewMode: "initiative",
+  diceShopOfferTimer: null,
   loginAweTimer: null,
   scenarioVictoryById: {},
   pendingVictorySoundById: {},
@@ -131,6 +137,77 @@ const state = {
 
 const RUN_MAP_FOG_BRUSH_SESSION_KEY = "runMapFogBrushSize";
 const RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY = "runMapFogBrushShape";
+const DICE_SKIN_OPTIONS = [
+  {
+    key: "default",
+    label: "Crimson Default",
+    theme: "default",
+    themeColor: "#8f1d2c",
+    previewImageUrl: "/images/crimson_preview.png",
+    descriptionLead: "Classic. Reliable.",
+    descriptionParagraphs: [
+      'Forged in the imaginary fires of "yeah, this works," the Crimson Default is the go-to choice for adventurers who appreciate tradition, stability, and the color red being very red.',
+      "Each die is meticulously coated in a rich crimson hue, scientifically calibrated to increase confidence by at least 0% while giving your rolls a bold, heroic aesthetic. Whether you're slaying dragons or failing a stealth check in an empty hallway, these dice will be there... quietly glowing with understated competence."
+    ],
+    descriptionListTitle: "Perfect for:",
+    descriptionListItems: [
+      "New heroes",
+      "Veteran minimalists",
+      "People who don’t trust flashy nonsense (wise)"
+    ]
+  },
+  {
+    key: "emerald",
+    label: "Emerald Excess",
+    theme: "default",
+    themeColor: "#1f7a4c",
+    previewImageUrl: "/images/emerald_preview.png",
+    priceLabel: "CHF 9.90",
+    lockedOffer: {
+      bannerLabel: "⚠️ Time limited offer:",
+      countdownDurationMs: 2 * 60 * 60 * 1000,
+      originalPriceLabel: "CHF 14.90",
+      salePriceLabel: "CHF 9.90"
+    },
+    descriptionLead: "Because red was holding you back.",
+    descriptionParagraphs: [
+      "Each facet gleams with a refined, luxurious brilliance that leaves the standard crimson looking... outdated. Where the default simply rolls, these arrive. Unverified, but trustworthy experts report a clear surge in confidence and the distinct feeling that the odds will be on your side.",
+      "Each facet gleams with polished, luxurious brilliance, quietly suggesting that every roll is about to be your moment. Unverified, but trustworthy experts claim a noticeable boost in confidence and an undeniable sense that things are finally going your way."
+    ],
+    descriptionListTitle: "Perfect for:",
+    descriptionListItems: [
+      "Players who want their dice to look richer than they are",
+      "Aspiring nobles, merchants, and morally flexible paladins",
+      "Anyone ready to emotionally commit to the bit"
+    ]
+  },
+  {
+    key: "obsidian",
+    label: "Obsidian Cataclysm",
+    theme: "default",
+    themeColor: "#2b2f39",
+    previewImageUrl: "/images/obsidian_preview.png",
+    priceLabel: "CHF 49.90",
+    promoBannerText: "🔥 Includes a +10% chance to roll a Natural 20 🔥",
+    descriptionLead: "The abyss looked back. You equipped it.",
+    descriptionParagraphs: [
+      "Carved from the cooled remains of a mountain that had a very bad day, the Obsidian Cataclysm dice are less a cosmetic choice and more a legally questionable pact.",
+      "Their surface doesn’t just show darkness, it refines it, drawing in light to create a smooth, commanding void. Hold them long enough and you may glimpse flashes of perfect turns, like a preview of your peak performance. Every edge feels impossibly precise, giving each roll a crisp, deliberate sense of power."
+    ],
+    descriptionListTitle: "Perfect for:",
+    descriptionListItems: [
+      "Warlocks who didn’t read the fine print",
+      "Rogues who think shadows are a personality",
+      "Anyone ready to blame destiny with confidence"
+    ]
+  }
+];
+const DICE_SKIN_CONFIG_BY_KEY = Object.fromEntries(
+  DICE_SKIN_OPTIONS.map((skin) => [skin.key, skin])
+);
+const DICE_SHOP_REDIRECT_URL =
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ";
+const DICE_SHOP_OFFER_STORAGE_PREFIX = "diceShopOfferEndsAt:";
 
 const els = {
   status: document.getElementById("status"),
@@ -142,6 +219,7 @@ const els = {
   pagePlayerHome: document.getElementById("pagePlayerHome"),
   pageScene: document.getElementById("pageScene"),
   pageSettings: document.getElementById("pageSettings"),
+  pageDiceShop: document.getElementById("pageDiceShop"),
   pageMonsters: document.getElementById("pageMonsters"),
   pageAnalytics: document.getElementById("pageAnalytics"),
   analyticsCampaignSelect: document.getElementById("analyticsCampaignSelect"),
@@ -174,6 +252,20 @@ const els = {
   playerWaitingTitle: document.getElementById("playerWaitingTitle"),
   playerWaitingImage: document.getElementById("playerWaitingImage"),
   playerRefreshBtn: document.getElementById("playerRefreshBtn"),
+  diceOverlay: document.getElementById("diceOverlay"),
+  dicePanel: document.getElementById("dicePanel"),
+  dicePanelCloseBtn: document.getElementById("dicePanelCloseBtn"),
+  diceToggleBtn: document.getElementById("diceToggleBtn"),
+  diceOverlayShopBtn: document.getElementById("diceOverlayShopBtn"),
+  diceRollPoolBtn: document.getElementById("diceRollPoolBtn"),
+  diceResetPoolBtn: document.getElementById("diceResetPoolBtn"),
+  dicePoolBadge: document.getElementById("dicePoolBadge"),
+  dicePresetButtons: document.getElementById("dicePresetButtons"),
+  diceStage: document.getElementById("diceStage"),
+  diceResultToast: document.getElementById("diceResultToast"),
+  diceResultToastExpression: document.getElementById("diceResultToastExpression"),
+  diceResultToastTotal: document.getElementById("diceResultToastTotal"),
+  diceResultToastBreakdown: document.getElementById("diceResultToastBreakdown"),
   playerLiveWrap: document.getElementById("playerLiveWrap"),
   playerLiveEncounterName: document.getElementById("playerLiveEncounterName"),
   playerLiveRound: document.getElementById("playerLiveRound"),
@@ -203,6 +295,10 @@ const els = {
   settingsCampaignSection: document.getElementById("settingsCampaignSection"),
   settingsActiveCampaignSelect: document.getElementById("settingsActiveCampaignSelect"),
   saveSettingsActiveCampaignBtn: document.getElementById("saveSettingsActiveCampaignBtn"),
+  settingsDiceSkinSelect: document.getElementById("settingsDiceSkinSelect"),
+  settingsDiceSkinHint: document.getElementById("settingsDiceSkinHint"),
+  settingsDiceShopBtn: document.getElementById("settingsDiceShopBtn"),
+  saveSettingsDiceSkinBtn: document.getElementById("saveSettingsDiceSkinBtn"),
   settingsNewPasswordInput: document.getElementById("settingsNewPasswordInput"),
   settingsConfirmPasswordInput: document.getElementById("settingsConfirmPasswordInput"),
   saveSettingsPasswordBtn: document.getElementById("saveSettingsPasswordBtn"),
@@ -210,6 +306,8 @@ const els = {
   clearSettingsProfileImageBtn: document.getElementById("clearSettingsProfileImageBtn"),
   settingsClaimSection: document.getElementById("settingsClaimSection"),
   settingsClaimList: document.getElementById("settingsClaimList"),
+  diceShopList: document.getElementById("diceShopList"),
+  backToSettingsFromDiceShopBtn: document.getElementById("backToSettingsFromDiceShopBtn"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
@@ -284,6 +382,9 @@ const els = {
   adminOpenMembershipModalBtn: document.getElementById("adminOpenMembershipModalBtn"),
   adminMembershipForm: document.getElementById("adminMembershipForm"),
   adminMembershipCampaignHint: document.getElementById("adminMembershipCampaignHint"),
+  adminDiceSkinForm: document.getElementById("adminDiceSkinForm"),
+  adminDiceSkinUserHint: document.getElementById("adminDiceSkinUserHint"),
+  adminDiceSkinOptions: document.getElementById("adminDiceSkinOptions"),
   adminCampaignList: document.getElementById("adminCampaignList"),
   adminMemberUserSelect: document.getElementById("adminMemberUserSelect"),
   adminMemberSearch: document.getElementById("adminMemberSearch"),
@@ -384,30 +485,69 @@ const els = {
   runOrderList: document.getElementById("runOrderList")
 };
 
-function openAdminActionModal(mode) {
+function openAdminActionModal(mode, options = {}) {
   setAdminStatus("");
+  els.adminCreateUserForm.classList.add("hidden");
+  els.adminMembershipForm.classList.add("hidden");
+  els.adminDiceSkinForm.classList.add("hidden");
   if (mode === "create-user") {
     els.adminActionTitle.textContent = "Add User";
     els.adminCreateUserForm.classList.remove("hidden");
-    els.adminMembershipForm.classList.add("hidden");
     els.adminNewUsername.focus();
-  } else {
+  } else if (mode === "membership") {
     const campaign = state.campaigns.find((c) => c.id === state.adminMemberCampaignId);
     if (!campaign) {
       setStatus("Select a campaign first.");
       return;
     }
     els.adminActionTitle.textContent = "Add User to Campaign";
-    els.adminCreateUserForm.classList.add("hidden");
     els.adminMembershipForm.classList.remove("hidden");
     els.adminMembershipCampaignHint.textContent = `Campaign: ${campaign.name}`;
     els.adminMemberUserSelect.focus();
+  } else if (mode === "dice-skins") {
+    const user = options.user;
+    if (!user || user.role === "admin") {
+      setStatus("Select a player account for dice access.");
+      return;
+    }
+    els.adminActionTitle.textContent = "Dice Access";
+    els.adminDiceSkinForm.classList.remove("hidden");
+    els.adminDiceSkinForm.dataset.userId = String(user.id);
+    els.adminDiceSkinUserHint.textContent = `Player: ${user.username}`;
+    els.adminDiceSkinOptions.innerHTML = "";
+    const allowedDiceSkins = Array.isArray(user.allowedDiceSkins)
+      ? user.allowedDiceSkins.filter((skin) => DICE_SKIN_CONFIG_BY_KEY[skin])
+      : ["default"];
+    for (const skin of DICE_SKIN_OPTIONS) {
+      const label = document.createElement("label");
+      label.className = "admin-dice-skin-option";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = skin.key;
+      checkbox.checked = allowedDiceSkins.includes(skin.key);
+      if (skin.key === "default") {
+        checkbox.disabled = true;
+      }
+      label.appendChild(checkbox);
+
+      const text = document.createElement("span");
+      text.textContent = skin.label;
+      label.appendChild(text);
+
+      els.adminDiceSkinOptions.appendChild(label);
+    }
+    const firstEnabled = els.adminDiceSkinOptions.querySelector("input:not(:disabled)");
+    firstEnabled?.focus();
   }
   els.adminActionModal.classList.remove("hidden");
 }
 
 function closeAdminActionModal() {
   els.adminActionModal.classList.add("hidden");
+  if (els.adminDiceSkinForm) {
+    delete els.adminDiceSkinForm.dataset.userId;
+  }
 }
 
 const CONDITIONS = [
@@ -1396,6 +1536,248 @@ function closeImageModal() {
   els.imageModalImg.src = "";
 }
 
+function setDiceOverlayOpen(isOpen) {
+  state.diceOverlayOpen = Boolean(isOpen);
+  if (els.dicePanel) {
+    els.dicePanel.classList.toggle("hidden", !state.diceOverlayOpen);
+  }
+  if (els.diceToggleBtn) {
+    els.diceToggleBtn.setAttribute("aria-expanded", state.diceOverlayOpen ? "true" : "false");
+  }
+}
+
+function fallbackDiceRolls(count, sides) {
+  const rolls = [];
+  for (let i = 0; i < count; i += 1) {
+    rolls.push(Math.floor(Math.random() * sides) + 1);
+  }
+  return rolls;
+}
+
+const DICE_POOL_ORDER = [4, 6, 8, 10, 12, 20, 100];
+const MAX_DICE_POOL_COUNT = 20;
+
+function getDicePoolSegments(pool = state.dicePool) {
+  return DICE_POOL_ORDER.map((sides) => {
+    const count = Number(pool?.[sides]) || 0;
+    return { sides, count: Math.max(0, count) };
+  }).filter((segment) => segment.count > 0);
+}
+
+function getDicePoolTotalCount(pool = state.dicePool) {
+  return getDicePoolSegments(pool).reduce((sum, segment) => sum + segment.count, 0);
+}
+
+function buildDicePoolNotation(pool = state.dicePool) {
+  return getDicePoolSegments(pool)
+    .map((segment) => `${segment.count}d${segment.sides}`)
+    .join("+");
+}
+
+function formatDiceNotation(notation) {
+  return `${notation || ""}`.replace(/\+/g, " + ");
+}
+
+function fallbackDicePoolRolls(pool = state.dicePool) {
+  const rolls = [];
+  for (const segment of getDicePoolSegments(pool)) {
+    rolls.push(...fallbackDiceRolls(segment.count, segment.sides));
+  }
+  return rolls;
+}
+
+function resetDicePool({ shouldRender = true } = {}) {
+  state.dicePool = {};
+  if (shouldRender) renderDiceOverlay();
+}
+
+function addDieToPool(sides) {
+  const normalizedSides = Number(sides);
+  if (!Number.isInteger(normalizedSides) || normalizedSides < 2) return;
+  const totalDice = getDicePoolTotalCount();
+  if (totalDice >= MAX_DICE_POOL_COUNT) {
+    setStatus(`Dice pool is limited to ${MAX_DICE_POOL_COUNT} dice.`, "error");
+    return;
+  }
+  state.dicePool = {
+    ...state.dicePool,
+    [normalizedSides]: (Number(state.dicePool?.[normalizedSides]) || 0) + 1
+  };
+  renderDiceOverlay();
+}
+
+function buildDiceEntry({ pool, rolls, total }) {
+  const notation = buildDicePoolNotation(pool);
+  const expression = formatDiceNotation(notation);
+  const segments = getDicePoolSegments(pool);
+  let rollIndex = 0;
+  const groupedBreakdown = segments.map((segment) => {
+    const segmentRolls = rolls.slice(rollIndex, rollIndex + segment.count);
+    rollIndex += segment.count;
+    return `${segment.count}d${segment.sides}: ${segmentRolls.join(", ")}`;
+  });
+  return {
+    expression,
+    total,
+    breakdown: `${groupedBreakdown.join(" | ")} = ${total}`,
+    summary: `${expression}: ${total}`
+  };
+}
+
+function getDiceSkinKey(value) {
+  return DICE_SKIN_CONFIG_BY_KEY[value] ? value : "default";
+}
+
+function getAvailableDiceSkinKeysForCurrentUser() {
+  if (state.authUser?.role === "admin") {
+    return DICE_SKIN_OPTIONS.map((skin) => skin.key);
+  }
+  const available = Array.isArray(state.userSettings?.user?.availableDiceSkins)
+    ? state.userSettings.user.availableDiceSkins
+    : Array.isArray(state.authUser?.availableDiceSkins)
+      ? state.authUser.availableDiceSkins
+      : ["default"];
+  const filtered = available.filter((skin) => DICE_SKIN_CONFIG_BY_KEY[skin]);
+  return filtered.length > 0 ? filtered : ["default"];
+}
+
+function getCurrentDiceSkinConfig() {
+  const storedSkin =
+    state.userSettings?.user?.diceSkin || state.authUser?.diceSkin || DICE_SKIN_OPTIONS[0].key;
+  return DICE_SKIN_CONFIG_BY_KEY[getDiceSkinKey(storedSkin)] || DICE_SKIN_OPTIONS[0];
+}
+
+async function saveDiceSkinPreference(diceSkin) {
+  const nextDiceSkin = getDiceSkinKey(diceSkin);
+  await api("/api/users/me/dice-skin", {
+    method: "POST",
+    body: JSON.stringify({ diceSkin: nextDiceSkin })
+  });
+  if (!state.userSettings) state.userSettings = {};
+  if (!state.userSettings.user) state.userSettings.user = {};
+  state.userSettings.user.diceSkin = nextDiceSkin;
+  if (state.authUser) {
+    state.authUser.diceSkin = nextDiceSkin;
+  }
+}
+
+function setDiceResultToast(entry) {
+  if (state.diceResultToastTimer) {
+    window.clearTimeout(state.diceResultToastTimer);
+    state.diceResultToastTimer = null;
+  }
+  state.diceResultToastEntry = entry || null;
+  if (entry) {
+    state.diceResultToastTimer = window.setTimeout(() => {
+      state.diceResultToastTimer = null;
+      state.diceResultToastEntry = null;
+      renderDiceOverlay();
+    }, 4200);
+  }
+  renderDiceOverlay();
+}
+
+function renderDiceOverlay() {
+  const shouldShow = Boolean(state.authUser) && state.page !== "login";
+  if (els.diceOverlay) {
+    els.diceOverlay.classList.toggle("hidden", !shouldShow);
+  }
+  if (!shouldShow) {
+    setDiceOverlayOpen(false);
+    if (state.diceResultToastTimer) {
+      window.clearTimeout(state.diceResultToastTimer);
+      state.diceResultToastTimer = null;
+    }
+    state.dicePool = {};
+    state.diceResultToastEntry = null;
+    window.diceRenderer?.clear?.();
+    return;
+  }
+  const toastEntry = state.diceResultToastEntry;
+  if (els.diceResultToast) {
+    const showToast = Boolean(toastEntry);
+    els.diceResultToast.classList.toggle("hidden", !showToast);
+    if (showToast) {
+      if (els.diceResultToastExpression) {
+        els.diceResultToastExpression.textContent = toastEntry.expression;
+      }
+      if (els.diceResultToastTotal) {
+        els.diceResultToastTotal.textContent = String(toastEntry.total);
+      }
+      if (els.diceResultToastBreakdown) {
+        els.diceResultToastBreakdown.textContent = toastEntry.breakdown;
+      }
+    }
+  }
+
+  const poolCount = getDicePoolTotalCount();
+  const hasPool = poolCount > 0;
+  if (els.dicePoolBadge) {
+    els.dicePoolBadge.classList.toggle("hidden", !hasPool);
+    els.dicePoolBadge.textContent = hasPool ? String(poolCount) : "";
+  }
+  if (els.dicePresetButtons) {
+    els.dicePresetButtons.querySelectorAll("button[data-sides]").forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      const sides = Number(button.dataset.sides);
+      const count = Math.max(0, Number(state.dicePool?.[sides]) || 0);
+      button.classList.toggle("has-pool-count", count > 0);
+      if (count > 0) {
+        button.setAttribute("data-pool-count", String(count));
+      } else {
+        button.removeAttribute("data-pool-count");
+      }
+    });
+  }
+  if (els.diceRollPoolBtn) {
+    els.diceRollPoolBtn.disabled = !hasPool;
+  }
+  if (els.diceResetPoolBtn) {
+    els.diceResetPoolBtn.disabled = !hasPool;
+  }
+}
+
+async function rollDicePool() {
+  const pool = { ...state.dicePool };
+  const notation = buildDicePoolNotation(pool);
+  if (!notation) return;
+  const notations = getDicePoolSegments(pool).map((segment) => `${segment.count}d${segment.sides}`);
+
+  let rolls = [];
+  let total = 0;
+  try {
+    const diceSkin = getCurrentDiceSkinConfig();
+    const diceResult = await window.diceRenderer?.rollMany?.({
+      notations,
+      theme: diceSkin.theme,
+      themeColor: diceSkin.themeColor
+    });
+    rolls =
+      Array.isArray(diceResult?.rolls) && diceResult.rolls.length > 0
+        ? diceResult.rolls
+        : fallbackDicePoolRolls(pool);
+    total = Number.isFinite(diceResult?.total)
+      ? diceResult.total
+      : rolls.reduce((sum, value) => sum + value, 0);
+  } catch (error) {
+    console.error("Dice renderer unavailable, using fallback roll.", error);
+    rolls = fallbackDicePoolRolls(pool);
+    total = rolls.reduce((sum, value) => sum + value, 0);
+    setStatus("3D dice renderer unavailable. Used local fallback roll.", "error");
+  }
+
+  const entry = buildDiceEntry({
+    pool,
+    rolls,
+    total
+  });
+  state.diceRollHistory.unshift(entry);
+  state.diceRollHistory = state.diceRollHistory.slice(0, 8);
+  resetDicePool({ shouldRender: false });
+  setDiceResultToast(entry);
+  setDiceOverlayOpen(true);
+}
+
 function openCampaignActionModal(mode) {
   if ((mode === "character" || mode === "scenario") && !state.selectedCampaignId) return;
   state.campaignActionMode = mode;
@@ -1662,6 +2044,7 @@ function parseRoute(pathname) {
   const path = normalizePathname(pathname);
   if (path === "/login") return { page: "login" };
   if (path === "/settings") return { page: "settings" };
+  if (path === "/shop") return { page: "dice-shop" };
   if (path === "/player" || path === "/player/initiative") {
     return { page: "player-home", playerMode: "initiative" };
   }
@@ -1722,6 +2105,7 @@ function routePathFor(page, campaignId = null, scenarioId = null, playerMode = n
     return "/player/initiative";
   }
   if (page === "settings") return "/settings";
+  if (page === "dice-shop") return "/shop";
   if (page === "welcome") return "/";
   if (page === "monsters") return "/library";
   if (page === "admin") return "/admin";
@@ -1807,6 +2191,19 @@ async function applyRoute(route, { replace = false } = {}) {
     if (!isCurrent()) return;
     showPage("settings");
     await syncHistory("/settings", { replace });
+    return;
+  }
+
+  if (route.page === "dice-shop") {
+    try {
+      await loadUserSettings();
+      renderDiceShopPage();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+    if (!isCurrent()) return;
+    showPage("dice-shop");
+    await syncHistory("/shop", { replace });
     return;
   }
 
@@ -2017,6 +2414,9 @@ function showPage(page) {
   if (page !== "scenario-map") {
     stopRunMapSyncPolling();
   }
+  if (page !== "dice-shop") {
+    stopDiceShopOfferTimer();
+  }
   document.body.classList.toggle("page-login", page === "login");
   document.body.classList.toggle("page-player", page === "player-home");
   document.body.classList.toggle("page-run", page === "scenario-run" || page === "scenario-map");
@@ -2027,6 +2427,7 @@ function showPage(page) {
   els.pageWelcome.classList.toggle("hidden", page !== "welcome");
   els.pagePlayerHome.classList.toggle("hidden", page !== "player-home");
   els.pageSettings.classList.toggle("hidden", page !== "settings");
+  els.pageDiceShop.classList.toggle("hidden", page !== "dice-shop");
   els.pageMonsters.classList.toggle("hidden", page !== "monsters");
   els.pageAnalytics.classList.toggle("hidden", page !== "analytics");
   els.pageAdmin.classList.toggle("hidden", page !== "admin");
@@ -2037,6 +2438,7 @@ function showPage(page) {
   els.pageScenarioCompletedEdit.classList.toggle("hidden", page !== "scenario-completed-edit");
   els.pageScenarioRun.classList.toggle("hidden", !(page === "scenario-run" || page === "scenario-map"));
   renderMainSections();
+  renderDiceOverlay();
   renderNav();
 }
 
@@ -5223,12 +5625,42 @@ async function loadUserSettings() {
   state.draftSettingsProfileImageData = state.userSettings?.user?.profileImageData || "";
   if (state.authUser) {
     state.authUser.profileImageData = state.userSettings?.user?.profileImageData || "";
+    state.authUser.diceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin);
+    state.authUser.availableDiceSkins = Array.isArray(state.userSettings?.user?.availableDiceSkins)
+      ? [...state.userSettings.user.availableDiceSkins]
+      : ["default"];
   }
 }
 
 function renderSettingsPage() {
   if (els.settingsUsernameInput) {
     els.settingsUsernameInput.value = state.userSettings?.user?.username || "";
+  }
+  if (els.settingsDiceSkinSelect) {
+    const availableDiceSkins = getAvailableDiceSkinKeysForCurrentUser();
+    const selectedDiceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin);
+    els.settingsDiceSkinSelect.innerHTML = "";
+    for (const skin of DICE_SKIN_OPTIONS.filter((option) => availableDiceSkins.includes(option.key))) {
+      const option = document.createElement("option");
+      option.value = skin.key;
+      option.textContent = skin.label;
+      els.settingsDiceSkinSelect.appendChild(option);
+    }
+    const nextDiceSkin = availableDiceSkins.includes(selectedDiceSkin)
+      ? selectedDiceSkin
+      : availableDiceSkins[0] || "default";
+    els.settingsDiceSkinSelect.value = nextDiceSkin;
+    const hasMultipleOptions = availableDiceSkins.length > 1;
+    els.settingsDiceSkinSelect.disabled = !hasMultipleOptions;
+    if (els.saveSettingsDiceSkinBtn) {
+      els.saveSettingsDiceSkinBtn.disabled = !hasMultipleOptions;
+    }
+    if (els.settingsDiceSkinHint) {
+      els.settingsDiceSkinHint.textContent = "Used for your local 3D dice rolls.";
+    }
+    if (els.settingsDiceShopBtn) {
+      els.settingsDiceShopBtn.classList.remove("hidden");
+    }
   }
   if (els.settingsNewPasswordInput) els.settingsNewPasswordInput.value = "";
   if (els.settingsConfirmPasswordInput) els.settingsConfirmPasswordInput.value = "";
@@ -5326,6 +5758,240 @@ function renderSettingsPage() {
     li.appendChild(row);
     els.settingsClaimList.appendChild(li);
   }
+}
+
+function renderDiceShopPage() {
+  if (!els.diceShopList) return;
+  const availableDiceSkins = getAvailableDiceSkinKeysForCurrentUser();
+  const currentDiceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin || state.authUser?.diceSkin);
+  els.diceShopList.innerHTML = "";
+
+  for (const skin of DICE_SKIN_OPTIONS) {
+    const card = document.createElement("article");
+    card.className = "panel dice-shop-card";
+
+    const cardTop = document.createElement("div");
+    cardTop.className = "row between";
+
+    const title = document.createElement("h3");
+    title.textContent = skin.label;
+    cardTop.appendChild(title);
+
+    const status = document.createElement("span");
+    const isUnlocked = availableDiceSkins.includes(skin.key);
+    const isEquipped = currentDiceSkin === skin.key;
+    const lockedOffer = !isUnlocked ? skin.lockedOffer : null;
+    status.className = `dice-shop-status ${isEquipped ? "equipped" : isUnlocked ? "unlocked" : "locked"}`;
+    status.textContent = isEquipped ? "Equipped" : isUnlocked ? "Owned" : "Locked";
+    cardTop.appendChild(status);
+    card.appendChild(cardTop);
+    card.appendChild(createDiceShopPreview(skin));
+
+    const description = document.createElement("div");
+    description.className = "dice-shop-description";
+    if (skin.descriptionLead) {
+      const lead = document.createElement("p");
+      lead.className = "dice-shop-description-lead";
+      lead.textContent = skin.descriptionLead;
+      description.appendChild(lead);
+    }
+    if (Array.isArray(skin.descriptionParagraphs) && skin.descriptionParagraphs.length > 0) {
+      for (const paragraphText of skin.descriptionParagraphs) {
+        const paragraph = document.createElement("p");
+        paragraph.className = "hint dice-shop-description-paragraph";
+        paragraph.textContent = paragraphText;
+        description.appendChild(paragraph);
+      }
+    } else if (skin.description) {
+      const paragraph = document.createElement("p");
+      paragraph.className = "hint dice-shop-description-paragraph";
+      paragraph.textContent = skin.description;
+      description.appendChild(paragraph);
+    }
+    if (skin.descriptionListTitle) {
+      const listTitle = document.createElement("p");
+      listTitle.className = "dice-shop-description-list-title";
+      listTitle.textContent = skin.descriptionListTitle;
+      description.appendChild(listTitle);
+    }
+    if (Array.isArray(skin.descriptionListItems) && skin.descriptionListItems.length > 0) {
+      const list = document.createElement("ul");
+      list.className = "dice-shop-description-list";
+      for (const itemText of skin.descriptionListItems) {
+        const item = document.createElement("li");
+        item.textContent = itemText;
+        list.appendChild(item);
+      }
+      description.appendChild(list);
+    }
+    card.appendChild(description);
+
+    const bannerSlot = document.createElement("div");
+    bannerSlot.className = "dice-shop-banner-slot";
+    if (lockedOffer || skin.promoBannerText) {
+      const banner = document.createElement("div");
+      banner.className = "dice-shop-special-banner";
+      if (lockedOffer) {
+        banner.classList.add("offer");
+        banner.dataset.diceShopOfferKey = skin.key;
+        banner.textContent = getDiceShopLockedOfferBannerText(skin);
+      } else {
+        banner.textContent = skin.promoBannerText;
+      }
+      bannerSlot.appendChild(banner);
+    } else {
+      bannerSlot.classList.add("is-empty");
+      bannerSlot.setAttribute("aria-hidden", "true");
+    }
+    card.appendChild(bannerSlot);
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "dice-shop-action-btn";
+    if (isEquipped) {
+      action.classList.add("equipped");
+      action.textContent = "Currently Equipped";
+      action.disabled = true;
+    } else if (isUnlocked) {
+      action.classList.add("owned");
+      action.textContent = "Owned - Click to equip";
+      action.addEventListener("click", async () => {
+        try {
+          await saveDiceSkinPreference(skin.key);
+          renderSettingsPage();
+          renderDiceShopPage();
+          setStatus(`${skin.label} equipped.`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+    } else {
+      action.classList.add("locked");
+      if (lockedOffer?.originalPriceLabel && lockedOffer?.salePriceLabel) {
+        action.classList.add("special-offer");
+        setDiceShopLockedOfferActionLabel(action, lockedOffer);
+      } else {
+        action.textContent = `Buy now - ${skin.priceLabel || "CHF 4.99"}`;
+      }
+      action.addEventListener("click", () => {
+        const popup = window.open(DICE_SHOP_REDIRECT_URL, "_blank", "noopener,noreferrer");
+        if (popup) popup.opener = null;
+      });
+    }
+    card.appendChild(action);
+
+    els.diceShopList.appendChild(card);
+  }
+
+  startDiceShopOfferTimer();
+}
+
+function getDiceShopOfferStorageKey(skinKey) {
+  return `${DICE_SHOP_OFFER_STORAGE_PREFIX}${skinKey}`;
+}
+
+function ensureDiceShopLockedOfferEndsAt(skin) {
+  const offer = skin?.lockedOffer;
+  if (!offer?.countdownDurationMs) return 0;
+  const storageKey = getDiceShopOfferStorageKey(skin.key);
+  let endsAt = 0;
+  try {
+    endsAt = Number(window.localStorage.getItem(storageKey) || "0");
+  } catch (error) {
+    endsAt = 0;
+  }
+  if (!Number.isFinite(endsAt) || endsAt <= 0) {
+    endsAt = Date.now() + offer.countdownDurationMs;
+    try {
+      window.localStorage.setItem(storageKey, String(endsAt));
+    } catch (error) {
+      // Ignore storage write failures and keep the in-memory deadline for this render.
+    }
+  }
+  return endsAt;
+}
+
+function formatDiceShopOfferCountdown(msRemaining) {
+  const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000) - 1);
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function getDiceShopLockedOfferBannerText(skin) {
+  const offer = skin?.lockedOffer;
+  if (!offer) return "";
+  const endsAt = ensureDiceShopLockedOfferEndsAt(skin);
+  const remainingMs = Math.max(0, endsAt - Date.now());
+  return `${offer.bannerLabel} ${formatDiceShopOfferCountdown(remainingMs)} ⚠️`;
+}
+
+function updateDiceShopOfferCountdowns() {
+  if (!els.diceShopList) return false;
+  const banners = els.diceShopList.querySelectorAll("[data-dice-shop-offer-key]");
+  if (!banners.length) return false;
+  let hasActiveCountdown = false;
+  for (const banner of banners) {
+    const skin = DICE_SKIN_CONFIG_BY_KEY[banner.dataset.diceShopOfferKey];
+    if (!skin?.lockedOffer) continue;
+    const endsAt = ensureDiceShopLockedOfferEndsAt(skin);
+    const remainingMs = Math.max(0, endsAt - Date.now());
+    banner.textContent = `${skin.lockedOffer.bannerLabel} ${formatDiceShopOfferCountdown(remainingMs)} ⚠️`;
+    if (remainingMs > 0) hasActiveCountdown = true;
+  }
+  return hasActiveCountdown;
+}
+
+function startDiceShopOfferTimer() {
+  stopDiceShopOfferTimer();
+  if (!updateDiceShopOfferCountdowns()) return;
+  state.diceShopOfferTimer = window.setInterval(() => {
+    if (!updateDiceShopOfferCountdowns()) {
+      stopDiceShopOfferTimer();
+    }
+  }, 1000);
+}
+
+function stopDiceShopOfferTimer() {
+  if (!state.diceShopOfferTimer) return;
+  clearInterval(state.diceShopOfferTimer);
+  state.diceShopOfferTimer = null;
+}
+
+function setDiceShopLockedOfferActionLabel(button, offer) {
+  button.textContent = "";
+  button.setAttribute("aria-label", `Buy now - ${offer.originalPriceLabel}, now ${offer.salePriceLabel}`);
+
+  const prefix = document.createElement("span");
+  prefix.className = "dice-shop-action-btn-label";
+  prefix.textContent = "Buy now -";
+  button.appendChild(prefix);
+
+  const originalPrice = document.createElement("span");
+  originalPrice.className = "dice-shop-action-btn-old-price";
+  originalPrice.textContent = offer.originalPriceLabel;
+  button.appendChild(originalPrice);
+
+  const salePrice = document.createElement("span");
+  salePrice.className = "dice-shop-action-btn-sale-price";
+  salePrice.textContent = offer.salePriceLabel;
+  button.appendChild(salePrice);
+}
+
+function createDiceShopPreview(skin) {
+  const preview = document.createElement("div");
+  preview.className = "dice-shop-preview";
+
+  const image = document.createElement("img");
+  image.className = "dice-shop-preview-image";
+  image.src = skin.previewImageUrl || "/images/crimson_preview.png";
+  image.alt = `${skin.label} dice preview`;
+  image.loading = "lazy";
+  image.decoding = "async";
+  preview.appendChild(image);
+
+  return preview;
 }
 
 function parseMapTokensJson(raw) {
@@ -5896,6 +6562,7 @@ function renderAdminPage() {
   } else {
     for (const user of filteredUsers) {
       const li = document.createElement("li");
+      li.className = "admin-user-item";
       const row = document.createElement("div");
       row.className = "list-row admin-row";
 
@@ -5955,6 +6622,17 @@ function renderAdminPage() {
         }
       });
       actions.appendChild(toggleButton);
+
+      if (user.role !== "admin") {
+        const diceButton = document.createElement("button");
+        diceButton.type = "button";
+        diceButton.textContent = "Dice";
+        diceButton.title = `Manage dice access for ${user.username}`;
+        diceButton.addEventListener("click", () => {
+          openAdminActionModal("dice-skins", { user });
+        });
+        actions.appendChild(diceButton);
+      }
 
       row.appendChild(actions);
       li.appendChild(row);
@@ -6183,6 +6861,10 @@ function bindEvents() {
       closeImageModal();
       return;
     }
+    if (event.key === "Escape" && state.diceOverlayOpen) {
+      setDiceOverlayOpen(false);
+      return;
+    }
     if (event.key === "Escape" && !els.campaignActionModal.classList.contains("hidden")) {
       closeCampaignActionModal();
       return;
@@ -6334,6 +7016,37 @@ function bindEvents() {
   els.scenePreviewImage?.addEventListener("click", () => {
     if (!els.scenePreviewImage.src) return;
     openImageModal(els.scenePreviewImage.src);
+  });
+  els.diceToggleBtn?.addEventListener("click", () => {
+    setDiceOverlayOpen(!state.diceOverlayOpen);
+  });
+  els.dicePanelCloseBtn?.addEventListener("click", () => {
+    setDiceOverlayOpen(false);
+  });
+  els.diceOverlayShopBtn?.addEventListener("click", async () => {
+    setDiceOverlayOpen(false);
+    await navigateToPage("dice-shop");
+  });
+  els.diceRollPoolBtn?.addEventListener("click", () => {
+    rollDicePool();
+  });
+  els.diceResetPoolBtn?.addEventListener("click", () => {
+    resetDicePool();
+  });
+  els.dicePresetButtons?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest("button[data-sides]");
+    if (!(button instanceof HTMLButtonElement)) return;
+    const sides = Number(button.dataset.sides);
+    addDieToPool(sides);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.diceOverlayOpen) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (els.diceOverlay?.contains(target)) return;
+    setDiceOverlayOpen(false);
   });
   els.sceneDraftImagePreview?.addEventListener("click", () => {
     if (!els.sceneDraftImagePreview.src) return;
@@ -6663,6 +7376,25 @@ function bindEvents() {
     }
   });
 
+  els.saveSettingsDiceSkinBtn?.addEventListener("click", async () => {
+    const diceSkin = getDiceSkinKey(els.settingsDiceSkinSelect?.value);
+    try {
+      await saveDiceSkinPreference(diceSkin);
+      renderSettingsPage();
+      setStatus("Dice skin updated.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.settingsDiceShopBtn?.addEventListener("click", async () => {
+    await navigateToPage("dice-shop");
+  });
+
+  els.backToSettingsFromDiceShopBtn?.addEventListener("click", async () => {
+    await navigateToPage("settings");
+  });
+
   els.saveSettingsPasswordBtn.addEventListener("click", async () => {
     const newPassword = `${els.settingsNewPasswordInput.value || ""}`;
     const confirmPassword = `${els.settingsConfirmPasswordInput.value || ""}`;
@@ -6854,6 +7586,33 @@ function bindEvents() {
       renderAdminPage();
       setStatus("Membership updated.", "success");
       closeAdminActionModal();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.adminDiceSkinForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const userId = Number(els.adminDiceSkinForm.dataset.userId);
+    if (!Number.isInteger(userId)) {
+      setStatus("Select a valid player.");
+      return;
+    }
+    const allowedDiceSkins = Array.from(
+      els.adminDiceSkinOptions.querySelectorAll("input[type='checkbox']:checked")
+    )
+      .map((input) => input.value)
+      .filter((value) => DICE_SKIN_CONFIG_BY_KEY[value]);
+    try {
+      await api(`/api/admin/users/${userId}/dice-skins`, {
+        method: "POST",
+        body: JSON.stringify({ allowedDiceSkins })
+      });
+      await loadAdminData();
+      renderAdminPage();
+      closeAdminActionModal();
+      const user = state.adminUsers.find((entry) => entry.id === userId);
+      setStatus(`Updated dice access for ${user?.username || "player"}.`, "success");
     } catch (error) {
       setStatus(error.message, "error");
     }

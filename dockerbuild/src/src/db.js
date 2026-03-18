@@ -85,6 +85,8 @@ function initDb() {
       active INTEGER NOT NULL DEFAULT 1,
       active_campaign_id INTEGER,
       profile_image_data TEXT NOT NULL DEFAULT '',
+      dice_skin TEXT NOT NULL DEFAULT 'default',
+      allowed_dice_skins TEXT NOT NULL DEFAULT 'default',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (active_campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
@@ -312,6 +314,12 @@ function initDb() {
   if (!userColumns.includes("profile_image_data")) {
     db.exec("ALTER TABLE users ADD COLUMN profile_image_data TEXT NOT NULL DEFAULT ''");
   }
+  if (!userColumns.includes("dice_skin")) {
+    db.exec("ALTER TABLE users ADD COLUMN dice_skin TEXT NOT NULL DEFAULT 'default'");
+  }
+  if (!userColumns.includes("allowed_dice_skins")) {
+    db.exec("ALTER TABLE users ADD COLUMN allowed_dice_skins TEXT NOT NULL DEFAULT 'default'");
+  }
   db.exec("UPDATE users SET role = 'player' WHERE role IS NULL OR trim(role) = ''");
   db.exec("UPDATE users SET active = 1 WHERE active NOT IN (0, 1) OR active IS NULL");
   db.exec(
@@ -326,6 +334,13 @@ function initDb() {
   );
   db.exec("UPDATE users SET active_campaign_id = NULL WHERE role = 'admin'");
   db.exec("UPDATE users SET profile_image_data = '' WHERE profile_image_data IS NULL");
+  db.exec("UPDATE users SET dice_skin = 'default' WHERE dice_skin IS NULL OR trim(dice_skin) = ''");
+  db.exec(
+    "UPDATE users SET dice_skin = 'default' WHERE lower(trim(dice_skin)) NOT IN ('default', 'emerald', 'obsidian')"
+  );
+  db.exec(
+    "UPDATE users SET allowed_dice_skins = 'default' WHERE allowed_dice_skins IS NULL OR trim(allowed_dice_skins) = ''"
+  );
   db.exec("DELETE FROM user_sessions WHERE expires_at <= datetime('now')");
   db.exec(
     `INSERT OR IGNORE INTO campaign_stats (campaign_id)
