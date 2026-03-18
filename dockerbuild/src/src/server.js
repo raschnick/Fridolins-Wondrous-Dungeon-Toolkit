@@ -3046,9 +3046,45 @@ app.use((err, _req, res, _next) => {
 });
 
 if (require.main === module) {
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
   });
+
+  const shutdown = (signal) => {
+    console.log(`[shutdown] ${signal} received, shutting down gracefully…`);
+
+    // Stop accepting new connections
+    server.close(() => {
+      console.log("[shutdown] HTTP server closed.");
+
+      // Close all active SSE streams cleanly
+      for (const [userId] of playerLiveSubscribersByUser) {
+        closePlayerLiveSubscribersForUser(userId);
+      }
+      for (const [scenarioId, subscribers] of scenarioMapSubscribersByScenario) {
+        for (const [, subscriber] of subscribers) {
+          clearInterval(subscriber.keepAliveTimer);
+          if (!subscriber.res.writableEnded) subscriber.res.end();
+        }
+        scenarioMapSubscribersByScenario.delete(scenarioId);
+      }
+
+      // Close SQLite — better-sqlite3 is synchronous, this is safe
+      db.close();
+      console.log("[shutdown] Database closed.");
+
+      process.exit(0);
+    });
+
+    // Force exit if graceful shutdown takes too long
+    setTimeout(() => {
+      console.error("[shutdown] Timeout — forcing exit.");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT",  () => shutdown("SIGINT"));
 }
 
 module.exports = { app };

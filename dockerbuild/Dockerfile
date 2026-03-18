@@ -1,23 +1,44 @@
-FROM node:25.8.1-alpine3.23
+# ===== Stage 1: Build =====
+FROM node:25.8.1-alpine3.23 AS builder
 
-# Build tools required to compile better-sqlite3 native addon
+# Install build tools
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Install dependencies (cached layer, only re-runs when package files change)
+# Copy package files and install dependencies
 COPY src/package*.json ./
-
-# Point node-gyp to local headers — avoids downloading from unofficial-builds.nodejs.org
 ENV npm_config_nodedir=/usr/local
+RUN npm ci --omit=dev
 
-RUN npm ci
-
-# Copy application source
+# Copy application code
 COPY src/ .
 
-# Persistent volume mount point for SQLite database
-RUN mkdir -p /app/data
+# ===== Stage 2: Production =====
+FROM node:25.8.1-alpine3.23
 
+WORKDIR /app
+
+RUN apk add --no-cache su-exec tini
+
+# Copy app from builder
+COPY --from=builder /app /app
+
+# Create dedicated non-root user
+RUN addgroup -g 1001 wdt-app && adduser -u 1001 -G wdt-app -S wdt-app
+
+# Copy entrypoint and make executable
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+
+# Expose port
 EXPOSE 3000
-CMD ["npm", "start"]
+
+# Optional: declare volume (won’t affect host-mounted volumes)
+VOLUME ["/app/data"]
+
+# Default command
+CMD ["node", "src/server.js"]
