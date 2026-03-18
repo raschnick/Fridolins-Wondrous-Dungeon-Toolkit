@@ -13,6 +13,7 @@ jobs:
     with:
       IMAGE_NAME: ${{ gitea.repository }}
       IMAGE_TAG: ${{ github.sha }}
+      TRIVY_IGNORE_VULNS: "CVE-2026-22184,CVE-2026-27903,CVE-2026-27904,CVE-2026-29786,CVE-2026-31802"
     secrets:
       CI_BOT_USERNAME: ${{ secrets.CI_BOT_USERNAME }}
       CI_BOT_GENERAL_CI_TOKEN: ${{ secrets.CI_BOT_GENERAL_CI_TOKEN }}

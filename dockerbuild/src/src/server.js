@@ -10,8 +10,10 @@ const port = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = "fwdt_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const STREAM_KEEPALIVE_MS = 15000;
-const DEFAULT_ADMIN_USERNAME = "fridolin";
-const DEFAULT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
+const DEFAULT_ADMIN_USERNAME =
+  process.env.WDT_ADMIN_USERNAME || "admin";
+const DEFAULT_ADMIN_PASSWORD =
+  process.env.WDT_ADMIN_PASSWORD || "admin";
 
 let nextStreamClientId = 1;
 const playerLiveSubscribersByUser = new Map();
@@ -3144,9 +3146,45 @@ app.use((err, _req, res, _next) => {
 });
 
 if (require.main === module) {
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
   });
+
+  const shutdown = (signal) => {
+    console.log(`[shutdown] ${signal} received, shutting down gracefully…`);
+
+    // Stop accepting new connections
+    server.close(() => {
+      console.log("[shutdown] HTTP server closed.");
+
+      // Close all active SSE streams cleanly
+      for (const [userId] of playerLiveSubscribersByUser) {
+        closePlayerLiveSubscribersForUser(userId);
+      }
+      for (const [scenarioId, subscribers] of scenarioMapSubscribersByScenario) {
+        for (const [, subscriber] of subscribers) {
+          clearInterval(subscriber.keepAliveTimer);
+          if (!subscriber.res.writableEnded) subscriber.res.end();
+        }
+        scenarioMapSubscribersByScenario.delete(scenarioId);
+      }
+
+      // Close SQLite — better-sqlite3 is synchronous, this is safe
+      db.close();
+      console.log("[shutdown] Database closed.");
+
+      process.exit(0);
+    });
+
+    // Force exit if graceful shutdown takes too long
+    setTimeout(() => {
+      console.error("[shutdown] Timeout — forcing exit.");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT",  () => shutdown("SIGINT"));
 }
 
 module.exports = { app };

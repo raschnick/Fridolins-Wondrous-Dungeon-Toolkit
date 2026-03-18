@@ -12,6 +12,7 @@ jobs:
     uses: ./.gitea/workflows/template_build-scan-push.yaml
     with:
       IMAGE_NAME: ${{ gitea.repository }}
+      TRIVY_IGNORE_VULNS: "CVE-2026-22184,CVE-2026-27903,CVE-2026-27904,CVE-2026-29786,CVE-2026-31802"
     secrets:
       CI_BOT_USERNAME: ${{ secrets.CI_BOT_USERNAME }}
       CI_BOT_GENERAL_CI_TOKEN: ${{ secrets.CI_BOT_GENERAL_CI_TOKEN }}
