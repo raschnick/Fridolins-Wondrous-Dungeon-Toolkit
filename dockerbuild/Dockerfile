@@ -7,12 +7,9 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Copy package files and install dependencies
-COPY src/package*.json ./
+COPY src/ ./
 ENV npm_config_nodedir=/usr/local
 RUN npm ci --omit=dev
-
-# Copy application code
-COPY src/ .
 
 # ===== Stage 2: Production =====
 FROM node:25.8.1-alpine3.23
