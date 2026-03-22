@@ -8,6 +8,8 @@ const { Readable, Duplex } = require("node:stream");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fwdt-combat-test-"));
 process.env.FWDT_DB_PATH = path.join(tempDir, "combat.integration.sqlite");
+process.env.WDT_ADMIN_USERNAME = "fridolin";
+process.env.WDT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
 
 const { app } = require("../src/server");
 
@@ -322,6 +324,8 @@ test("combat reset restores round, turn index, reactions, and legendary counts",
 });
 
 test.after(() => {
+  delete process.env.WDT_ADMIN_USERNAME;
+  delete process.env.WDT_ADMIN_PASSWORD;
   delete process.env.FWDT_DB_PATH;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

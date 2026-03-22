@@ -8,6 +8,8 @@ const { Readable, Duplex } = require("node:stream");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fwdt-auth-share-test-"));
 process.env.FWDT_DB_PATH = path.join(tempDir, "auth-share.integration.sqlite");
+process.env.WDT_ADMIN_USERNAME = "fridolin";
+process.env.WDT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
 
 const { app } = require("../src/server");
 
@@ -251,7 +253,60 @@ test("player live only returns shared encounters from assigned campaigns", async
   assert.equal(liveWithAssignedShare.json.shared.scenarioId, assigned.scenarios[0].id);
 });
 
+test("player live scene payload appears on share and clears on unshare", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const playerIdentity = await createPlayer(admin, `scene_${Date.now()}`);
+  const player = await login(playerIdentity.username, playerIdentity.password);
+
+  const { campaign } = await createCampaignAndScenarios(admin, 1);
+  const addMember = await admin.request("POST", `/api/campaigns/${campaign.id}/members`, {
+    userId: playerIdentity.id,
+    role: "player"
+  });
+  assert.equal(addMember.status, 204);
+
+  let response = await player.request("POST", "/api/users/me/active-campaign", {
+    campaignId: campaign.id
+  });
+  assert.equal(response.status, 204);
+
+  const createScene = await admin.request("POST", `/api/campaigns/${campaign.id}/scenes`, {
+    name: "Moonlit Alley",
+    imageData: "data:image/png;base64,scene"
+  });
+  assert.equal(createScene.status, 201);
+
+  const beforeShare = await player.request("GET", "/api/player/live");
+  assert.equal(beforeShare.status, 200);
+  assert.equal(beforeShare.json.scene, null);
+
+  response = await admin.request("POST", `/api/campaigns/${campaign.id}/scene/share`, {
+    sceneId: createScene.json.id
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.shared_scene_image_id, createScene.json.id);
+
+  const afterShare = await player.request("GET", "/api/player/live");
+  assert.equal(afterShare.status, 200);
+  assert.ok(afterShare.json.scene);
+  assert.equal(afterShare.json.scene.id, createScene.json.id);
+  assert.equal(afterShare.json.scene.name, "Moonlit Alley");
+  assert.equal(afterShare.json.scene.imageData, "data:image/png;base64,scene");
+
+  response = await admin.request("POST", `/api/campaigns/${campaign.id}/scene/share`, {
+    sceneId: null
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.shared_scene_image_id, null);
+
+  const afterUnshare = await player.request("GET", "/api/player/live");
+  assert.equal(afterUnshare.status, 200);
+  assert.equal(afterUnshare.json.scene, null);
+});
+
 test.after(() => {
+  delete process.env.WDT_ADMIN_USERNAME;
+  delete process.env.WDT_ADMIN_PASSWORD;
   delete process.env.FWDT_DB_PATH;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

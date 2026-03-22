@@ -8,6 +8,8 @@ const { Readable, Duplex } = require("node:stream");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fwdt-test-"));
 process.env.FWDT_DB_PATH = path.join(tempDir, "integration.sqlite");
+process.env.WDT_ADMIN_USERNAME = "fridolin";
+process.env.WDT_ADMIN_PASSWORD = "eeZ8Z2n7EkLe8OP0mN43";
 
 const { app } = require("../src/server");
 
@@ -718,7 +720,27 @@ test("player analytics access is limited to member campaigns", async () => {
   assert.match(deniedStats.json.error, /campaign access denied/i);
 });
 
+test("direct-load routes fall back to the app shell", async () => {
+  const anon = new HttpClient();
+  const routes = [
+    "/shop",
+    "/player/map",
+    "/campaigns/1",
+    "/campaigns/1/scenarios/5/map",
+    "/campaigns/1/scenarios/5/initiative"
+  ];
+
+  for (const route of routes) {
+    const response = await anon.request("GET", route);
+    assert.equal(response.status, 200, `expected 200 for ${route}`);
+    assert.match(response.text, /<title>Fridolins Wondrous Dungeon Toolkit<\/title>/i);
+    assert.match(response.text, /<script src="\/main\.js" defer><\/script>/i);
+  }
+});
+
 test.after(() => {
+  delete process.env.WDT_ADMIN_USERNAME;
+  delete process.env.WDT_ADMIN_PASSWORD;
   delete process.env.FWDT_DB_PATH;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

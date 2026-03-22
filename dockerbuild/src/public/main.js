@@ -208,6 +208,22 @@ const DICE_SKIN_CONFIG_BY_KEY = Object.fromEntries(
 const DICE_SHOP_REDIRECT_URL =
   "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ";
 const DICE_SHOP_OFFER_STORAGE_PREFIX = "diceShopOfferEndsAt:";
+const {
+  DICE_POOL_ORDER,
+  MAX_DICE_POOL_COUNT,
+  getDicePoolSegments: getDicePoolSegmentsBase,
+  getDicePoolTotalCount: getDicePoolTotalCountBase,
+  buildDicePoolNotation: buildDicePoolNotationBase,
+  formatDiceNotation: formatDiceNotationBase,
+  buildDiceEntry: buildDiceEntryBase,
+  addDieToPoolState: addDieToPoolStateBase,
+  resetDicePoolState: resetDicePoolStateBase,
+  getDiceSkinKey: getDiceSkinKeyBase,
+  resolveCurrentDiceSkinConfig: resolveCurrentDiceSkinConfigBase,
+  parseRoute: parseRouteBase,
+  routePathFor: routePathForBase,
+  deriveRunMapSyncSnapshot: deriveRunMapSyncSnapshotBase
+} = window.FWDTAppLogic;
 
 const els = {
   status: document.getElementById("status"),
@@ -1555,28 +1571,20 @@ function fallbackDiceRolls(count, sides) {
   return rolls;
 }
 
-const DICE_POOL_ORDER = [4, 6, 8, 10, 12, 20, 100];
-const MAX_DICE_POOL_COUNT = 20;
-
 function getDicePoolSegments(pool = state.dicePool) {
-  return DICE_POOL_ORDER.map((sides) => {
-    const count = Number(pool?.[sides]) || 0;
-    return { sides, count: Math.max(0, count) };
-  }).filter((segment) => segment.count > 0);
+  return getDicePoolSegmentsBase(pool);
 }
 
 function getDicePoolTotalCount(pool = state.dicePool) {
-  return getDicePoolSegments(pool).reduce((sum, segment) => sum + segment.count, 0);
+  return getDicePoolTotalCountBase(pool);
 }
 
 function buildDicePoolNotation(pool = state.dicePool) {
-  return getDicePoolSegments(pool)
-    .map((segment) => `${segment.count}d${segment.sides}`)
-    .join("+");
+  return buildDicePoolNotationBase(pool);
 }
 
 function formatDiceNotation(notation) {
-  return `${notation || ""}`.replace(/\+/g, " + ");
+  return formatDiceNotationBase(notation);
 }
 
 function fallbackDicePoolRolls(pool = state.dicePool) {
@@ -1588,45 +1596,32 @@ function fallbackDicePoolRolls(pool = state.dicePool) {
 }
 
 function resetDicePool({ shouldRender = true } = {}) {
-  state.dicePool = {};
+  state.dicePool = resetDicePoolStateBase();
   if (shouldRender) renderDiceOverlay();
 }
 
 function addDieToPool(sides) {
-  const normalizedSides = Number(sides);
-  if (!Number.isInteger(normalizedSides) || normalizedSides < 2) return;
-  const totalDice = getDicePoolTotalCount();
-  if (totalDice >= MAX_DICE_POOL_COUNT) {
-    setStatus(`Dice pool is limited to ${MAX_DICE_POOL_COUNT} dice.`, "error");
+  const next = addDieToPoolStateBase(state.dicePool, sides, MAX_DICE_POOL_COUNT);
+  if (!next.added) {
+    if (next.reason === "limit") {
+      setStatus(`Dice pool is limited to ${MAX_DICE_POOL_COUNT} dice.`, "error");
+    }
     return;
   }
-  state.dicePool = {
-    ...state.dicePool,
-    [normalizedSides]: (Number(state.dicePool?.[normalizedSides]) || 0) + 1
-  };
+  state.dicePool = next.pool;
   renderDiceOverlay();
 }
 
 function buildDiceEntry({ pool, rolls, total }) {
-  const notation = buildDicePoolNotation(pool);
-  const expression = formatDiceNotation(notation);
-  const segments = getDicePoolSegments(pool);
-  let rollIndex = 0;
-  const groupedBreakdown = segments.map((segment) => {
-    const segmentRolls = rolls.slice(rollIndex, rollIndex + segment.count);
-    rollIndex += segment.count;
-    return `${segment.count}d${segment.sides}: ${segmentRolls.join(", ")}`;
+  return buildDiceEntryBase({
+    pool,
+    rolls,
+    total
   });
-  return {
-    expression,
-    total,
-    breakdown: `${groupedBreakdown.join(" | ")} = ${total}`,
-    summary: `${expression}: ${total}`
-  };
 }
 
 function getDiceSkinKey(value) {
-  return DICE_SKIN_CONFIG_BY_KEY[value] ? value : "default";
+  return getDiceSkinKeyBase(value, DICE_SKIN_CONFIG_BY_KEY);
 }
 
 function getAvailableDiceSkinKeysForCurrentUser() {
@@ -1643,9 +1638,12 @@ function getAvailableDiceSkinKeysForCurrentUser() {
 }
 
 function getCurrentDiceSkinConfig() {
-  const storedSkin =
-    state.userSettings?.user?.diceSkin || state.authUser?.diceSkin || DICE_SKIN_OPTIONS[0].key;
-  return DICE_SKIN_CONFIG_BY_KEY[getDiceSkinKey(storedSkin)] || DICE_SKIN_OPTIONS[0];
+  return resolveCurrentDiceSkinConfigBase({
+    userSettingsUser: state.userSettings?.user || null,
+    authUser: state.authUser || null,
+    diceSkinOptions: DICE_SKIN_OPTIONS,
+    diceSkinConfigByKey: DICE_SKIN_CONFIG_BY_KEY
+  });
 }
 
 async function saveDiceSkinPreference(diceSkin) {
@@ -2042,101 +2040,11 @@ function playerAvatarFallbackSrc(username = "") {
 }
 
 function parseRoute(pathname) {
-  const path = normalizePathname(pathname);
-  if (path === "/login") return { page: "login" };
-  if (path === "/settings") return { page: "settings" };
-  if (path === "/shop") return { page: "dice-shop" };
-  if (path === "/player" || path === "/player/initiative") {
-    return { page: "player-home", playerMode: "initiative" };
-  }
-  if (path === "/player/map") return { page: "player-home", playerMode: "map" };
-  if (path === "/player/scene") return { page: "player-home", playerMode: "scene" };
-  if (path === "/") return { page: "welcome" };
-  if (path === "/library") return { page: "monsters" };
-  if (path === "/monsters") return { page: "monsters" };
-  if (path === "/admin") return { page: "admin" };
-  if (path === "/analytics") return { page: "analytics" };
-
-  let match = path.match(/^\/campaigns\/(\d+)$/);
-  if (match) {
-    return { page: "campaign", campaignId: Number(match[1]) };
-  }
-
-  match = path.match(/^\/campaigns\/(\d+)\/completed$/);
-  if (match) {
-    return { page: "campaign-completed", campaignId: Number(match[1]) };
-  }
-
-  match = path.match(/^\/campaigns\/(\d+)\/scene$/);
-  if (match) {
-    return { page: "campaign-scene", campaignId: Number(match[1]) };
-  }
-
-  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|initiative|map|run)$/);
-  if (match) {
-    const mode = match[3];
-    return {
-      page:
-        mode === "initiative" || mode === "run"
-          ? "scenario-run"
-          : mode === "map"
-            ? "scenario-map"
-            : "scenario-edit",
-      campaignId: Number(match[1]),
-      scenarioId: Number(match[2])
-    };
-  }
-
-  match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/completed\/edit$/);
-  if (match) {
-    return {
-      page: "scenario-completed-edit",
-      campaignId: Number(match[1]),
-      scenarioId: Number(match[2])
-    };
-  }
-  return null;
+  return parseRouteBase(pathname);
 }
 
 function routePathFor(page, campaignId = null, scenarioId = null, playerMode = null) {
-  if (page === "login") return "/login";
-  if (page === "player-home") {
-    if (playerMode === "map") return "/player/map";
-    if (playerMode === "scene") return "/player/scene";
-    return "/player/initiative";
-  }
-  if (page === "settings") return "/settings";
-  if (page === "dice-shop") return "/shop";
-  if (page === "welcome") return "/";
-  if (page === "monsters") return "/library";
-  if (page === "admin") return "/admin";
-  if (page === "analytics") return "/analytics";
-  if (page === "campaign" && Number.isInteger(campaignId)) {
-    return `/campaigns/${campaignId}`;
-  }
-  if (page === "campaign-completed" && Number.isInteger(campaignId)) {
-    return `/campaigns/${campaignId}/completed`;
-  }
-  if (page === "campaign-scene" && Number.isInteger(campaignId)) {
-    return `/campaigns/${campaignId}/scene`;
-  }
-  if (
-    (
-      page === "scenario-edit" ||
-      page === "scenario-run" ||
-      page === "scenario-map" ||
-      page === "scenario-completed-edit"
-    ) &&
-    Number.isInteger(campaignId) &&
-    Number.isInteger(scenarioId)
-  ) {
-    if (page === "scenario-completed-edit") {
-      return `/campaigns/${campaignId}/scenarios/${scenarioId}/completed/edit`;
-    }
-    const mode = page === "scenario-run" ? "initiative" : page === "scenario-map" ? "map" : "edit";
-    return `/campaigns/${campaignId}/scenarios/${scenarioId}/${mode}`;
-  }
-  return "/";
+  return routePathForBase(page, campaignId, scenarioId, playerMode);
 }
 
 async function syncHistory(path, { replace = false } = {}) {
@@ -6315,23 +6223,19 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
   if (!Number.isInteger(scenarioId)) return;
   const current = state.scenarios.find((scenario) => scenario.id === scenarioId);
   if (!current) return;
-  const nextMapTokensJson = `${snapshot?.mapTokensJson ?? snapshot?.map_tokens_json ?? ""}`;
-  const nextTokenSizeRaw = Number(snapshot?.mapTokenSize ?? snapshot?.map_token_size);
-  const nextMapFogRaw =
-    snapshot?.mapFogData ??
-    snapshot?.map_fog_data ??
-    current.map_fog_data ??
-    "";
-  const nextMapFogData = `${nextMapFogRaw || ""}`;
-  const nextMapLastPingJson = `${snapshot?.mapLastPingJson ?? snapshot?.map_last_ping_json ?? current.map_last_ping_json ?? ""}`;
-  const nextTokenSize = Number.isFinite(nextTokenSizeRaw)
-    ? clamp(Math.round(nextTokenSizeRaw), 24, 128)
-    : scenarioMapTokenSize(current);
-  const tokensChanged = `${current.map_tokens_json || ""}` !== nextMapTokensJson;
-  const tokenSizeChanged = scenarioMapTokenSize(current) !== nextTokenSize;
-  const fogChanged = `${current.map_fog_data || ""}` !== nextMapFogData;
-  const pingChanged = `${current.map_last_ping_json || ""}` !== nextMapLastPingJson;
-  if (!tokensChanged && !tokenSizeChanged && !fogChanged && !pingChanged && !force) return;
+  const next = deriveRunMapSyncSnapshotBase(current, snapshot);
+  if (!next) return;
+  const {
+    nextMapTokensJson,
+    nextTokenSize,
+    nextMapFogData,
+    nextMapLastPingJson,
+    tokensChanged,
+    tokenSizeChanged,
+    fogChanged,
+    pingChanged
+  } = next;
+  if (!next.changed && !force) return;
 
   state.scenarios = state.scenarios.map((scenario) =>
     scenario.id === scenarioId
