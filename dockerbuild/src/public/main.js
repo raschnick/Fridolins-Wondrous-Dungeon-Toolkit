@@ -8422,6 +8422,12 @@ function bindEvents() {
   }
 
   if (els.runMapViewport) {
+    els.runMapViewport.addEventListener("selectstart", (event) => {
+      event.preventDefault();
+    });
+    els.runMapViewport.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
     els.runMapViewport.addEventListener(
       "wheel",
       (event) => {
@@ -8577,6 +8583,12 @@ function bindEvents() {
   }
 
   if (els.playerMapViewport) {
+    els.playerMapViewport.addEventListener("selectstart", (event) => {
+      event.preventDefault();
+    });
+    els.playerMapViewport.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
     els.playerMapViewport.addEventListener(
       "wheel",
       (event) => {

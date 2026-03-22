@@ -1468,6 +1468,9 @@ body.page-player #playerLiveWrap {
   background: #0d1420;
   cursor: grab;
   touch-action: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 #runMapViewport.is-dragging {
@@ -1685,6 +1688,9 @@ body.page-player #playerLiveWrap {
   position: absolute;
   top: 0;
   left: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 .run-map-fog-layer {
@@ -1704,6 +1710,9 @@ body.page-player #playerLiveWrap {
   position: absolute;
   inset: 0;
   z-index: 3;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 #runMapPings,
@@ -1894,7 +1903,10 @@ body.page-player #playerLiveWrap {
   max-height: none;
   border: none;
   border-radius: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
   user-select: none;
+  -webkit-user-drag: none;
   pointer-events: none;
   object-fit: unset;
 }
@@ -3349,6 +3361,9 @@ li.turn-active.map-token-hover-linked {
   background: #0d1420;
   cursor: grab;
   touch-action: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 .player-map-viewport.is-dragging {
@@ -3359,6 +3374,9 @@ li.turn-active.map-token-hover-linked {
   position: absolute;
   top: 0;
   left: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 .player-map-fog-layer {
@@ -3387,6 +3405,10 @@ li.turn-active.map-token-hover-linked {
   max-height: none;
   border: none;
   border-radius: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
   object-fit: unset;
   pointer-events: none;
 }
@@ -3395,6 +3417,9 @@ li.turn-active.map-token-hover-linked {
   position: absolute;
   inset: 0;
   z-index: 3;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 .player-map-token {
