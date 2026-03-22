@@ -2863,8 +2863,38 @@ li.turn-active.map-token-hover-linked {
   margin-bottom: 0.75rem;
 }
 
+.settings-dice-skin-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 20rem) minmax(13rem, 15rem);
+  gap: 1rem 1.2rem;
+  align-items: start;
+  justify-content: start;
+  max-width: 38rem;
+  min-height: 18rem;
+}
+
+.settings-dice-skin-controls {
+  min-width: 0;
+}
+
 #settingsDiceSkinSection .row {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.settings-dice-skin-preview-block {
+  margin-bottom: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+#settingsDiceSkinPreview {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #settingsProfileSection .row {
@@ -2984,6 +3014,28 @@ li.turn-active.map-token-hover-linked {
   object-fit: contain;
   object-position: center;
   border-radius: 0.7rem;
+}
+
+.dice-shop-preview.settings-dice-skin-preview-card {
+  max-width: 15rem;
+  min-height: 11.5rem;
+  padding: 0.65rem;
+  align-items: center;
+}
+
+.dice-shop-preview.settings-dice-skin-preview-card .dice-shop-preview-image {
+  width: min(88%, 180px);
+}
+
+@media (max-width: 760px) {
+  .settings-dice-skin-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .dice-shop-preview.settings-dice-skin-preview-card {
+    max-width: 100%;
+  }
 }
 
 .dice-shop-banner-slot {

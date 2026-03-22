@@ -190,12 +190,19 @@
               Get more Dice Skins!
             </button>
           </div>
-          <label for="settingsDiceSkinSelect">Skin</label>
-          <div class="row">
-            <select id="settingsDiceSkinSelect"></select>
-            <button id="saveSettingsDiceSkinBtn" type="button">Save Skin</button>
+          <div class="settings-dice-skin-layout">
+            <div class="settings-dice-skin-controls">
+              <label for="settingsDiceSkinSelect">Skin</label>
+              <div class="row">
+                <select id="settingsDiceSkinSelect"></select>
+                <button id="saveSettingsDiceSkinBtn" type="button">Save Skin</button>
+              </div>
+              <p id="settingsDiceSkinHint" class="hint">Used for your local 3D dice rolls.</p>
+            </div>
+            <div class="settings-dice-skin-preview-block">
+              <div id="settingsDiceSkinPreview"></div>
+            </div>
           </div>
-          <p id="settingsDiceSkinHint" class="hint">Used for your local 3D dice rolls.</p>
         </section>
         <section id="settingsPasswordSection" class="subpanel">
           <h3>Change Password</h3>

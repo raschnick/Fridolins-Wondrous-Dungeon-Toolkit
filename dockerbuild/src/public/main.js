@@ -297,6 +297,7 @@ const els = {
   saveSettingsActiveCampaignBtn: document.getElementById("saveSettingsActiveCampaignBtn"),
   settingsDiceSkinSelect: document.getElementById("settingsDiceSkinSelect"),
   settingsDiceSkinHint: document.getElementById("settingsDiceSkinHint"),
+  settingsDiceSkinPreview: document.getElementById("settingsDiceSkinPreview"),
   settingsDiceShopBtn: document.getElementById("settingsDiceShopBtn"),
   saveSettingsDiceSkinBtn: document.getElementById("saveSettingsDiceSkinBtn"),
   settingsNewPasswordInput: document.getElementById("settingsNewPasswordInput"),
@@ -5661,6 +5662,13 @@ function renderSettingsPage() {
     if (els.settingsDiceShopBtn) {
       els.settingsDiceShopBtn.classList.remove("hidden");
     }
+  }
+  if (els.settingsDiceSkinPreview) {
+    const currentSkin = getCurrentDiceSkinConfig();
+    els.settingsDiceSkinPreview.innerHTML = "";
+    const preview = createDiceShopPreview(currentSkin);
+    preview.classList.add("settings-dice-skin-preview-card");
+    els.settingsDiceSkinPreview.appendChild(preview);
   }
   if (els.settingsNewPasswordInput) els.settingsNewPasswordInput.value = "";
   if (els.settingsConfirmPasswordInput) els.settingsConfirmPasswordInput.value = "";
