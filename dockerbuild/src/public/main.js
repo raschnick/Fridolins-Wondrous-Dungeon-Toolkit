@@ -6319,12 +6319,11 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
   const nextTokenSize = Number.isFinite(nextTokenSizeRaw)
     ? clamp(Math.round(nextTokenSizeRaw), 24, 128)
     : scenarioMapTokenSize(current);
-  const changed =
-    `${current.map_tokens_json || ""}` !== nextMapTokensJson ||
-    scenarioMapTokenSize(current) !== nextTokenSize ||
-    `${current.map_fog_data || ""}` !== nextMapFogData ||
-    `${current.map_last_ping_json || ""}` !== nextMapLastPingJson;
-  if (!changed && !force) return;
+  const tokensChanged = `${current.map_tokens_json || ""}` !== nextMapTokensJson;
+  const tokenSizeChanged = scenarioMapTokenSize(current) !== nextTokenSize;
+  const fogChanged = `${current.map_fog_data || ""}` !== nextMapFogData;
+  const pingChanged = `${current.map_last_ping_json || ""}` !== nextMapLastPingJson;
+  if (!tokensChanged && !tokenSizeChanged && !fogChanged && !pingChanged && !force) return;
 
   state.scenarios = state.scenarios.map((scenario) =>
     scenario.id === scenarioId
@@ -6337,17 +6336,33 @@ function applyRunMapSyncSnapshot(snapshot, { force = false } = {}) {
       }
       : scenario
   );
-  state.runMap.fogDataByScenario[scenarioId] = nextMapFogData;
-  delete state.runMap.tokensByScenario[scenarioId];
   const refreshed = selectedScenario();
   if (!refreshed || state.page !== "scenario-map") return;
-  hydrateRunMapTokensFromScenario(refreshed);
-  setRunMapTokenSizeUI(scenarioMapTokenSize(refreshed));
-  state.runMap.fogCanvasLoadedScenarioId = null;
-  state.runMap.fogCanvasLoadedKey = null;
-  ensureRunMapFogCanvasFromScenario(refreshed);
-  renderRunMapTokens(scenarioId, state.combat.combatants);
-  maybeShowRunMapPing(nextMapLastPingJson);
+
+  if (tokensChanged) {
+    delete state.runMap.tokensByScenario[scenarioId];
+    hydrateRunMapTokensFromScenario(refreshed);
+  }
+
+  if (tokenSizeChanged) {
+    setRunMapTokenSizeUI(scenarioMapTokenSize(refreshed));
+  }
+
+  if (fogChanged) {
+    state.runMap.fogDataByScenario[scenarioId] = nextMapFogData;
+    state.runMap.fogCanvasLoadedScenarioId = null;
+    state.runMap.fogCanvasLoadedKey = null;
+    ensureRunMapFogCanvasFromScenario(refreshed);
+  }
+
+  if (tokensChanged || tokenSizeChanged || force) {
+    renderRunMapTokens(scenarioId, state.combat.combatants);
+  }
+
+  if (pingChanged || force) {
+    maybeShowRunMapPing(nextMapLastPingJson);
+  }
+
   applyRunMapTransform();
 }
 
