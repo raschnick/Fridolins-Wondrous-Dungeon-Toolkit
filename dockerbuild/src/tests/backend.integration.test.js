@@ -734,7 +734,7 @@ test("direct-load routes fall back to the app shell", async () => {
     const response = await anon.request("GET", route);
     assert.equal(response.status, 200, `expected 200 for ${route}`);
     assert.match(response.text, /<title>Fridolins Wondrous Dungeon Toolkit<\/title>/i);
-    assert.match(response.text, /<script src="\/main\.js" defer><\/script>/i);
+    assert.match(response.text, /<script src="\/js\/main\.js" defer><\/script>/i);
   }
 });
 

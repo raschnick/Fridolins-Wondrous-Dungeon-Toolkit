@@ -1,0 +1,136 @@
+.campaign-action-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 9, 14, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 950;
+  padding: 1.5rem;
+}
+
+.campaign-action-dialog {
+  width: min(560px, calc(100vw - 2rem));
+  margin: 0;
+  border-color: #3a495c;
+}
+
+.campaign-action-head {
+  margin-bottom: 0.8rem;
+}
+
+.campaign-action-head h3 {
+  margin: 0;
+}
+
+.image-modal-close {
+  position: fixed;
+  top: 1.2rem;
+  right: 1.2rem;
+}
+
+.image-modal-img {
+  max-width: min(96vw, 1400px);
+  max-height: 92vh;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0f141c;
+}
+
+.hint {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.app-footer-logo-wrap {
+  margin-top: 1.2rem;
+  padding-top: 0.6rem;
+  display: flex;
+  justify-content: center;
+}
+
+.app-footer-logo {
+  width: min(26vw, 180px);
+  max-width: 100%;
+  height: auto;
+  opacity: 0.86;
+}
+
+#playerLiveMapWrap {
+  margin-bottom: 0.2rem;
+}
+
+#playerLiveSceneWrap {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.player-live-scene-image {
+  width: 100%;
+  max-height: calc(100vh - 18rem);
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.scene-view-grid {
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.5fr);
+}
+
+.scene-preview-image {
+  width: 100%;
+  max-height: calc(100vh - 22rem);
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.scene-upload-preview {
+  width: 100%;
+  max-height: 13rem;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+#sceneList .list-row {
+  justify-content: space-between;
+  align-items: center;
+}
+
+#playerLiveWrap.player-map-mode {
+  display: grid;
+  grid-template-columns: minmax(240px, 25%) minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "initiative map";
+  column-gap: 0.75rem;
+  row-gap: 0.55rem;
+}
+
+#playerLiveWrap.player-map-mode > .row.between {
+  grid-area: header;
+}
+
+#playerLiveInitiativeWrap {
+  min-width: 0;
+}
+
+#playerLiveWrap.player-map-mode #playerLiveInitiativeWrap {
+  grid-area: initiative;
+  position: relative;
+  z-index: 6;
+  max-height: calc(100vh - 20rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#playerLiveWrap.player-map-mode #playerLiveMapWrap {
+  grid-area: map;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+

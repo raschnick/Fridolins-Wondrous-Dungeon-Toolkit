@@ -12,7 +12,15 @@ const {
   parseRoute,
   resetDicePoolState,
   routePathFor
-} = require("../public/app-logic.js");
+} = require("../public/js/core/app-logic.js");
+const { createApiClient } = require("../public/js/controllers/api-client.js");
+const { createCombatUiController } = require("../public/js/controllers/combat-ui-controller.js");
+const { createRoutingController } = require("../public/js/controllers/routing-controller.js");
+const { createLibraryPageController } = require("../public/js/pages/library-page.js");
+const { createCampaignPageController } = require("../public/js/pages/campaign-page.js");
+const { createScenarioEditPageController } = require("../public/js/pages/scenario-edit-page.js");
+const { createPlayerLivePageController } = require("../public/js/pages/player-live-page.js");
+const { createScenarioRunPageController } = require("../public/js/pages/scenario-run-page.js");
 
 const DICE_SKIN_OPTIONS = [
   {
@@ -31,6 +39,80 @@ const DICE_SKIN_OPTIONS = [
     previewImageUrl: "/images/obsidian_preview.png"
   }
 ];
+
+function createScenarioRunShortcutHarness(overrides = {}) {
+  const calls = [];
+  const state = {
+    page: "scenario-map",
+    authUser: { role: "admin" },
+    selectedCampaignId: 7,
+    selectedScenarioId: 11,
+    runMap: { fogMode: "navigate", pingMode: false, hoverCombatantId: null },
+    playerMap: { hoverCombatantId: null },
+    combat: { combatants: [], activeCombatantId: null },
+    ...overrides.state
+  };
+  const selectedScenarioValue =
+    overrides.selectedScenario || { id: state.selectedScenarioId, is_completed: 0 };
+
+  const controller = createScenarioRunPageController({
+    state,
+    els: {
+      nextTurnBtn: { disabled: false },
+      revokeTurnBtn: { disabled: false },
+      runOrderList: null,
+      playerLiveCombatantList: null,
+      ...overrides.els
+    },
+    api: overrides.api || (async () => ({})),
+    setStatus: overrides.setStatus || ((message) => calls.push(["status", message])),
+    selectedScenario: overrides.selectedScenarioFn || (() => selectedScenarioValue),
+    isAllyCombatant: overrides.isAllyCombatant || (() => false),
+    scenarioMapTokenSize: overrides.scenarioMapTokenSize || (() => 44),
+    hydrateRunMapTokensFromScenario: overrides.hydrateRunMapTokensFromScenario || (() => {}),
+    startRunMapSyncPolling: overrides.startRunMapSyncPolling || (() => {}),
+    stopRunMapSyncPolling: overrides.stopRunMapSyncPolling || (() => {}),
+    setRunMapTokenSizeUI: overrides.setRunMapTokenSizeUI || (() => {}),
+    setRunMapDragLockUi: overrides.setRunMapDragLockUi || (() => {}),
+    ensureRunMapFogCanvasFromScenario: overrides.ensureRunMapFogCanvasFromScenario || (() => {}),
+    resetRunMapViewForScenario: overrides.resetRunMapViewForScenario || (() => {}),
+    maybeShowRunMapPing: overrides.maybeShowRunMapPing || (() => {}),
+    applyRunMapTransform: overrides.applyRunMapTransform || (() => {}),
+    hideRunMapFogCursorPreview: overrides.hideRunMapFogCursorPreview || (() => {}),
+    clearRunMapFogCanvas: overrides.clearRunMapFogCanvas || (() => {}),
+    navigateToPage: overrides.navigateToPage || (async (...args) => {
+      calls.push(["navigate", ...args]);
+    }),
+    createCombatantNameElement: overrides.createCombatantNameElement || (() => null),
+    hasRevealMoment: overrides.hasRevealMoment || (() => false),
+    createPlayerVisibilityToggle: overrides.createPlayerVisibilityToggle || (() => null),
+    createConditionSelect: overrides.createConditionSelect || (() => null),
+    setupRunQuickEditInput: overrides.setupRunQuickEditInput || (() => {}),
+    attachInitiativeBlurUpdate: overrides.attachInitiativeBlurUpdate || (() => {}),
+    attachEnemyHpBlurUpdate: overrides.attachEnemyHpBlurUpdate || (() => {}),
+    applyConditionStyle: overrides.applyConditionStyle || (() => {}),
+    safeLoadCombatState: overrides.safeLoadCombatState || (async () => {}),
+    getScenarioTokenPositions: overrides.getScenarioTokenPositions || (() => ({})),
+    mapNaturalSize: overrides.mapNaturalSize || (() => ({ width: 1000, height: 1000 })),
+    ensureMapTokensForCombatants: overrides.ensureMapTokensForCombatants || (() => {}),
+    fadeOutAndRemoveToken: overrides.fadeOutAndRemoveToken || (() => {}),
+    clamp: overrides.clamp || ((value) => value),
+    combatantTokenSizeScale: overrides.combatantTokenSizeScale || (() => 1),
+    isSameCombatantId: overrides.isSameCombatantId || ((left, right) => left === right),
+    combatantUsesPortraitToken: overrides.combatantUsesPortraitToken || (() => false),
+    combatantIconFallbackSrc: overrides.combatantIconFallbackSrc || (() => ""),
+    combatantTokenIconSrc: overrides.combatantTokenIconSrc || (() => ""),
+    hideMapStatblockHover: overrides.hideMapStatblockHover || (() => calls.push(["hideHover"])),
+    showMapStatblockHover: overrides.showMapStatblockHover || (() => {}),
+    openImageModal: overrides.openImageModal || (() => {}),
+    maybeCelebrateEncounterWin: overrides.maybeCelebrateEncounterWin || (() => {}),
+    setRunMapFogMode: overrides.setRunMapFogMode || ((mode) => calls.push(["fog", mode])),
+    setRunMapPingModeUi: overrides.setRunMapPingModeUi || ((enabled) => calls.push(["ping", enabled])),
+    windowRef: overrides.windowRef || { confirm: () => true, requestAnimationFrame: () => {} }
+  });
+
+  return { controller, calls, state };
+}
 
 test("run map sync snapshot does not flag fog changes when only token positions update", () => {
   const current = {
@@ -120,4 +202,132 @@ test("route helpers parse and rebuild key deep links", () => {
   assert.equal(routePathFor("player-home", null, null, "map"), "/player/map");
   assert.equal(routePathFor("scenario-run", 7, 11), "/campaigns/7/scenarios/11/initiative");
   assert.equal(routePathFor("dice-shop"), "/shop");
+});
+
+test("api client clears auth and invokes callback on 401 outside login", async () => {
+  const state = { authUser: { id: 1, username: "fridolin" } };
+  let callbackCount = 0;
+  const { api } = createApiClient({
+    state,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: "Nope." })
+    }),
+    onAuthRequired: () => {
+      callbackCount += 1;
+    },
+    isLoginPath: (path) => path === "/api/auth/login"
+  });
+
+  await assert.rejects(api("/api/campaigns"));
+  assert.equal(state.authUser, null);
+  assert.equal(callbackCount, 1);
+});
+
+test("routing controller loads settings view and syncs history", async () => {
+  const state = {
+    authUser: { id: 1, role: "admin" },
+    campaigns: [],
+    scenarios: [],
+    characters: [],
+    selectedCampaignId: null,
+    selectedScenarioId: null,
+    analyticsSelectedCampaignId: null
+  };
+  const calls = [];
+  const historyRef = {
+    replaceState: (_state, _title, path) => calls.push(`replace:${path}`),
+    pushState: (_state, _title, path) => calls.push(`push:${path}`)
+  };
+  const locationRef = { pathname: "/settings" };
+
+  const controller = createRoutingController({
+    state,
+    parseRouteBase: parseRoute,
+    routePathForBase: routePathFor,
+    historyRef,
+    locationRef,
+    setStatus: (message) => calls.push(`status:${message}`),
+    showPage: (page) => calls.push(`page:${page}`),
+    loadMonsters: async () => calls.push("loadMonsters"),
+    loadUserSettings: async () => calls.push("loadUserSettings"),
+    renderSettingsPage: () => calls.push("renderSettingsPage"),
+    renderDiceShopPage: () => calls.push("renderDiceShopPage"),
+    loadPlayerLive: async () => calls.push("loadPlayerLive"),
+    startPlayerLivePolling: () => calls.push("startPlayerLivePolling"),
+    loadCampaigns: async () => calls.push("loadCampaigns"),
+    setAnalyticsCampaign: async () => calls.push("setAnalyticsCampaign"),
+    renderAnalyticsPage: () => calls.push("renderAnalyticsPage"),
+    loadAdminData: async () => calls.push("loadAdminData"),
+    renderAdminPage: () => calls.push("renderAdminPage"),
+    stopPlayerLivePolling: () => calls.push("stopPlayerLivePolling"),
+    safeLoadCombatState: async () => calls.push("safeLoadCombatState"),
+    loadCampaignData: async () => calls.push("loadCampaignData"),
+    renderCompletedScenariosPage: () => calls.push("renderCompletedScenariosPage"),
+    loadSceneImages: async () => calls.push("loadSceneImages"),
+    renderScenePage: () => calls.push("renderScenePage"),
+    selectedScenario: () => null,
+    focusPreviewOnActiveNonPc: () => calls.push("focusPreviewOnActiveNonPc"),
+    renderScenarioRunPage: () => calls.push("renderScenarioRunPage"),
+    renderScenarioCompletedEditPage: () => calls.push("renderScenarioCompletedEditPage"),
+    renderScenarioEditPage: () => calls.push("renderScenarioEditPage")
+  });
+
+  await controller.navigateToPath("/settings", { replace: true });
+
+  assert.deepEqual(calls, [
+    "loadUserSettings",
+    "renderSettingsPage",
+    "page:settings",
+    "replace:/settings"
+  ]);
+});
+
+test("scenario run shortcut handler toggles fog mode in DM map view", () => {
+  const { controller, calls } = createScenarioRunShortcutHarness();
+  let prevented = false;
+
+  const handled = controller.handleKeyboardShortcut({
+    key: "f",
+    preventDefault: () => {
+      prevented = true;
+    }
+  });
+
+  assert.equal(handled, true);
+  assert.equal(prevented, true);
+  assert.deepEqual(calls, [["fog", "paint"]]);
+});
+
+test("scenario run shortcut handler routes edit shortcut from scenario edit to map view", async () => {
+  const { controller, calls } = createScenarioRunShortcutHarness({
+    state: { page: "scenario-edit" }
+  });
+  let prevented = false;
+
+  const handled = controller.handleKeyboardShortcut({
+    key: "e",
+    preventDefault: () => {
+      prevented = true;
+    }
+  });
+  await Promise.resolve();
+
+  assert.equal(handled, true);
+  assert.equal(prevented, true);
+  assert.deepEqual(calls, [[
+    "navigate",
+    "scenario-map",
+    { campaignId: 7, scenarioId: 11 }
+  ]]);
+});
+
+test("page-specific controller modules export controller factories", () => {
+  assert.equal(typeof createCombatUiController, "function");
+  assert.equal(typeof createLibraryPageController, "function");
+  assert.equal(typeof createCampaignPageController, "function");
+  assert.equal(typeof createScenarioEditPageController, "function");
+  assert.equal(typeof createPlayerLivePageController, "function");
+  assert.equal(typeof createScenarioRunPageController, "function");
 });

@@ -691,27 +691,6 @@ const CONDITIONS = [
 
 const CONDITION_BY_KEY = Object.fromEntries(CONDITIONS.map((c) => [c.key, c]));
 
-async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Request failed." }));
-    const error = new Error(err.error || "Request failed.");
-    error.status = res.status;
-    if (res.status === 401) error.code = "AUTH_REQUIRED";
-    if (res.status === 401 && path !== "/api/auth/login") {
-      state.authUser = null;
-      setLoginStatus("Please sign in.");
-      showPage("login");
-    }
-    throw error;
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
 function inferStatusType(message = "") {
   const text = `${message || ""}`.trim().toLowerCase();
   if (!text) return "info";
@@ -813,194 +792,6 @@ function closeUserMenuPopover() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
-}
-
-let conditionTooltipEl = null;
-let conditionTooltipChip = null;
-const CONDITION_TOOLTIP_NO_LEAD_STYLE = new Set(["down", "concentrated"]);
-const PLAYER_TURN_RESOURCE_TIPS = {
-  action: `Possible Actions include:
-
-Attack: Attack with a weapon or an Unarmed Strike.
-
-Dash: For the rest of the turn, give yourself extra movement equal to your Speed.
-
-Disengage: Your movement doesn't provoke Opportunity Attack for the rest of the turn.
-
-Dodge: Until the start of your next turn, attack rolls against you have Disadvantage, and you make Dexterity saving throws with Advantage. You lose this benefit if you have the Incapacitated condition or if your Speed is 0.
-
-Help: Help another creature's ability check or attack roll, or administer first aid.
-
-Hide: Make a Dexterity (Stealth) check.
-
-Magic: Cast a spell, use a magic item, or use a magical feature.
-
-Ready Action: Prepare to take an action in response to a trigger you define.
-
-Player characters and monsters can also do things not covered by these actions. Many class features and other abilities provide additional action options, and you can improvise other actions.`,
-  bonus: `Various class features, spells, and other abilities let you take an additional action on your turn called a Bonus Action. You can take a Bonus Action only when a special ability, a spell, or another feature of the game states that you can do something as a Bonus Action. You otherwise don't have a Bonus Action to take.
-
-You can take only one Bonus Action on your turn, so you must choose which Bonus Action to use if you have more than one available.`,
-  movement: `On your turn, you can move a distance up to your speed. You can use as much or as little of your speed as you like on your turn or also break up your movement between actions or bonus actions.`
-};
-let mapStatblockHoverEl = null;
-
-function ensureConditionTooltipEl() {
-  if (conditionTooltipEl) return conditionTooltipEl;
-  conditionTooltipEl = document.createElement("div");
-  conditionTooltipEl.className = "condition-tooltip-floating hidden";
-  document.body.appendChild(conditionTooltipEl);
-  return conditionTooltipEl;
-}
-
-function hideConditionTooltip() {
-  if (!conditionTooltipEl) return;
-  conditionTooltipEl.classList.add("hidden");
-  conditionTooltipChip = null;
-}
-
-function ensureMapStatblockHoverEl() {
-  if (mapStatblockHoverEl) return mapStatblockHoverEl;
-  mapStatblockHoverEl = document.createElement("div");
-  mapStatblockHoverEl.className = "map-statblock-hover hidden";
-  const image = document.createElement("img");
-  image.alt = "Statblock preview";
-  mapStatblockHoverEl.appendChild(image);
-  document.body.appendChild(mapStatblockHoverEl);
-  return mapStatblockHoverEl;
-}
-
-function hideMapStatblockHover() {
-  if (!mapStatblockHoverEl) return;
-  mapStatblockHoverEl.classList.add("hidden");
-  const image = mapStatblockHoverEl.querySelector("img");
-  if (image) image.src = "";
-}
-
-function showMapStatblockHover(src, anchorEl) {
-  if (!src || !anchorEl) return;
-  const popup = ensureMapStatblockHoverEl();
-  const image = popup.querySelector("img");
-  if (!image) return;
-  image.src = src;
-  popup.classList.remove("hidden");
-
-  const anchorRect = anchorEl.getBoundingClientRect();
-  const margin = 10;
-  const desiredWidth = 1040;
-  const maxWidth = Math.min(desiredWidth, window.innerWidth - margin * 2);
-  popup.style.width = `${maxWidth}px`;
-
-  const popupRect = popup.getBoundingClientRect();
-  let left = anchorRect.right + margin;
-  if (left + popupRect.width > window.innerWidth - margin) {
-    left = anchorRect.left - popupRect.width - margin;
-  }
-  if (left < margin) left = margin;
-
-  let top = anchorRect.top;
-  if (top + popupRect.height > window.innerHeight - margin) {
-    top = window.innerHeight - popupRect.height - margin;
-  }
-  if (top < margin) top = margin;
-
-  popup.style.left = `${Math.round(left)}px`;
-  popup.style.top = `${Math.round(top)}px`;
-}
-
-function positionConditionTooltip(chip) {
-  if (!conditionTooltipEl || conditionTooltipEl.classList.contains("hidden")) return;
-  const chipRect = chip.getBoundingClientRect();
-  const tooltipRect = conditionTooltipEl.getBoundingClientRect();
-  const gap = 8;
-  const margin = 8;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  let left = chipRect.left;
-  if (left + tooltipRect.width > viewportWidth - margin) {
-    left = viewportWidth - tooltipRect.width - margin;
-  }
-  if (left < margin) left = margin;
-
-  let top = chipRect.bottom + gap;
-  if (top + tooltipRect.height > viewportHeight - margin) {
-    top = chipRect.top - tooltipRect.height - gap;
-  }
-  if (top < margin) top = margin;
-
-  conditionTooltipEl.style.left = `${Math.round(left)}px`;
-  conditionTooltipEl.style.top = `${Math.round(top)}px`;
-}
-
-function renderConditionTooltipContent(tooltip, tip, options = {}) {
-  const emphasizeLead = options.emphasizeLead !== false;
-  const tipStyle = `${options.tipStyle || ""}`.trim().toLowerCase();
-  tooltip.replaceChildren();
-  const paragraphs = `${tip || ""}`
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  for (const paragraph of paragraphs) {
-    const line = document.createElement("p");
-    line.className = "condition-tooltip-paragraph";
-
-    if (tipStyle === "action-list") {
-      const firstColon = paragraph.indexOf(":");
-      if (firstColon > 0) {
-        const lead = paragraph.slice(0, firstColon + 1).trim();
-        const rest = paragraph.slice(firstColon + 1).trim();
-        const leadEl = document.createElement("span");
-        leadEl.className = "condition-tooltip-action-label";
-        leadEl.textContent = lead;
-        line.appendChild(leadEl);
-        if (rest) {
-          line.appendChild(document.createTextNode(` ${rest}`));
-        }
-      } else {
-        line.textContent = paragraph;
-      }
-    } else {
-      const firstDot = paragraph.indexOf(".");
-      if (firstDot > 0 && emphasizeLead) {
-      const lead = paragraph.slice(0, firstDot + 1).trim();
-      const rest = paragraph.slice(firstDot + 1).trim();
-      const leadEl = document.createElement("span");
-      leadEl.className = "condition-tooltip-lead";
-      leadEl.textContent = lead;
-      line.appendChild(leadEl);
-      if (rest) {
-        line.appendChild(document.createTextNode(` ${rest}`));
-      }
-      } else {
-        line.textContent = paragraph;
-      }
-    }
-
-    tooltip.appendChild(line);
-  }
-}
-
-function showConditionTooltip(chip) {
-  showTooltipForElement(chip);
-}
-
-function showTooltipForElement(chip) {
-  const tip = `${chip.getAttribute("data-tip") || ""}`.trim();
-  if (!tip) {
-    hideConditionTooltip();
-    return;
-  }
-  const tooltipStyle = `${chip.getAttribute("data-tip-style") || ""}`.trim().toLowerCase();
-  const conditionKey = `${chip.getAttribute("data-condition-key") || ""}`.trim().toLowerCase();
-  const emphasizeLead =
-    tooltipStyle === "plain" ? false : !CONDITION_TOOLTIP_NO_LEAD_STYLE.has(conditionKey);
-  const tooltip = ensureConditionTooltipEl();
-  renderConditionTooltipContent(tooltip, tip, { emphasizeLead, tipStyle: tooltipStyle });
-  tooltip.classList.remove("hidden");
-  conditionTooltipChip = chip;
-  positionConditionTooltip(chip);
 }
 
 function setMonsterImagePreview(dataUrl) {
@@ -1450,96 +1241,15 @@ function setMonsterEditorReadOnly(readOnly) {
 }
 
 function cancelMonsterEditorChanges() {
-  const monster = selectedMonster();
-  if (monster) {
-    fillMonsterForm(monster);
-  } else {
-    clearMonsterForm();
-  }
-  setMonsterEditorReadOnly(true);
-}
-
-function appendReadonlyRow(parent, labelText, valueText) {
-  const row = document.createElement("div");
-  row.className = "monster-readonly-row";
-  const label = document.createElement("span");
-  label.className = "monster-readonly-label";
-  label.textContent = labelText;
-  row.appendChild(label);
-  const value = document.createElement("span");
-  value.className = "monster-readonly-value";
-  value.textContent = valueText;
-  row.appendChild(value);
-  parent.appendChild(row);
-}
-
-function formatMonsterSizeLabel(size) {
-  const raw = `${size || "normal"}`.trim().toLowerCase();
-  if (raw === "normal") return "Normal";
-  if (raw === "large") return "Large";
-  if (raw === "huge") return "Huge";
-  if (raw === "gargantuan") return "Gargantuan";
-  return "Normal";
+  return libraryPageController.cancelMonsterEditorChanges();
 }
 
 function renderMonsterReadonlyView() {
-  if (!els.monsterReadonlyView) return;
-  els.monsterReadonlyView.innerHTML = "";
-  if (!state.monsterEditorReadOnly) return;
-
-  const monster = selectedMonster();
-  if (!monster) {
-    const empty = document.createElement("p");
-    empty.className = "hint";
-    empty.textContent = "Select an entry or create one with New Entry.";
-    els.monsterReadonlyView.appendChild(empty);
-    return;
-  }
-
-  const top = document.createElement("div");
-  top.className = "monster-readonly-top";
-
-  const meta = document.createElement("div");
-  meta.className = "monster-readonly-meta";
-  appendReadonlyRow(meta, "Name", monster.name || "-");
-  appendReadonlyRow(meta, "Size", formatMonsterSizeLabel(monster.size));
-  if (monster.is_legendary) {
-    const count = Number(monster.legendary_actions_count);
-    const suffix = Number.isInteger(count) ? ` (${count})` : "";
-    appendReadonlyRow(meta, "Legendary", `Yes${suffix}`);
-  } else {
-    appendReadonlyRow(meta, "Legendary", "No");
-  }
-  top.appendChild(meta);
-
-  const token = document.createElement("img");
-  token.className = "monster-readonly-token";
-  token.alt = `${monster.name || "Monster"} token`;
-  const fallbackSrc = "/icons/enemy.svg";
-  token.src = monster.token_image_data || "/icons/enemy.png";
-  token.style.cursor = "zoom-in";
-  token.addEventListener("error", () => {
-    if (!token.src.endsWith(fallbackSrc)) token.src = fallbackSrc;
-  });
-  token.addEventListener("click", () => {
-    if (!token.src) return;
-    openImageModal(token.src);
-  });
-  top.appendChild(token);
-
-  els.monsterReadonlyView.appendChild(top);
+  return libraryPageController.renderMonsterReadonlyView();
 }
 
 function toggleMonsterEditorMode() {
-  if (!selectedMonster()) {
-    setStatus("Select a library entry first.");
-    return;
-  }
-  if (state.monsterEditorReadOnly) {
-    setMonsterEditorReadOnly(false);
-  } else {
-    cancelMonsterEditorChanges();
-  }
+  return libraryPageController.toggleMonsterEditorMode();
 }
 
 function openImageModal(src) {
@@ -1551,230 +1261,6 @@ function openImageModal(src) {
 function closeImageModal() {
   els.imageModal.classList.add("hidden");
   els.imageModalImg.src = "";
-}
-
-function setDiceOverlayOpen(isOpen) {
-  state.diceOverlayOpen = Boolean(isOpen);
-  if (els.dicePanel) {
-    els.dicePanel.classList.toggle("hidden", !state.diceOverlayOpen);
-  }
-  if (els.diceToggleBtn) {
-    els.diceToggleBtn.setAttribute("aria-expanded", state.diceOverlayOpen ? "true" : "false");
-  }
-}
-
-function fallbackDiceRolls(count, sides) {
-  const rolls = [];
-  for (let i = 0; i < count; i += 1) {
-    rolls.push(Math.floor(Math.random() * sides) + 1);
-  }
-  return rolls;
-}
-
-function getDicePoolSegments(pool = state.dicePool) {
-  return getDicePoolSegmentsBase(pool);
-}
-
-function getDicePoolTotalCount(pool = state.dicePool) {
-  return getDicePoolTotalCountBase(pool);
-}
-
-function buildDicePoolNotation(pool = state.dicePool) {
-  return buildDicePoolNotationBase(pool);
-}
-
-function formatDiceNotation(notation) {
-  return formatDiceNotationBase(notation);
-}
-
-function fallbackDicePoolRolls(pool = state.dicePool) {
-  const rolls = [];
-  for (const segment of getDicePoolSegments(pool)) {
-    rolls.push(...fallbackDiceRolls(segment.count, segment.sides));
-  }
-  return rolls;
-}
-
-function resetDicePool({ shouldRender = true } = {}) {
-  state.dicePool = resetDicePoolStateBase();
-  if (shouldRender) renderDiceOverlay();
-}
-
-function addDieToPool(sides) {
-  const next = addDieToPoolStateBase(state.dicePool, sides, MAX_DICE_POOL_COUNT);
-  if (!next.added) {
-    if (next.reason === "limit") {
-      setStatus(`Dice pool is limited to ${MAX_DICE_POOL_COUNT} dice.`, "error");
-    }
-    return;
-  }
-  state.dicePool = next.pool;
-  renderDiceOverlay();
-}
-
-function buildDiceEntry({ pool, rolls, total }) {
-  return buildDiceEntryBase({
-    pool,
-    rolls,
-    total
-  });
-}
-
-function getDiceSkinKey(value) {
-  return getDiceSkinKeyBase(value, DICE_SKIN_CONFIG_BY_KEY);
-}
-
-function getAvailableDiceSkinKeysForCurrentUser() {
-  if (state.authUser?.role === "admin") {
-    return DICE_SKIN_OPTIONS.map((skin) => skin.key);
-  }
-  const available = Array.isArray(state.userSettings?.user?.availableDiceSkins)
-    ? state.userSettings.user.availableDiceSkins
-    : Array.isArray(state.authUser?.availableDiceSkins)
-      ? state.authUser.availableDiceSkins
-      : ["default"];
-  const filtered = available.filter((skin) => DICE_SKIN_CONFIG_BY_KEY[skin]);
-  return filtered.length > 0 ? filtered : ["default"];
-}
-
-function getCurrentDiceSkinConfig() {
-  return resolveCurrentDiceSkinConfigBase({
-    userSettingsUser: state.userSettings?.user || null,
-    authUser: state.authUser || null,
-    diceSkinOptions: DICE_SKIN_OPTIONS,
-    diceSkinConfigByKey: DICE_SKIN_CONFIG_BY_KEY
-  });
-}
-
-async function saveDiceSkinPreference(diceSkin) {
-  const nextDiceSkin = getDiceSkinKey(diceSkin);
-  await api("/api/users/me/dice-skin", {
-    method: "POST",
-    body: JSON.stringify({ diceSkin: nextDiceSkin })
-  });
-  if (!state.userSettings) state.userSettings = {};
-  if (!state.userSettings.user) state.userSettings.user = {};
-  state.userSettings.user.diceSkin = nextDiceSkin;
-  if (state.authUser) {
-    state.authUser.diceSkin = nextDiceSkin;
-  }
-}
-
-function setDiceResultToast(entry) {
-  if (state.diceResultToastTimer) {
-    window.clearTimeout(state.diceResultToastTimer);
-    state.diceResultToastTimer = null;
-  }
-  state.diceResultToastEntry = entry || null;
-  if (entry) {
-    state.diceResultToastTimer = window.setTimeout(() => {
-      state.diceResultToastTimer = null;
-      state.diceResultToastEntry = null;
-      renderDiceOverlay();
-    }, 4200);
-  }
-  renderDiceOverlay();
-}
-
-function renderDiceOverlay() {
-  const shouldShow = Boolean(state.authUser) && state.page !== "login";
-  if (els.diceOverlay) {
-    els.diceOverlay.classList.toggle("hidden", !shouldShow);
-  }
-  if (!shouldShow) {
-    setDiceOverlayOpen(false);
-    if (state.diceResultToastTimer) {
-      window.clearTimeout(state.diceResultToastTimer);
-      state.diceResultToastTimer = null;
-    }
-    state.dicePool = {};
-    state.diceResultToastEntry = null;
-    window.diceRenderer?.clear?.();
-    return;
-  }
-  const toastEntry = state.diceResultToastEntry;
-  if (els.diceResultToast) {
-    const showToast = Boolean(toastEntry);
-    els.diceResultToast.classList.toggle("hidden", !showToast);
-    if (showToast) {
-      if (els.diceResultToastExpression) {
-        els.diceResultToastExpression.textContent = toastEntry.expression;
-      }
-      if (els.diceResultToastTotal) {
-        els.diceResultToastTotal.textContent = String(toastEntry.total);
-      }
-      if (els.diceResultToastBreakdown) {
-        els.diceResultToastBreakdown.textContent = toastEntry.breakdown;
-      }
-    }
-  }
-
-  const poolCount = getDicePoolTotalCount();
-  const hasPool = poolCount > 0;
-  if (els.dicePoolBadge) {
-    els.dicePoolBadge.classList.toggle("hidden", !hasPool);
-    els.dicePoolBadge.textContent = hasPool ? String(poolCount) : "";
-  }
-  if (els.dicePresetButtons) {
-    els.dicePresetButtons.querySelectorAll("button[data-sides]").forEach((button) => {
-      if (!(button instanceof HTMLButtonElement)) return;
-      const sides = Number(button.dataset.sides);
-      const count = Math.max(0, Number(state.dicePool?.[sides]) || 0);
-      button.classList.toggle("has-pool-count", count > 0);
-      if (count > 0) {
-        button.setAttribute("data-pool-count", String(count));
-      } else {
-        button.removeAttribute("data-pool-count");
-      }
-    });
-  }
-  if (els.diceRollPoolBtn) {
-    els.diceRollPoolBtn.disabled = !hasPool;
-  }
-  if (els.diceResetPoolBtn) {
-    els.diceResetPoolBtn.disabled = !hasPool;
-  }
-}
-
-async function rollDicePool() {
-  const pool = { ...state.dicePool };
-  const notation = buildDicePoolNotation(pool);
-  if (!notation) return;
-  const notations = getDicePoolSegments(pool).map((segment) => `${segment.count}d${segment.sides}`);
-
-  let rolls = [];
-  let total = 0;
-  try {
-    const diceSkin = getCurrentDiceSkinConfig();
-    const diceResult = await window.diceRenderer?.rollMany?.({
-      notations,
-      theme: diceSkin.theme,
-      themeColor: diceSkin.themeColor
-    });
-    rolls =
-      Array.isArray(diceResult?.rolls) && diceResult.rolls.length > 0
-        ? diceResult.rolls
-        : fallbackDicePoolRolls(pool);
-    total = Number.isFinite(diceResult?.total)
-      ? diceResult.total
-      : rolls.reduce((sum, value) => sum + value, 0);
-  } catch (error) {
-    console.error("Dice renderer unavailable, using fallback roll.", error);
-    rolls = fallbackDicePoolRolls(pool);
-    total = rolls.reduce((sum, value) => sum + value, 0);
-    setStatus("3D dice renderer unavailable. Used local fallback roll.", "error");
-  }
-
-  const entry = buildDiceEntry({
-    pool,
-    rolls,
-    total
-  });
-  state.diceRollHistory.unshift(entry);
-  state.diceRollHistory = state.diceRollHistory.slice(0, 8);
-  resetDicePool({ shouldRender: false });
-  setDiceResultToast(entry);
-  setDiceOverlayOpen(true);
 }
 
 function openCampaignActionModal(mode) {
@@ -1943,8 +1429,7 @@ function isAllyCombatant(combatant) {
 }
 
 function combatantKindLabel(combatant) {
-  if (combatant.kind === "character") return "PC";
-  return isAllyCombatant(combatant) ? "Ally" : "Enemy";
+  return combatUiController.combatantKindLabel(combatant);
 }
 
 function slugifyClassName(name) {
@@ -1984,36 +1469,7 @@ function combatantUsesPortraitToken(combatant) {
 }
 
 function createCombatantNameElement(combatant) {
-  const wrapper = document.createElement("span");
-  wrapper.className = "combatant-name";
-
-  const icon = document.createElement("img");
-  icon.className = "combatant-icon";
-  icon.alt = combatantKindLabel(combatant);
-  if (combatantUsesPortraitToken(combatant)) {
-    icon.classList.add("token-portrait");
-  }
-  const fallbackSrc = combatantIconFallbackSrc(combatant);
-  icon.src = combatantTokenIconSrc(combatant);
-  icon.addEventListener("error", () => {
-    if (!icon.src.endsWith(fallbackSrc)) {
-      icon.src = fallbackSrc;
-    }
-  });
-  wrapper.appendChild(icon);
-
-  const text = document.createElement("span");
-  const isHiddenForPlayers = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
-  text.textContent = isHiddenForPlayers ? `(${combatant.name})` : combatant.name;
-  wrapper.appendChild(text);
-
-  return wrapper;
-}
-
-function normalizePathname(pathname) {
-  if (!pathname) return "/";
-  const cleaned = pathname.replace(/\/+$/, "");
-  return cleaned === "" ? "/" : cleaned;
+  return combatUiController.createCombatantNameElement(combatant);
 }
 
 function playerAvatarFallbackSrc(username = "") {
@@ -2037,282 +1493,6 @@ function playerAvatarFallbackSrc(username = "") {
   }
   const index = Math.abs(hash) % classSlugs.length;
   return `/icons/classes/${classSlugs[index]}.png`;
-}
-
-function parseRoute(pathname) {
-  return parseRouteBase(pathname);
-}
-
-function routePathFor(page, campaignId = null, scenarioId = null, playerMode = null) {
-  return routePathForBase(page, campaignId, scenarioId, playerMode);
-}
-
-async function syncHistory(path, { replace = false } = {}) {
-  if (replace) {
-    history.replaceState({}, "", path);
-    return;
-  }
-  if (window.location.pathname !== path) {
-    history.pushState({}, "", path);
-  }
-}
-
-let routeRequestId = 0;
-
-async function applyRoute(route, { replace = false } = {}) {
-  const requestId = ++routeRequestId;
-  const isCurrent = () => requestId === routeRequestId;
-
-  const safeNavigate = async (path, message) => {
-    if (message) setStatus(message);
-    await navigateToPath(path, { replace: true });
-  };
-
-  if (route.page === "login") {
-    showPage("login");
-    await syncHistory("/login", { replace });
-    return;
-  }
-
-  if (route.page === "monsters") {
-    if (state.authUser?.role !== "admin") {
-      await safeNavigate("/", "Library access denied.");
-      return;
-    }
-    try {
-      await loadMonsters();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("monsters");
-    await syncHistory("/library", { replace });
-    return;
-  }
-
-  if (route.page === "settings") {
-    try {
-      await loadUserSettings();
-      renderSettingsPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("settings");
-    await syncHistory("/settings", { replace });
-    return;
-  }
-
-  if (route.page === "dice-shop") {
-    try {
-      await loadUserSettings();
-      renderDiceShopPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("dice-shop");
-    await syncHistory("/shop", { replace });
-    return;
-  }
-
-  if (route.page === "player-home") {
-    state.playerLiveViewMode =
-      route.playerMode === "map"
-        ? "map"
-        : route.playerMode === "scene"
-          ? "scene"
-          : "initiative";
-    try {
-      await loadPlayerLive();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    startPlayerLivePolling();
-    showPage("player-home");
-    await syncHistory(routePathFor("player-home", null, null, state.playerLiveViewMode), { replace });
-    return;
-  }
-
-  if (route.page === "analytics") {
-    try {
-      await loadCampaigns();
-      if (
-        !Number.isInteger(state.analyticsSelectedCampaignId) ||
-        !state.campaigns.some((campaign) => campaign.id === state.analyticsSelectedCampaignId)
-      ) {
-        state.analyticsSelectedCampaignId = state.campaigns[0]?.id ?? null;
-      }
-      if (Number.isInteger(state.analyticsSelectedCampaignId)) {
-        await setAnalyticsCampaign(state.analyticsSelectedCampaignId);
-      } else {
-        renderAnalyticsPage();
-      }
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("analytics");
-    await syncHistory("/analytics", { replace });
-    return;
-  }
-
-  if (route.page === "admin") {
-    if (state.authUser?.role !== "admin") {
-      await safeNavigate("/", "Admin access denied.");
-      return;
-    }
-    try {
-      await loadAdminData();
-      renderAdminPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("admin");
-    await syncHistory("/admin", { replace });
-    return;
-  }
-
-  if (route.page === "welcome") {
-    if (state.authUser?.role !== "admin") {
-      try {
-        await loadPlayerLive();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-      if (!isCurrent()) return;
-      startPlayerLivePolling();
-      showPage("player-home");
-      state.playerLiveViewMode = "initiative";
-      await syncHistory("/player/initiative", { replace });
-      return;
-    }
-    stopPlayerLivePolling();
-    state.selectedCampaignId = null;
-    state.selectedScenarioId = null;
-    state.characters = [];
-    state.scenarios = [];
-    await safeLoadCombatState();
-    try {
-      await loadCampaigns();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    showPage("welcome");
-    await syncHistory("/", { replace });
-    return;
-  }
-
-  if (!Number.isInteger(route.campaignId)) {
-    await safeNavigate("/", "Invalid campaign route.");
-    return;
-  }
-
-  try {
-    await loadCampaigns();
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
-  if (!isCurrent()) return;
-
-  const campaignExists = state.campaigns.some((c) => c.id === route.campaignId);
-  if (!campaignExists) {
-    await safeNavigate("/", "Campaign not found.");
-    return;
-  }
-
-  state.selectedCampaignId = route.campaignId;
-  await loadCampaignData();
-  if (!isCurrent()) return;
-
-  if (route.page === "campaign") {
-    showPage("campaign");
-    await syncHistory(routePathFor("campaign", route.campaignId), { replace });
-    return;
-  }
-
-  if (route.page === "campaign-completed") {
-    renderCompletedScenariosPage();
-    showPage("campaign-completed");
-    await syncHistory(routePathFor("campaign-completed", route.campaignId), { replace });
-    return;
-  }
-
-  if (route.page === "campaign-scene") {
-    try {
-      await loadSceneImages(route.campaignId);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    if (!isCurrent()) return;
-    renderScenePage();
-    showPage("campaign-scene");
-    await syncHistory(routePathFor("campaign-scene", route.campaignId), { replace });
-    return;
-  }
-
-  if (!Number.isInteger(route.scenarioId)) {
-    await safeNavigate(routePathFor("campaign", route.campaignId), "Invalid scenario route.");
-    return;
-  }
-
-  const scenarioExists = state.scenarios.some((s) => s.id === route.scenarioId);
-  if (!scenarioExists) {
-    await safeNavigate(routePathFor("campaign", route.campaignId), "Scenario not found in campaign.");
-    return;
-  }
-
-  state.selectedScenarioId = route.scenarioId;
-  await safeLoadCombatState();
-  if (!isCurrent()) return;
-
-  state.lastScenarioPage = route.page;
-  const scenario = selectedScenario();
-  const isCompletedScenario = Number(scenario?.is_completed) === 1;
-  if (route.page === "scenario-edit" && isCompletedScenario) {
-    await safeNavigate(
-      routePathFor("scenario-completed-edit", route.campaignId, route.scenarioId),
-      "This encounter is completed. Opened read-only view."
-    );
-    return;
-  }
-  if (route.page === "scenario-completed-edit" && !isCompletedScenario) {
-    await safeNavigate(
-      routePathFor("scenario-edit", route.campaignId, route.scenarioId),
-      "Encounter is active. Opened editable view."
-    );
-    return;
-  }
-  if (route.page === "scenario-run" || route.page === "scenario-map") {
-    showPage(route.page);
-    focusPreviewOnActiveNonPc();
-    renderScenarioRunPage();
-  } else if (route.page === "scenario-completed-edit") {
-    showPage("scenario-completed-edit");
-    renderScenarioCompletedEditPage();
-  } else {
-    showPage("scenario-edit");
-    renderScenarioEditPage();
-  }
-  await syncHistory(routePathFor(route.page, route.campaignId, route.scenarioId), { replace });
-}
-
-async function navigateToPath(path, { replace = false } = {}) {
-  const route = parseRoute(path);
-  if (!route) {
-    setStatus("Unknown route. Redirected to home.");
-    await applyRoute({ page: "welcome" }, { replace: true });
-    return;
-  }
-  await applyRoute(route, { replace });
-}
-
-async function navigateToPage(page, { campaignId = null, scenarioId = null, replace = false } = {}) {
-  const path = routePathFor(page, campaignId, scenarioId);
-  await navigateToPath(path, { replace });
 }
 
 function showPage(page) {
@@ -2489,588 +1669,55 @@ function renderNav() {
 }
 
 function renderWelcomeCampaigns() {
-  els.welcomeCampaignList.innerHTML = "";
-  if (state.campaigns.length === 0) {
-    els.welcomeCampaignList.innerHTML = "<li>No campaigns yet.</li>";
-    return;
-  }
-
-  for (const campaign of state.campaigns) {
-    const li = document.createElement("li");
-    li.className = "campaign-overview-row";
-    li.tabIndex = 0;
-
-    const row = document.createElement("div");
-    row.className = "campaign-overview-grid";
-
-    const name = document.createElement("strong");
-    name.textContent = campaign.name;
-    row.appendChild(name);
-
-    const playersWrap = document.createElement("div");
-    playersWrap.className = "campaign-overview-players";
-    const summary = state.campaignSummaries[campaign.id] || {
-      players: [],
-      scenarioCount: 0,
-      totalEncounters: 0,
-      totalFinishedEncounters: 0,
-      totalEnemyDamage: 0,
-      totalEnemyDefeats: 0
-    };
-    if (summary.players.length === 0) {
-      const noPlayers = document.createElement("span");
-      noPlayers.className = "hint";
-      noPlayers.textContent = "No players";
-      playersWrap.appendChild(noPlayers);
-    } else {
-      for (const player of summary.players) {
-        const badge = document.createElement("span");
-        badge.className = "campaign-player-badge";
-
-        const icon = document.createElement("img");
-        icon.className = "campaign-player-icon";
-        icon.alt = player.class_name || "PC";
-        icon.src = `/icons/classes/${slugifyClassName(player.class_name)}.png`;
-        icon.addEventListener("error", () => {
-          if (!icon.src.endsWith("/icons/pc.svg")) icon.src = "/icons/pc.svg";
-        });
-        badge.appendChild(icon);
-
-        const label = document.createElement("span");
-        label.textContent = player.name;
-        badge.appendChild(label);
-        playersWrap.appendChild(badge);
-      }
-    }
-    row.appendChild(playersWrap);
-
-    const scenarioCount = document.createElement("span");
-    scenarioCount.className = "campaign-scenario-count";
-    scenarioCount.textContent = `${summary.scenarioCount} encounter${summary.scenarioCount === 1 ? "" : "s"}`;
-    row.appendChild(scenarioCount);
-
-    li.appendChild(row);
-
-    const openCampaign = async () => {
-      state.lastHomeCampaignId = campaign.id;
-      await navigateToPage("campaign", { campaignId: campaign.id });
-    };
-    li.addEventListener("click", openCampaign);
-    li.addEventListener("keydown", async (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      await openCampaign();
-    });
-
-    els.welcomeCampaignList.appendChild(li);
-  }
+  return welcomePageController.renderWelcomeCampaigns();
 }
 
 function clearMonsterForm() {
-  state.selectedMonsterId = null;
-  state.draftMonsterImageData = "";
-  state.draftMonsterTokenImageData = "";
-  setMonsterPasteTarget("statblock");
-  els.monsterForm.reset();
-  els.monsterSize.value = "normal";
-  els.monsterIsLegendary.value = "false";
-  const defaultLegendary = document.querySelector(
-    'input[name="monsterLegendaryActionsCount"][value="3"]'
-  );
-  if (defaultLegendary) defaultLegendary.checked = true;
-  updateMonsterLegendaryFieldsVisibility();
-  setMonsterImagePreview("");
-  setMonsterTokenImagePreview("");
-  els.monsterImageFile.value = "";
-  els.monsterTokenImageFile.value = "";
-  renderMonsterReadonlyView();
-  renderMonsterList();
+  return libraryPageController.clearMonsterForm();
 }
 
 function fillMonsterForm(monster) {
-  els.monsterName.value = monster.name;
-  const sizeValue = `${monster.size || "normal"}`.trim().toLowerCase();
-  els.monsterSize.value = ["normal", "large", "huge", "gargantuan"].includes(sizeValue)
-    ? sizeValue
-    : "normal";
-  els.monsterIsLegendary.value = monster.is_legendary ? "true" : "false";
-  const currentLegendary = document.querySelector(
-    `input[name="monsterLegendaryActionsCount"][value="${monster.legendary_actions_count || 3}"]`
-  );
-  if (currentLegendary) currentLegendary.checked = true;
-  updateMonsterLegendaryFieldsVisibility();
-  state.draftMonsterImageData = monster.monster_image_data || "";
-  state.draftMonsterTokenImageData = monster.token_image_data || "";
-  setMonsterPasteTarget("statblock");
-  setMonsterImagePreview(state.draftMonsterImageData);
-  setMonsterTokenImagePreview(state.draftMonsterTokenImageData);
-  els.monsterImageFile.value = "";
-  els.monsterTokenImageFile.value = "";
-  renderMonsterReadonlyView();
+  return libraryPageController.fillMonsterForm(monster);
 }
 
 function monsterFormPayload() {
-  const isLegendary = els.monsterIsLegendary.value === "true";
-  const legendarySelection = document.querySelector(
-    'input[name="monsterLegendaryActionsCount"]:checked'
-  );
-  const legendaryActionsCount = isLegendary
-    ? Number(legendarySelection?.value)
-    : null;
-  return {
-    name: els.monsterName.value,
-    size: els.monsterSize.value,
-    isLegendary,
-    legendaryActionsCount,
-    monsterImageData: state.draftMonsterImageData || "",
-    tokenImageData: state.draftMonsterTokenImageData || ""
-  };
+  return libraryPageController.monsterFormPayload();
 }
 
 function renderMonsterList() {
-  const query = state.monsterSearchQuery.trim().toLowerCase();
-  const filtered = query
-    ? state.monsters.filter((monster) => monster.name.toLowerCase().includes(query))
-    : state.monsters;
-
-  els.monsterList.innerHTML = "";
-  if (filtered.length === 0) {
-    els.monsterList.innerHTML = query ? "<li>No matches found.</li>" : "<li>No monsters yet.</li>";
-    return;
-  }
-
-  for (const monster of filtered) {
-    const li = document.createElement("li");
-    if (monster.id === state.selectedMonsterId) li.classList.add("active");
-    const row = document.createElement("div");
-    row.className = "list-row";
-
-    const label = document.createElement("span");
-    label.className = "monster-label";
-    const avatar = document.createElement("img");
-    avatar.className = "monster-list-avatar";
-    const fallbackSrc = "/icons/enemy.svg";
-    avatar.src = monster.token_image_data || "/icons/enemy.png";
-    avatar.alt = `${monster.name} token`;
-    avatar.addEventListener("error", () => {
-      if (!avatar.src.endsWith(fallbackSrc)) avatar.src = fallbackSrc;
-    });
-    label.appendChild(avatar);
-
-    const nameText = document.createElement("span");
-    nameText.textContent = monster.name;
-    label.appendChild(nameText);
-
-    const isLegendary = Boolean(monster.is_legendary);
-    const legendaryCount = Number(monster.legendary_actions_count);
-    if (isLegendary) {
-      const badge = document.createElement("span");
-      badge.className = "legendary-badge";
-      badge.textContent = "L";
-      badge.title = Number.isInteger(legendaryCount)
-        ? `Legendary (${legendaryCount} actions)`
-        : "Legendary";
-      label.appendChild(badge);
-      if (Number.isInteger(legendaryCount)) {
-        badge.title = `Legendary (${legendaryCount} actions)`;
-      }
-    }
-    row.appendChild(label);
-
-    li.addEventListener("click", () => {
-      if (!state.monsterEditorReadOnly && monster.id !== state.selectedMonsterId) {
-        setMonsterEditorReadOnly(true);
-      }
-      state.selectedMonsterId = monster.id;
-      fillMonsterForm(monster);
-      setMonsterEditorReadOnly(true);
-      renderMonsterList();
-    });
-
-    row.appendChild(document.createElement("span"));
-    li.appendChild(row);
-    els.monsterList.appendChild(li);
-  }
+  return libraryPageController.renderMonsterList();
 }
 
 function renderEnemyMonsterOptions(searchQuery = "") {
-  const query = (searchQuery || "").trim().toLowerCase();
-  const filtered = query
-    ? state.monsters.filter((monster) => monster.name.toLowerCase().includes(query))
-    : state.monsters;
-  const limited = filtered.slice(0, 5);
-  els.enemyMonsterResults.innerHTML = "";
-
-  if (limited.length === 0) {
-    state.addCombatantSelectedMonsterId = null;
-    setEnemyMonsterPreview("");
-    const empty = document.createElement("li");
-    empty.className = "hint";
-    empty.textContent = "No library matches.";
-    els.enemyMonsterResults.appendChild(empty);
-    return;
-  }
-
-  if (limited.length === 1) {
-    state.addCombatantSelectedMonsterId = limited[0].id;
-    setEnemyMonsterPreview(limited[0].monster_image_data || "");
-    els.enemyName.value = limited[0].name;
-    if (!els.enemyHp.value.trim()) {
-      const hpMatch = /\d+/.exec(limited[0].hit_points || "");
-      if (hpMatch) els.enemyHp.value = hpMatch[0];
-    }
-  } else if (
-    state.addCombatantSelectedMonsterId
-    && !limited.some((monster) => monster.id === state.addCombatantSelectedMonsterId)
-  ) {
-    state.addCombatantSelectedMonsterId = null;
-    setEnemyMonsterPreview("");
-  }
-
-  for (const monster of limited) {
-    const li = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "add-combatant-library-item";
-    if (state.addCombatantSelectedMonsterId === monster.id) {
-      button.classList.add("active");
-    }
-    button.textContent = monster.name;
-    button.addEventListener("click", () => {
-      state.addCombatantSelectedMonsterId = monster.id;
-      setEnemyMonsterPreview(monster.monster_image_data || "");
-      els.enemyName.value = monster.name;
-      if (!els.enemyHp.value.trim()) {
-        const hpMatch = /\d+/.exec(monster.hit_points || "");
-        if (hpMatch) els.enemyHp.value = hpMatch[0];
-      }
-      renderEnemyMonsterOptions(els.enemyMonsterSearchInput.value);
-    });
-    li.appendChild(button);
-    els.enemyMonsterResults.appendChild(li);
-  }
+  return libraryPageController.renderEnemyMonsterOptions(searchQuery);
 }
 
 async function loadMonsters() {
-  state.monsters = await api("/api/monsters");
-  if (!state.monsters.some((m) => m.id === state.selectedMonsterId)) {
-    state.selectedMonsterId = state.monsters[0]?.id ?? null;
-  }
-  renderMonsterList();
-  const current = selectedMonster();
-  if (current) fillMonsterForm(current);
-  else clearMonsterForm();
-  renderEnemyMonsterOptions();
+  return libraryPageController.loadMonsters();
 }
 
 function renderCharacters() {
-  els.characterList.innerHTML = "";
-  if (state.characters.length === 0) {
-    els.characterList.innerHTML = "<li>No characters yet.</li>";
-    return;
-  }
-
-  for (const character of state.characters) {
-    const li = document.createElement("li");
-    const row = document.createElement("div");
-    row.className = "list-row";
-
-    const label = document.createElement("span");
-    label.textContent = `${character.name} (${character.class_name})`;
-    row.appendChild(label);
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "delete-btn";
-    removeButton.textContent = "X";
-    removeButton.addEventListener("click", async () => {
-      if (!window.confirm(`Delete character "${character.name}" from this campaign?`)) return;
-      try {
-        await api(`/api/characters/${character.id}`, { method: "DELETE" });
-        await loadCampaignData();
-        setStatus(`Deleted character: ${character.name}`, "success");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    row.appendChild(removeButton);
-
-    li.appendChild(row);
-    els.characterList.appendChild(li);
-  }
+  return campaignPageController.renderCharacters();
 }
 
 function renderScenarios() {
-  if (els.scenarioSearchInput.value !== state.scenarioSearchQuery) {
-    els.scenarioSearchInput.value = state.scenarioSearchQuery;
-  }
-  const query = state.scenarioSearchQuery.trim().toLowerCase();
-  const filtered = query
-    ? state.scenarios.filter((scenario) => scenario.name.toLowerCase().includes(query))
-    : state.scenarios;
-  const activeScenarios = filtered.filter((scenario) => Number(scenario.is_completed) !== 1);
-
-  els.scenarioList.innerHTML = "";
-  if (activeScenarios.length === 0) {
-    els.scenarioList.innerHTML = query ? "<li>No matches found.</li>" : "<li>No scenarios yet.</li>";
-    return;
-  }
-
-  for (const scenario of activeScenarios) {
-    const li = document.createElement("li");
-    const row = document.createElement("div");
-    row.className = "list-row";
-
-    const label = document.createElement("span");
-    label.className = "scenario-label";
-    const nameText = document.createElement("span");
-    nameText.textContent = scenario.name;
-    if (state.campaignLiveScenarioId === scenario.id) {
-      const sharedDot = document.createElement("span");
-      sharedDot.className = "scenario-shared-dot";
-      sharedDot.title = "Shared with players";
-      label.appendChild(sharedDot);
-    }
-    label.appendChild(nameText);
-    row.appendChild(label);
-
-    const actions = document.createElement("div");
-    actions.className = "row-actions";
-
-    const mapButton = document.createElement("button");
-    mapButton.type = "button";
-    mapButton.className = "encounter-action-btn";
-    mapButton.title = "Map";
-    mapButton.setAttribute("aria-label", "Map");
-    mapButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-map" aria-hidden="true"></span>';
-    mapButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-map", {
-        campaignId: state.selectedCampaignId,
-        scenarioId: scenario.id
-      });
-    });
-    actions.appendChild(mapButton);
-
-    const runButton = document.createElement("button");
-    runButton.type = "button";
-    runButton.className = "encounter-action-btn";
-    runButton.title = "Initiative";
-    runButton.setAttribute("aria-label", "Initiative");
-    runButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-initiative" aria-hidden="true"></span>';
-    runButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-run", {
-        campaignId: state.selectedCampaignId,
-        scenarioId: scenario.id
-      });
-    });
-    actions.appendChild(runButton);
-
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "encounter-action-btn";
-    editButton.title = "Edit";
-    editButton.setAttribute("aria-label", "Edit");
-    editButton.innerHTML = '<span class="encounter-action-icon encounter-action-icon-edit" aria-hidden="true"></span>';
-    editButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-edit", {
-        campaignId: state.selectedCampaignId,
-        scenarioId: scenario.id
-      });
-    });
-    actions.appendChild(editButton);
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "delete-btn";
-    removeButton.textContent = "X";
-    removeButton.addEventListener("click", async () => {
-      if (!window.confirm(`Delete scenario "${scenario.name}"?`)) return;
-      try {
-        await api(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
-        const wasSelected = state.selectedScenarioId === scenario.id;
-        if (state.selectedScenarioId === scenario.id) {
-          state.selectedScenarioId = null;
-        }
-        await loadCampaignData();
-        if (wasSelected && state.selectedCampaignId) {
-          await navigateToPage("campaign", {
-            campaignId: state.selectedCampaignId,
-            replace: true
-          });
-        }
-        setStatus(`Deleted scenario: ${scenario.name}`, "success");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    actions.appendChild(removeButton);
-
-    row.appendChild(actions);
-    li.appendChild(row);
-    els.scenarioList.appendChild(li);
-  }
+  return campaignPageController.renderScenarios();
 }
 
 function renderCompletedScenariosPage() {
-  const campaign = selectedCampaign();
-  els.completedScenarioPageTitle.textContent = campaign
-    ? `Completed Scenarios: ${campaign.name}`
-    : "Completed Scenarios";
-
-  const completedScenarios = state.scenarios.filter((scenario) => Number(scenario.is_completed) === 1);
-  els.completedScenarioList.innerHTML = "";
-  if (completedScenarios.length === 0) {
-    els.completedScenarioList.innerHTML = "<li>No completed scenarios yet.</li>";
-    return;
-  }
-
-  for (const scenario of completedScenarios) {
-    const li = document.createElement("li");
-    const row = document.createElement("div");
-    row.className = "list-row";
-
-    const label = document.createElement("span");
-    label.textContent = scenario.name;
-    row.appendChild(label);
-
-    const actions = document.createElement("div");
-    actions.className = "row-actions";
-
-    const reopenButton = document.createElement("button");
-    reopenButton.type = "button";
-    reopenButton.textContent = "Reopen";
-    reopenButton.addEventListener("click", async () => {
-      try {
-        await api(`/api/scenarios/${scenario.id}/completed`, {
-          method: "POST",
-          body: JSON.stringify({ completed: false })
-        });
-        await loadCampaignData();
-        renderCompletedScenariosPage();
-        setStatus(`Reopened scenario: ${scenario.name}`, "success");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    actions.appendChild(reopenButton);
-
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.textContent = "Edit";
-    editButton.addEventListener("click", async () => {
-      await navigateToPage("scenario-edit", {
-        campaignId: state.selectedCampaignId,
-        scenarioId: scenario.id
-      });
-    });
-    actions.appendChild(editButton);
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "delete-btn";
-    removeButton.textContent = "X";
-    removeButton.addEventListener("click", async () => {
-      if (!window.confirm(`Delete scenario "${scenario.name}"?`)) return;
-      try {
-        await api(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
-        await loadCampaignData();
-        renderCompletedScenariosPage();
-        setStatus(`Deleted scenario: ${scenario.name}`, "success");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    actions.appendChild(removeButton);
-
-    row.appendChild(actions);
-    li.appendChild(row);
-    els.completedScenarioList.appendChild(li);
-  }
+  return campaignPageController.renderCompletedScenariosPage();
 }
 
 function attachInitiativeBlurUpdate(input, combatant) {
-  const onBlur = async () => {
-    const next = Number(input.value);
-    if (!Number.isFinite(next)) return;
-    try {
-      await api(`/api/combatants/${combatant.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          initiative: next,
-          name: combatant.name
-        })
-      });
-      await safeLoadCombatState();
-      if (state.page === "scenario-edit") renderScenarioEditPage();
-      if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  };
-  input.addEventListener("blur", onBlur);
+  return combatUiController.attachInitiativeBlurUpdate(input, combatant);
 }
 
 function attachEnemyHpBlurUpdate(input, combatant) {
-  const onBlur = async () => {
-    const raw = input.value.trim();
-    const hp = raw === "" ? null : Number(raw);
-    if (hp !== null && !Number.isFinite(hp)) return;
-    try {
-      await api(`/api/combatants/${combatant.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          initiative: combatant.initiative,
-          name: combatant.name,
-          hp
-        })
-      });
-      await safeLoadCombatState();
-      if (state.page === "scenario-edit") renderScenarioEditPage();
-      if (state.page === "scenario-run" || state.page === "scenario-map") renderScenarioRunPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  };
-  input.addEventListener("blur", onBlur);
+  return combatUiController.attachEnemyHpBlurUpdate(input, combatant);
 }
 
 function setupRunQuickEditInput(input) {
-  input.type = "text";
-  input.inputMode = "numeric";
-  input.autocomplete = "off";
-  input.spellcheck = false;
-  input.readOnly = true;
-  input.classList.add("run-input-locked");
-
-  const activate = () => {
-    if (!input.readOnly) return;
-    input.readOnly = false;
-    input.classList.remove("run-input-locked");
-    input.focus();
-    input.select();
-  };
-
-  input.addEventListener("mousedown", (event) => {
-    if (!input.readOnly) return;
-    event.preventDefault();
-    activate();
-  });
-
-  input.addEventListener("focus", () => {
-    if (input.readOnly) return;
-    input.select();
-  });
-
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      input.blur();
-    }
-  });
-
-  input.addEventListener("blur", () => {
-    input.readOnly = true;
-    input.classList.add("run-input-locked");
-  });
+  return combatUiController.setupRunQuickEditInput(input);
 }
 
 function rerenderCurrentScenarioPage() {
@@ -3079,37 +1726,15 @@ function rerenderCurrentScenarioPage() {
 }
 
 function setMapHoverCombatantRow(combatantId, isPlayerView, on) {
-  if (isPlayerView) {
-    state.playerMap.hoverCombatantId = on && Number.isInteger(combatantId) ? combatantId : null;
-  } else {
-    state.runMap.hoverCombatantId = on && Number.isInteger(combatantId) ? combatantId : null;
-  }
-  const list = isPlayerView ? els.playerLiveCombatantList : els.runOrderList;
-  if (!(list instanceof HTMLElement) || !Number.isInteger(combatantId)) return;
-  const row = list.querySelector(`li[data-combatant-id="${combatantId}"]`);
-  if (!(row instanceof HTMLElement)) return;
-  row.classList.toggle("map-token-hover-linked", Boolean(on));
+  return scenarioRunPageController.setMapHoverCombatantRow(combatantId, isPlayerView, on);
 }
 
 function focusPreviewOnActiveNonPc() {
-  const active = state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId);
-  if (active && active.kind === "enemy") {
-    state.runPreviewEnemyId = active.id;
-  }
+  return scenarioRunPageController.focusPreviewOnActiveNonPc();
 }
 
 function scrollRunInitiativeToActive({ smooth = true } = {}) {
-  if (!els.runOrderList) return;
-  const activeRow = els.runOrderList.querySelector("li.turn-active");
-  if (!(activeRow instanceof HTMLElement)) return;
-  const behavior = smooth ? "smooth" : "auto";
-  window.requestAnimationFrame(() => {
-    activeRow.scrollIntoView({
-      block: "nearest",
-      inline: "nearest",
-      behavior
-    });
-  });
+  return scenarioRunPageController.scrollRunInitiativeToActive({ smooth });
 }
 
 function scrollPlayerInitiativeToActive({ smooth = true } = {}) {
@@ -4001,153 +2626,7 @@ function fadeOutAndRemoveToken(token, container, durationMs = 240) {
 }
 
 function renderRunMapTokens(scenarioId, combatants) {
-  if (!els.runMapTokens) return;
-  const positions = getScenarioTokenPositions(scenarioId);
-  const { width, height } = mapNaturalSize();
-  ensureMapTokensForCombatants(scenarioId, combatants);
-  const visibleCombatants = [];
-  for (const combatant of combatants) {
-    const isHidden = combatant.kind !== "character" && Number(combatant.player_visible) === 0;
-    if (isHidden) continue;
-    const isEnemyDefeated =
-      combatant.kind === "enemy" &&
-      !isAllyCombatant(combatant) &&
-      Number.isFinite(Number(combatant.hp)) &&
-      Number(combatant.hp) <= 0;
-    if (isEnemyDefeated) continue;
-    visibleCombatants.push(combatant);
-  }
-
-  const nextIds = new Set(visibleCombatants.map((combatant) => combatant.id));
-  const existingTokens = new Map();
-  els.runMapTokens
-    .querySelectorAll(".run-map-token[data-combatant-id]")
-    .forEach((token) => {
-      const id = Number(token.dataset.combatantId);
-      if (Number.isInteger(id)) existingTokens.set(id, token);
-    });
-
-  for (const [id, token] of existingTokens.entries()) {
-    if (nextIds.has(id)) continue;
-    fadeOutAndRemoveToken(token, els.runMapTokens, 240);
-  }
-
-  for (const combatant of visibleCombatants) {
-    const pos = positions[combatant.id];
-    if (!pos) continue;
-
-    let token = existingTokens.get(combatant.id) || null;
-    if (!token) {
-      token = document.createElement("button");
-      token.type = "button";
-      token.dataset.combatantId = String(combatant.id);
-      const icon = document.createElement("img");
-      icon.className = "run-map-token-icon";
-      token.appendChild(icon);
-      const label = document.createElement("span");
-      label.className = "run-map-token-name";
-      token.appendChild(label);
-
-      token.addEventListener("pointerdown", (event) => {
-        if (state.page !== "scenario-map") return;
-        if (state.runMap.pingMode) return;
-        if (state.runMap.fogMode !== "navigate") return;
-        if (state.runMap.dragLocked) return;
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        state.runMap.dragging = true;
-        state.runMap.dragMode = "token";
-        state.runMap.dragCombatantId = combatantId;
-        state.runMap.pointerId = event.pointerId;
-        state.runMap.lastClientX = event.clientX;
-        state.runMap.lastClientY = event.clientY;
-        if (els.runMapViewport) els.runMapViewport.setPointerCapture(event.pointerId);
-        token.classList.add("is-dragging");
-        if (els.runMapViewport) els.runMapViewport.classList.add("is-dragging");
-      });
-
-      token.addEventListener("mouseenter", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, false, true);
-      });
-      token.addEventListener("pointerenter", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, false, true);
-      });
-      token.addEventListener("mouseleave", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, false, false);
-      });
-      token.addEventListener("pointerleave", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, false, false);
-      });
-
-      token.addEventListener("dblclick", (event) => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        const current = state.combat.combatants.find((entry) => entry.id === combatantId);
-        if (!current || current.kind !== "enemy") return;
-        event.preventDefault();
-        event.stopPropagation();
-        inspectCombatantStatblock(current);
-      });
-    }
-
-    if (token.__fadeOutTimer) {
-      clearTimeout(token.__fadeOutTimer);
-      token.__fadeOutTimer = null;
-    }
-    token.classList.remove("token-fade-out");
-
-    token.classList.add("run-map-token");
-    const isPcToken = combatant.kind === "character";
-    const isNpcToken = !isPcToken && isAllyCombatant(combatant);
-    const isEnemyToken = !isPcToken && !isNpcToken;
-    token.classList.toggle("token-pc", isPcToken);
-    token.classList.toggle("token-npc", isNpcToken);
-    token.classList.toggle("token-enemy", isEnemyToken);
-
-    token.title = combatant.name;
-    if (combatant.kind === "enemy") {
-      token.title = `${combatant.name} (double-click: statblock)`;
-    }
-    token.dataset.combatantId = String(combatant.id);
-    token.style.left = `${clamp(pos.x, 20, width - 20)}px`;
-    token.style.top = `${clamp(pos.y, 20, height - 20)}px`;
-    token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
-    token.classList.toggle("is-active", isSameCombatantId(combatant.id, state.combat.activeCombatantId));
-    token.classList.toggle("reveal-moment-token", hasRevealMoment(combatant.id));
-
-    const icon = token.querySelector(".run-map-token-icon");
-    if (!(icon instanceof HTMLImageElement)) continue;
-    icon.alt = combatant.name;
-    if (combatantUsesPortraitToken(combatant)) {
-      icon.classList.add("token-portrait");
-    } else {
-      icon.classList.remove("token-portrait");
-    }
-    const fallbackSrc = combatantIconFallbackSrc(combatant);
-    icon.src = combatantTokenIconSrc(combatant);
-    icon.onerror = () => {
-      if (!icon.src.endsWith(fallbackSrc)) {
-        icon.src = fallbackSrc;
-      }
-    };
-
-    const label = token.querySelector(".run-map-token-name");
-    if (!(label instanceof HTMLElement)) continue;
-    label.textContent = combatant.name;
-
-    els.runMapTokens.appendChild(token);
-  }
+  return scenarioRunPageController.renderRunMapTokens(scenarioId, combatants);
 }
 
 function applyRunMapTransform() {
@@ -4209,1044 +2688,72 @@ function resetRunMapViewForScenario(scenarioId) {
   applyRunMapTransform();
 }
 
-function activeCombatant() {
-  return state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId) || null;
-}
-
 function isSameCombatantId(leftId, rightId) {
   return Number(leftId) === Number(rightId);
 }
 
-function inspectCombatantStatblock(combatant) {
-  if (!combatant || combatant.kind !== "enemy") return;
-  state.runPreviewEnemyId = combatant.id;
-  if (combatant.monster_image_data) {
-    openImageModal(combatant.monster_image_data);
-    return;
-  }
-  setStatus(`${combatant.name} has no statblock image.`);
-}
-
-function pickMapShortcutPreviewCombatant() {
-  const combatants = Array.isArray(state.combat.combatants) ? state.combat.combatants : [];
-  if (combatants.length === 0) return null;
-  const activeIndex = combatants.findIndex((c) => c.id === state.combat.activeCombatantId);
-  const startIndex = activeIndex >= 0 ? activeIndex : 0;
-
-  const isCandidate = (combatant) => combatant.kind === "enemy";
-
-  const active = combatants[startIndex];
-  if (active && isCandidate(active)) return active;
-
-  for (let i = 1; i <= combatants.length; i += 1) {
-    const candidate = combatants[(startIndex + i) % combatants.length];
-    if (isCandidate(candidate)) return candidate;
-  }
-  return null;
-}
-
-async function toggleActiveCombatantReaction() {
-  const combatant = activeCombatant();
-  if (!combatant || !state.selectedScenarioId) return;
-  const reactionReady = Number(combatant.reaction_available) !== 0;
-  await api(`/api/combatants/${combatant.id}/reaction`, {
-    method: "POST",
-    body: JSON.stringify({ available: !reactionReady })
-  });
-  await safeLoadCombatState();
-  renderScenarioRunPage();
-}
-
-async function cycleActiveCombatantLegendaryAction() {
-  const combatant = activeCombatant();
-  if (!combatant || !state.selectedScenarioId) return;
-  const isLegendary =
-    combatant.kind === "enemy" &&
-    Number(combatant.is_legendary) === 1 &&
-    Number.isInteger(Number(combatant.legendary_actions_count));
-  if (!isLegendary) return;
-
-  const legendaryMax = Number(combatant.legendary_actions_count);
-  const currentRemainingRaw = Number(combatant.legendary_actions_remaining);
-  const currentRemaining = Number.isInteger(currentRemainingRaw)
-    ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
-    : legendaryMax;
-  const nextRemaining = currentRemaining > 0 ? currentRemaining - 1 : legendaryMax;
-
-  await api(`/api/combatants/${combatant.id}/legendary-actions`, {
-    method: "POST",
-    body: JSON.stringify({ remaining: nextRemaining })
-  });
-  await safeLoadCombatState();
-  renderScenarioRunPage();
-}
-
 function createPlayerVisibilityToggle(combatant, rerender) {
-  const visibleToPlayers = Number(combatant.player_visible) !== 0;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "visibility-toggle";
-  button.classList.toggle("is-hidden", !visibleToPlayers);
-  button.classList.toggle("reveal-moment-btn", hasRevealMoment(combatant.id));
-  button.textContent = visibleToPlayers ? "Visible" : "Hidden";
-  button.title = visibleToPlayers ? "Visible in player view" : "Hidden from player view";
-  button.addEventListener("click", async () => {
-    const nextVisible = !visibleToPlayers;
-    try {
-      await api(`/api/combatants/${combatant.id}/player-visible`, {
-        method: "POST",
-        body: JSON.stringify({ visible: nextVisible })
-      });
-      await safeLoadCombatState();
-      if (nextVisible) {
-        triggerRevealMoment(combatant.id);
-      }
-      rerender();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-  return button;
-}
-
-function attachConditionAdd(select, combatant) {
-  select.addEventListener("change", async () => {
-    const conditionKey = select.value || "";
-    if (!conditionKey) return;
-    try {
-      await api(`/api/combatants/${combatant.id}/conditions`, {
-        method: "POST",
-        body: JSON.stringify({ conditionKey })
-      });
-      select.value = "";
-      await safeLoadCombatState();
-      rerenderCurrentScenarioPage();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+  return combatUiController.createPlayerVisibilityToggle(combatant, rerender);
 }
 
 function createConditionSelect(combatant) {
-  const select = document.createElement("select");
-  select.className = "condition-select";
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Conditions";
-  placeholder.selected = true;
-  select.appendChild(placeholder);
-
-  for (const condition of CONDITIONS) {
-    const option = document.createElement("option");
-    option.value = condition.key;
-    option.textContent = condition.label;
-    if (Array.isArray(combatant.condition_keys) && combatant.condition_keys.includes(condition.key)) {
-      option.disabled = true;
-      option.textContent = `${condition.label} (active)`;
-    }
-    select.appendChild(option);
-  }
-
-  attachConditionAdd(select, combatant);
-  return select;
+  return combatUiController.createConditionSelect(combatant);
 }
 
 function applyConditionStyle(li, combatant) {
-  const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
-  if (keys.length === 0) return;
-
-  for (const key of keys) {
-    const condition = CONDITION_BY_KEY[key];
-    if (!condition) continue;
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "condition-chip";
-    chip.textContent = condition.label;
-    chip.setAttribute("data-tip", condition.tip);
-    chip.setAttribute("data-condition-key", condition.key);
-    chip.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      hideConditionTooltip();
-      try {
-        await api(`/api/combatants/${combatant.id}/conditions/${condition.key}`, {
-          method: "DELETE"
-        });
-        await safeLoadCombatState();
-        rerenderCurrentScenarioPage();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    li.appendChild(chip);
-  }
+  return combatUiController.applyConditionStyle(li, combatant);
 }
 
 function renderScenarioEditPage() {
-  const scenario = selectedScenario();
-  if (!scenario) return;
-
-  els.editScenarioName.value = scenario.name;
-  els.editScenarioNotes.value = scenario.notes || "";
-  state.draftScenarioMapImageData = scenario.map_image_data || "";
-  setScenarioMapPreview(state.draftScenarioMapImageData);
-  if (els.editScenarioMapFile) els.editScenarioMapFile.value = "";
-  els.combatantEditList.innerHTML = "";
-
-  if (state.combat.combatants.length === 0) {
-    els.combatantEditList.innerHTML = "<li>No combatants yet.</li>";
-    return;
-  }
-
-  for (const combatant of state.combat.combatants) {
-    const li = document.createElement("li");
-    li.dataset.combatantId = String(combatant.id);
-    if (state.runMap.hoverCombatantId === combatant.id) {
-      li.classList.add("map-token-hover-linked");
-    }
-    if (hasRevealMoment(combatant.id)) {
-      li.classList.add("reveal-moment-row");
-    }
-    if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
-      li.classList.add("combatant-hidden-for-players");
-    }
-    const row = document.createElement("div");
-    row.className = "combatant-row";
-    const right = document.createElement("div");
-    right.className = "edit-combatant-right";
-
-    const initiative = document.createElement("input");
-    initiative.type = "text";
-    initiative.className = "edit-order-init";
-    initiative.value = String(combatant.initiative);
-    initiative.required = true;
-    initiative.placeholder = "00";
-    initiative.maxLength = 2;
-    row.appendChild(initiative);
-    attachInitiativeBlurUpdate(initiative, combatant);
-
-    const name = createCombatantNameElement(combatant);
-    if (combatant.kind === "enemy") {
-      name.style.cursor = "pointer";
-      name.title = "Show this enemy statblock";
-      name.addEventListener("click", () => {
-        state.runPreviewEnemyId = combatant.id;
-        renderScenarioRunPage();
-      });
-    }
-    row.appendChild(name);
-    if (combatant.kind !== "character") {
-      right.appendChild(createPlayerVisibilityToggle(combatant, renderScenarioEditPage));
-    }
-
-    const conditionSelect = createConditionSelect(combatant);
-    right.appendChild(conditionSelect);
-
-    if (combatant.kind === "enemy") {
-      const hpPrefix = document.createElement("span");
-      hpPrefix.className = "field-prefix";
-      hpPrefix.textContent = "HP";
-      right.appendChild(hpPrefix);
-      const hp = document.createElement("input");
-      hp.type = "number";
-      hp.value = combatant.hp == null ? "" : String(combatant.hp);
-      hp.placeholder = "HP";
-      right.appendChild(hp);
-      attachEnemyHpBlurUpdate(hp, combatant);
-    }
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "delete-btn";
-    remove.textContent = "X";
-    remove.addEventListener("click", async () => {
-      const label = combatant.kind === "character" ? "PC" : combatantKindLabel(combatant);
-      if (!window.confirm(`Remove ${label} "${combatant.name}" from this scenario?`)) return;
-      try {
-        await api(`/api/combatants/${combatant.id}`, { method: "DELETE" });
-        await safeLoadCombatState();
-        renderScenarioEditPage();
-        setStatus(`Removed ${combatant.name} from scenario.`, "success");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    right.appendChild(remove);
-    row.appendChild(right);
-
-    li.appendChild(row);
-    applyConditionStyle(li, combatant);
-    els.combatantEditList.appendChild(li);
-  }
+  return scenarioEditPageController.renderScenarioEditPage();
 }
 
 function applyConditionStyleReadonly(li, combatant) {
-  const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
-  if (keys.length === 0) return;
-
-  for (const key of keys) {
-    const condition = CONDITION_BY_KEY[key];
-    if (!condition) continue;
-    const chip = document.createElement("span");
-    chip.className = "condition-chip condition-chip-readonly";
-    chip.textContent = condition.label;
-    chip.setAttribute("data-tip", condition.tip);
-    chip.setAttribute("data-condition-key", condition.key);
-    li.appendChild(chip);
-  }
+  return combatUiController.applyConditionStyleReadonly(li, combatant);
 }
 
 function renderScenarioCompletedEditPage() {
-  const scenario = selectedScenario();
-  if (!scenario) return;
-
-  els.completedEditScenarioName.value = scenario.name;
-  els.completedEditScenarioNotes.value = scenario.notes || "";
-  els.completedCombatantList.innerHTML = "";
-
-  if (state.combat.combatants.length === 0) {
-    els.completedCombatantList.innerHTML = "<li>No combatants yet.</li>";
-    return;
-  }
-
-  for (const combatant of state.combat.combatants) {
-    const li = document.createElement("li");
-    const row = document.createElement("div");
-    row.className = "combatant-row";
-
-    const name = createCombatantNameElement(combatant);
-    row.appendChild(name);
-
-    const initPrefix = document.createElement("span");
-    initPrefix.className = "field-prefix";
-    initPrefix.textContent = "Init";
-    row.appendChild(initPrefix);
-    const initValue = document.createElement("span");
-    initValue.textContent = String(combatant.initiative);
-    row.appendChild(initValue);
-
-    if (combatant.kind === "enemy") {
-      const hpPrefix = document.createElement("span");
-      hpPrefix.className = "field-prefix";
-      hpPrefix.textContent = "HP";
-      row.appendChild(hpPrefix);
-      const hpValue = document.createElement("span");
-      hpValue.textContent = combatant.hp == null ? "-" : String(combatant.hp);
-      row.appendChild(hpValue);
-    }
-
-    li.appendChild(row);
-    applyConditionStyleReadonly(li, combatant);
-    els.completedCombatantList.appendChild(li);
-  }
+  return scenarioEditPageController.renderScenarioCompletedEditPage();
 }
 
 function renderScenarioRunPage() {
-  const scenario = selectedScenario();
-  if (!scenario) return;
-
-  const isMapView = state.page === "scenario-map";
-  if (!isMapView) {
-    hideMapStatblockHover();
-    state.runMap.hoverCombatantId = null;
-  }
-  const hasMap = Boolean(scenario.map_image_data);
-  const mapTokenSize = scenarioMapTokenSize(scenario);
-  hydrateRunMapTokensFromScenario(scenario);
-  els.runMapViewToggleBtn.classList.toggle("hidden", state.authUser?.role !== "admin");
-  els.runMapViewToggleBtn.textContent = isMapView ? "Initiative View" : "Map View";
-  els.runMapWrap.classList.toggle("hidden", !isMapView);
-  els.runCombatLayout.classList.toggle("run-map-mode", isMapView);
-  els.pageScenarioRun.classList.toggle("scenario-map-layout", isMapView);
-  els.activeMonsterImageWrap.classList.toggle("hidden", isMapView);
-  if (isMapView) {
-    startRunMapSyncPolling();
-  } else {
-    stopRunMapSyncPolling();
-  }
-  if (isMapView && hasMap) {
-    const shouldResetMap =
-      state.runMap.scenarioId !== scenario.id || els.runMapImage.src !== scenario.map_image_data;
-    els.runMapImage.src = scenario.map_image_data;
-    els.runMapImage.classList.remove("hidden");
-    els.runMapHint.classList.add("hidden");
-    els.runMapTokenSizeControls.classList.remove("hidden");
-    els.runMapControls.classList.remove("hidden");
-    els.runMapDmControls.classList.remove("hidden");
-    els.runMapFogBrushControls?.classList.toggle("hidden", state.runMap.fogMode === "navigate");
-    setRunMapTokenSizeUI(mapTokenSize);
-    setRunMapDragLockUi(state.runMap.dragLocked);
-    ensureRunMapFogCanvasFromScenario(scenario);
-    if (shouldResetMap) resetRunMapViewForScenario(scenario.id);
-    renderRunMapTokens(scenario.id, state.combat.combatants);
-    maybeShowRunMapPing(scenario.map_last_ping_json || "");
-    applyRunMapTransform();
-  } else if (isMapView && !hasMap) {
-    els.runMapImage.src = "";
-    els.runMapImage.classList.add("hidden");
-    els.runMapHint.classList.remove("hidden");
-    els.runMapTokenSizeControls.classList.add("hidden");
-    els.runMapControls.classList.add("hidden");
-    els.runMapDmControls.classList.add("hidden");
-    els.runMapFogBrushControls?.classList.add("hidden");
-    hideRunMapFogCursorPreview();
-    if (els.runMapTokens) els.runMapTokens.innerHTML = "";
-    if (els.runMapPings) els.runMapPings.innerHTML = "";
-    clearRunMapFogCanvas();
-    state.runMap.scenarioId = null;
-    state.runMap.dragging = false;
-    state.runMap.pointerId = null;
-  } else {
-    els.runMapImage.src = "";
-    els.runMapImage.classList.add("hidden");
-    els.runMapHint.classList.add("hidden");
-    els.runMapTokenSizeControls.classList.add("hidden");
-    els.runMapControls.classList.add("hidden");
-    els.runMapDmControls.classList.add("hidden");
-    els.runMapFogBrushControls?.classList.add("hidden");
-    hideRunMapFogCursorPreview();
-    if (els.runMapTokens) els.runMapTokens.innerHTML = "";
-    if (els.runMapPings) els.runMapPings.innerHTML = "";
-    clearRunMapFogCanvas();
-    state.runMap.dragging = false;
-    state.runMap.pointerId = null;
-  }
-
-  els.runScenarioName.textContent = scenario.name;
-  els.runScenarioNotes.textContent = scenario.notes || "No notes yet.";
-  if (state.authUser?.role === "admin") {
-    const isSharedCurrent = state.campaignLiveScenarioId === scenario.id;
-    els.runScenarioSharedDot.classList.toggle("hidden", !isSharedCurrent);
-    els.shareScenarioBtn.classList.remove("hidden");
-    els.shareScenarioBtn.textContent = isSharedCurrent ? "Stop Sharing" : "Share";
-  } else {
-    els.runScenarioSharedDot.classList.add("hidden");
-    els.shareScenarioBtn.classList.add("hidden");
-  }
-  if (Number(scenario.is_completed) === 1) {
-    els.completeScenarioBtn.textContent = "Completed";
-    els.completeScenarioBtn.disabled = true;
-  } else {
-    els.completeScenarioBtn.textContent = "Complete";
-    els.completeScenarioBtn.disabled = false;
-  }
-  els.runRound.textContent = String(state.combat.round);
-  els.runOrderList.innerHTML = "";
-  els.activeMonsterImage.classList.add("hidden");
-  els.activeMonsterImage.src = "";
-  els.activeMonsterImageHint.classList.remove("hidden");
-
-  if (state.combat.combatants.length === 0) {
-    els.revokeTurnBtn.disabled = true;
-    els.nextTurnBtn.disabled = true;
-    els.resetCombatBtn.disabled = true;
-    els.runOrderList.innerHTML = "<li>No initiative order yet.</li>";
-    return;
-  }
-
-  els.revokeTurnBtn.disabled = false;
-  els.nextTurnBtn.disabled = false;
-  els.resetCombatBtn.disabled = false;
-
-  const active = state.combat.combatants.find((c) => c.id === state.combat.activeCombatantId);
-  if (
-    !state.runPreviewEnemyId ||
-    !state.combat.combatants.some((c) => c.id === state.runPreviewEnemyId && c.kind === "enemy")
-  ) {
-    state.runPreviewEnemyId =
-      (active && active.kind === "enemy"
-        ? active.id
-        : state.combat.combatants.find((c) => c.kind === "enemy")?.id) || null;
-  }
-
-  const previewEnemy = state.combat.combatants.find((c) => c.id === state.runPreviewEnemyId);
-  if (previewEnemy && previewEnemy.monster_image_data) {
-    els.activeMonsterImage.src = previewEnemy.monster_image_data;
-    els.activeMonsterImage.classList.remove("hidden");
-    els.activeMonsterImageHint.classList.add("hidden");
-  } else if (previewEnemy) {
-    els.activeMonsterImageHint.textContent = `${previewEnemy.name} has no statblock image.`;
-  } else {
-    els.activeMonsterImageHint.textContent = "No combatant statblock selected.";
-  }
-
-  for (const combatant of state.combat.combatants) {
-    const li = document.createElement("li");
-    li.dataset.combatantId = String(combatant.id);
-    if (state.runMap.hoverCombatantId === combatant.id) {
-      li.classList.add("map-token-hover-linked");
-    }
-    if (hasRevealMoment(combatant.id)) {
-      li.classList.add("reveal-moment-row");
-    }
-    if (combatant.kind !== "character" && Number(combatant.player_visible) === 0) {
-      li.classList.add("combatant-hidden-for-players");
-    }
-    if (combatant.kind === "character") {
-      li.classList.add("run-tone-pc");
-    } else if (isAllyCombatant(combatant)) {
-      li.classList.add("run-tone-npc");
-    } else {
-      li.classList.add("run-tone-enemy");
-    }
-    const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
-    if (keys.includes("down")) {
-      li.classList.add("run-down");
-    }
-    if (combatant.kind === "enemy") {
-      const hpValue = Number(combatant.hp);
-      if (Number.isFinite(hpValue) && hpValue <= 0) {
-        li.classList.add("run-defeated");
-      }
-    }
-    const row = document.createElement("div");
-    row.className = "combatant-row";
-    const mainLine = document.createElement("div");
-    mainLine.className = "combatant-line-main";
-    const right = document.createElement("div");
-    right.className = "combatant-right";
-
-    const name = createCombatantNameElement(combatant);
-    if (combatant.kind === "enemy") {
-      name.style.cursor = "pointer";
-      if (isMapView) {
-        name.title = "Open statblock";
-        name.addEventListener("click", () => {
-          inspectCombatantStatblock(combatant);
-        });
-        if (state.authUser?.role === "admin" && combatant.monster_image_data) {
-          name.addEventListener("mouseenter", () => {
-            showMapStatblockHover(combatant.monster_image_data, name);
-          });
-          name.addEventListener("mousemove", () => {
-            showMapStatblockHover(combatant.monster_image_data, name);
-          });
-          name.addEventListener("mouseleave", () => {
-            hideMapStatblockHover();
-          });
-        }
-      } else {
-        name.title = "Show this statblock";
-        name.addEventListener("click", () => {
-          state.runPreviewEnemyId = combatant.id;
-          renderScenarioRunPage();
-        });
-      }
-    }
-
-    const initiative = document.createElement("input");
-    initiative.type = "number";
-    initiative.required = true;
-    initiative.className = "run-order-init";
-    initiative.min = "1";
-    initiative.max = "99";
-    initiative.maxLength = 2;
-    initiative.value = String(combatant.initiative);
-    initiative.placeholder = "Init";
-    setupRunQuickEditInput(initiative);
-    mainLine.appendChild(initiative);
-    attachInitiativeBlurUpdate(initiative, combatant);
-
-    const reactionReady = Number(combatant.reaction_available) !== 0;
-    const reactionButton = document.createElement("button");
-    reactionButton.type = "button";
-    reactionButton.className = "reaction-btn reaction-die";
-    reactionButton.textContent = "R";
-    reactionButton.title = reactionReady ? "Reaction ready (click to mark used)" : "Reaction used (click to ready)";
-    reactionButton.setAttribute("aria-label", reactionButton.title);
-    reactionButton.classList.toggle("used", !reactionReady);
-    reactionButton.addEventListener("click", async () => {
-      try {
-        await api(`/api/combatants/${combatant.id}/reaction`, {
-          method: "POST",
-          body: JSON.stringify({ available: !reactionReady })
-        });
-        await safeLoadCombatState();
-        renderScenarioRunPage();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    mainLine.appendChild(reactionButton);
-
-    let legendaryWrap = null;
-    if (
-      combatant.kind === "enemy" &&
-      Number(combatant.is_legendary) === 1 &&
-      Number.isInteger(Number(combatant.legendary_actions_count))
-    ) {
-      const legendaryMax = Number(combatant.legendary_actions_count);
-      const currentRemainingRaw = Number(combatant.legendary_actions_remaining);
-      const legendaryRemaining = Number.isInteger(currentRemainingRaw)
-        ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
-        : legendaryMax;
-      legendaryWrap = document.createElement("div");
-      legendaryWrap.className = "legendary-track";
-      for (let i = 1; i <= legendaryMax; i += 1) {
-        const pip = document.createElement("button");
-        pip.type = "button";
-        pip.className = "legendary-btn reaction-die";
-        pip.textContent = "L";
-        const ready = i <= legendaryRemaining;
-        pip.classList.toggle("used", !ready);
-        pip.title = ready
-          ? "Legendary action ready (click to spend)"
-          : "Legendary action spent (click to refresh)";
-        pip.setAttribute("aria-label", pip.title);
-        pip.addEventListener("click", async () => {
-          const nextRemaining = ready ? i - 1 : i;
-          try {
-            await api(`/api/combatants/${combatant.id}/legendary-actions`, {
-              method: "POST",
-              body: JSON.stringify({ remaining: nextRemaining })
-            });
-            await safeLoadCombatState();
-            renderScenarioRunPage();
-          } catch (error) {
-            setStatus(error.message, "error");
-          }
-        });
-        legendaryWrap.appendChild(pip);
-      }
-    }
-    mainLine.appendChild(name);
-    if (legendaryWrap) mainLine.appendChild(legendaryWrap);
-    row.appendChild(mainLine);
-
-    let visibilityToggle = null;
-    if (combatant.kind !== "character") {
-      visibilityToggle = createPlayerVisibilityToggle(combatant, renderScenarioRunPage);
-    }
-    const conditionSelect = createConditionSelect(combatant);
-
-    if (isMapView && visibilityToggle) {
-      visibilityToggle.classList.add("combatant-visibility-inline");
-      row.appendChild(visibilityToggle);
-    } else if (visibilityToggle) {
-      right.appendChild(visibilityToggle);
-    }
-
-    if (combatant.kind === "enemy") {
-      right.appendChild(conditionSelect);
-
-      const hpPrefix = document.createElement("span");
-      hpPrefix.className = "field-prefix";
-      hpPrefix.textContent = "HP";
-      right.appendChild(hpPrefix);
-
-      const hp = document.createElement("input");
-      hp.type = "text";
-      hp.className = "run-order-hp";
-      hp.min = "0";
-      hp.max = "9999";
-      hp.maxLength = 4;
-      hp.value = combatant.hp == null ? "" : String(combatant.hp);
-      hp.placeholder = "HP";
-      setupRunQuickEditInput(hp);
-      right.appendChild(hp);
-      attachEnemyHpBlurUpdate(hp, combatant);
-
-      const heal = document.createElement("button");
-      heal.type = "button";
-      heal.textContent = "Heal";
-      heal.classList.add("enemy-heal-btn");
-      if (isAllyCombatant(combatant)) heal.classList.add("npc-heal-btn");
-      heal.addEventListener("click", async () => {
-        const n = Number(delta.value);
-        if (!Number.isFinite(n)) return;
-        try {
-          await api(`/api/combatants/${combatant.id}/hp-adjust`, {
-            method: "POST",
-            body: JSON.stringify({ delta: Math.abs(Math.trunc(n)) })
-          });
-          await safeLoadCombatState();
-          renderScenarioRunPage();
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      right.appendChild(heal);
-
-      const delta = document.createElement("input");
-      delta.type = "text";
-      delta.className = "run-order-delta";
-      delta.min = "1";
-      delta.max = "99";
-      delta.maxLength = 3;
-      delta.value = "0";
-      delta.placeholder = "Delta";
-      setupRunQuickEditInput(delta);
-      right.appendChild(delta);
-
-      const damage = document.createElement("button");
-      damage.type = "button";
-      damage.textContent = "Damage";
-      damage.classList.add("enemy-damage-btn");
-      if (isAllyCombatant(combatant)) damage.classList.add("npc-damage-btn");
-      damage.addEventListener("click", async () => {
-        const n = Number(delta.value);
-        if (!Number.isFinite(n)) return;
-        try {
-          await api(`/api/combatants/${combatant.id}/hp-adjust`, {
-            method: "POST",
-            body: JSON.stringify({ delta: -Math.abs(Math.trunc(n)) })
-          });
-          await safeLoadCombatState();
-          renderScenarioRunPage();
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      right.appendChild(damage);
-    } else if (isMapView) {
-      conditionSelect.classList.add("map-character-condition-inline");
-      mainLine.appendChild(conditionSelect);
-    } else {
-      right.appendChild(conditionSelect);
-    }
-
-    if (!(isMapView && combatant.kind === "character")) {
-      row.appendChild(right);
-    }
-
-    if (combatant.id === state.combat.activeCombatantId) {
-      li.classList.add("turn-active");
-    }
-
-    li.appendChild(row);
-    applyConditionStyle(li, combatant);
-    els.runOrderList.appendChild(li);
-  }
-
-  if (state.authUser?.role === "admin" && (state.page === "scenario-run" || state.page === "scenario-map")) {
-    maybeCelebrateEncounterWin(state.selectedScenarioId, state.combat.combatants);
-  }
+  return scenarioRunPageController.renderScenarioRunPage();
 }
 
 async function completeSelectedScenario() {
-  const scenario = selectedScenario();
-  if (!scenario) return;
-  await api(`/api/scenarios/${scenario.id}/completed`, {
-    method: "POST",
-    body: JSON.stringify({ completed: true })
-  });
-  await loadCampaignData();
-  await navigateToPage("campaign-completed", {
-    campaignId: state.selectedCampaignId
-  });
-  setStatus(`Completed scenario: ${scenario.name}`, "success");
+  return scenarioEditPageController.completeSelectedScenario();
 }
 
 function renderCampaignPage() {
-  const campaign = selectedCampaign();
-  els.campaignPageTitle.textContent = campaign ? `Campaign: ${campaign.name}` : "Campaign";
-  renderCharacters();
-  renderScenarios();
-  renderNav();
+  return campaignPageController.renderCampaignPage();
 }
 
 function selectedSceneImage() {
-  if (!Number.isInteger(state.selectedSceneId)) return null;
-  return state.sceneImages.find((scene) => scene.id === state.selectedSceneId) || null;
+  return scenePageController.selectedSceneImage();
 }
 
 function preferredSceneCampaignId() {
-  const validCampaignIds = new Set(
-    (Array.isArray(state.campaigns) ? state.campaigns : [])
-      .map((campaign) => campaign.id)
-      .filter((id) => Number.isInteger(id))
-  );
-  if (Number.isInteger(state.selectedCampaignId) && validCampaignIds.has(state.selectedCampaignId)) {
-    return state.selectedCampaignId;
-  }
-  if (Number.isInteger(state.lastHomeCampaignId) && validCampaignIds.has(state.lastHomeCampaignId)) {
-    return state.lastHomeCampaignId;
-  }
-  const firstCampaignId = state.campaigns?.[0]?.id;
-  return Number.isInteger(firstCampaignId) ? firstCampaignId : null;
+  return scenePageController.preferredSceneCampaignId();
 }
 
 async function loadSceneImages(campaignId) {
-  if (!Number.isInteger(campaignId)) {
-    state.sceneImages = [];
-    state.selectedSceneId = null;
-    return;
-  }
-  const scenes = await api(`/api/campaigns/${campaignId}/scenes`);
-  state.sceneImages = Array.isArray(scenes) ? scenes : [];
-  if (!state.sceneImages.some((scene) => scene.id === state.selectedSceneId)) {
-    state.selectedSceneId = state.sceneImages[0]?.id ?? null;
-  }
+  return scenePageController.loadSceneImages(campaignId);
 }
 
 function renderScenePage() {
-  const campaign = selectedCampaign();
-  els.scenePageTitle.textContent = campaign ? campaign.name : "Scene View";
-  if (els.sceneCampaignSelect) {
-    const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
-    const previousValue = els.sceneCampaignSelect.value;
-    els.sceneCampaignSelect.innerHTML = "";
-    if (campaigns.length === 0) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "No campaigns";
-      els.sceneCampaignSelect.appendChild(option);
-      els.sceneCampaignSelect.disabled = true;
-    } else {
-      for (const entry of campaigns) {
-        const option = document.createElement("option");
-        option.value = String(entry.id);
-        option.textContent = entry.name;
-        els.sceneCampaignSelect.appendChild(option);
-      }
-      const selectedValue = Number.isInteger(state.selectedCampaignId)
-        ? String(state.selectedCampaignId)
-        : previousValue;
-      if (selectedValue && campaigns.some((entry) => String(entry.id) === selectedValue)) {
-        els.sceneCampaignSelect.value = selectedValue;
-      } else {
-        els.sceneCampaignSelect.value = String(campaigns[0].id);
-      }
-      els.sceneCampaignSelect.disabled = false;
-    }
-  }
-  setSceneDraftImagePreview(state.draftSceneImageData || "");
-  if (els.sceneSearchInput && els.sceneSearchInput.value !== state.sceneSearchQuery) {
-    els.sceneSearchInput.value = state.sceneSearchQuery;
-  }
-
-  const query = state.sceneSearchQuery.trim().toLowerCase();
-  const filtered = query
-    ? state.sceneImages.filter((scene) => `${scene.name || ""}`.toLowerCase().includes(query))
-    : [...state.sceneImages];
-
-  if (!filtered.some((scene) => scene.id === state.selectedSceneId)) {
-    state.selectedSceneId = filtered[0]?.id ?? null;
-  }
-
-  els.sceneList.innerHTML = "";
-  if (filtered.length === 0) {
-    els.sceneList.innerHTML = "<li>No scenes yet.</li>";
-  } else {
-    for (const scene of filtered) {
-      const li = document.createElement("li");
-      li.className = "list-row";
-      li.dataset.sceneId = String(scene.id);
-      const label = document.createElement("span");
-      label.textContent = scene.name || "Unnamed Scene";
-      li.appendChild(label);
-      if (scene.id === state.campaignLiveSceneImageId) {
-        const dot = document.createElement("span");
-        dot.className = "scenario-shared-dot";
-        dot.title = "Shared with players";
-        li.appendChild(dot);
-      }
-      if (scene.id === state.selectedSceneId) {
-        li.classList.add("active");
-      }
-      li.tabIndex = 0;
-      els.sceneList.appendChild(li);
-    }
-  }
-
-  const selected = selectedSceneImage();
-  const hasSelected = Boolean(selected);
-  els.scenePreviewTitle.textContent = hasSelected ? selected.name : "Preview";
-  els.scenePreviewHint.classList.toggle("hidden", hasSelected);
-  if (hasSelected && selected.image_data) {
-    els.scenePreviewImage.src = selected.image_data;
-    els.scenePreviewImage.classList.remove("hidden");
-  } else {
-    els.scenePreviewImage.src = "";
-    els.scenePreviewImage.classList.add("hidden");
-  }
-  els.deleteSceneBtn.classList.toggle("hidden", !hasSelected);
-
-  const isSelectedShared = hasSelected && selected.id === state.campaignLiveSceneImageId;
-  els.shareSceneBtn.disabled = !hasSelected;
-  els.shareSceneBtn.textContent = isSelectedShared ? "Stop Sharing" : "Share with Players";
-}
-
-function formatConditionLabel(conditionKey) {
-  const raw = `${conditionKey || ""}`.trim();
-  if (!raw) return "";
-  return raw
-    .split(/[_\s-]+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return scenePageController.renderScenePage();
 }
 
 async function loadCampaignStats(campaignId) {
-  if (!Number.isInteger(campaignId)) return null;
-  const stats = await api(`/api/campaigns/${campaignId}/stats`);
-  state.analyticsStatsByCampaign[campaignId] = stats;
-  return stats;
+  return analyticsPageController.loadCampaignStats(campaignId);
 }
 
 function renderAnalyticsPage() {
-  const campaigns = Array.isArray(state.campaigns) ? state.campaigns : [];
-  els.analyticsCampaignSelect.innerHTML = "";
-  if (campaigns.length === 0) {
-    els.analyticsStatus.textContent = "No campaigns available yet.";
-    els.analyticsMetrics.innerHTML = "";
-    els.analyticsEnemyConditionList.innerHTML = "<li>No enemy condition data yet.</li>";
-    els.analyticsPcInitiativeList.innerHTML = "<li>No PC initiative data yet.</li>";
-    return;
-  }
-
-  for (const campaign of campaigns) {
-    const option = document.createElement("option");
-    option.value = String(campaign.id);
-    option.textContent = campaign.name;
-    if (campaign.id === state.analyticsSelectedCampaignId) {
-      option.selected = true;
-    }
-    els.analyticsCampaignSelect.appendChild(option);
-  }
-
-  const selectedId = state.analyticsSelectedCampaignId;
-  if (!Number.isInteger(selectedId)) {
-    els.analyticsStatus.textContent = "Select a campaign.";
-    return;
-  }
-
-  const stats = state.analyticsStatsByCampaign[selectedId];
-  if (!stats) {
-    els.analyticsStatus.textContent = "Loading stats...";
-    els.analyticsMetrics.innerHTML = "";
-    els.analyticsEnemyConditionList.innerHTML = "<li>No enemy condition data yet.</li>";
-    els.analyticsPcInitiativeList.innerHTML = "<li>No PC initiative data yet.</li>";
-    return;
-  }
-
-  els.analyticsStatus.textContent = "";
-  const metricItems = [
-    { label: "Total Damage dealt to enemies", value: stats.totalEnemyDamage ?? 0 },
-    { label: "Total Enemies killed", value: stats.totalEnemyDefeats ?? 0 },
-    { label: "Total PCs downed", value: stats.pcDownCount ?? 0 }
-  ];
-  els.analyticsEncounterCounters.innerHTML = "";
-  const topCounterItems = [
-    { label: "Total Encounters", value: stats.totalEncounters ?? 0 },
-    { label: "Finished Encounters", value: stats.totalFinishedEncounters ?? 0 }
-  ];
-  for (const item of topCounterItems) {
-    const box = document.createElement("article");
-    box.className = "analytics-encounter-counter";
-    const title = document.createElement("h4");
-    title.textContent = item.label;
-    const value = document.createElement("strong");
-    value.textContent = String(item.value);
-    box.appendChild(title);
-    box.appendChild(value);
-    els.analyticsEncounterCounters.appendChild(box);
-  }
-  els.analyticsMetrics.innerHTML = "";
-  for (const item of metricItems) {
-    const metric = document.createElement("article");
-    metric.className = "analytics-metric";
-    const title = document.createElement("h4");
-    title.textContent = item.label;
-    const value = document.createElement("strong");
-    value.textContent = String(item.value);
-    metric.appendChild(title);
-    metric.appendChild(value);
-    els.analyticsMetrics.appendChild(metric);
-  }
-
-  els.analyticsEnemyConditionList.innerHTML = "";
-  const enemyEntries = Object.entries(stats.enemyConditionApplies || {});
-  if (enemyEntries.length === 0) {
-    els.analyticsEnemyConditionList.innerHTML = "<li>No enemy condition data yet.</li>";
-  } else {
-    enemyEntries.sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
-    const podiumClasses = ["analytics-podium-gold", "analytics-podium-silver", "analytics-podium-bronze"];
-    for (const [index, [conditionKey, count]] of enemyEntries.slice(0, 3).entries()) {
-      const li = document.createElement("li");
-      li.className = `list-row analytics-podium-item ${podiumClasses[index]}`;
-      const left = document.createElement("span");
-      left.className = "analytics-podium-left";
-      const medal = document.createElement("span");
-      medal.className = "analytics-podium-medal";
-      medal.textContent = String(index + 1);
-      left.appendChild(medal);
-      const label = document.createElement("span");
-      label.textContent = formatConditionLabel(conditionKey);
-      left.appendChild(label);
-      const value = document.createElement("strong");
-      value.textContent = String(Number(count) || 0);
-      li.appendChild(left);
-      li.appendChild(value);
-      els.analyticsEnemyConditionList.appendChild(li);
-    }
-  }
-
-  els.analyticsPcInitiativeList.innerHTML = "";
-  const pcRows = Array.isArray(stats.pcInitiativeAverages) ? stats.pcInitiativeAverages : [];
-  if (pcRows.length === 0) {
-    els.analyticsPcInitiativeList.innerHTML = "<li>No PC initiative data yet.</li>";
-  } else {
-    const rankedRows = [...pcRows].sort((a, b) => {
-      const avgA = Number.isFinite(Number(a.averageInitiative)) ? Number(a.averageInitiative) : -Infinity;
-      const avgB = Number.isFinite(Number(b.averageInitiative)) ? Number(b.averageInitiative) : -Infinity;
-      if (avgA !== avgB) return avgB - avgA;
-      const encountersA = Number(a.encounterCount) || 0;
-      const encountersB = Number(b.encounterCount) || 0;
-      if (encountersA !== encountersB) return encountersB - encountersA;
-      return String(a.characterName || "").localeCompare(String(b.characterName || ""));
-    });
-    for (const [index, row] of rankedRows.entries()) {
-      const li = document.createElement("li");
-      li.className = "list-row";
-      const left = document.createElement("span");
-      left.className = "analytics-pc-row";
-      const rank = document.createElement("span");
-      rank.className = "analytics-pc-rank";
-      rank.textContent = `#${index + 1}`;
-      left.appendChild(rank);
-      const icon = document.createElement("img");
-      icon.className = "analytics-pc-token";
-      icon.alt = row.characterName || "PC";
-      const fallbackSrc = `/icons/classes/${slugifyClassName(row.characterClass || "")}.png`;
-      icon.src = row.claimedProfileImageData || fallbackSrc;
-      icon.addEventListener("error", () => {
-        if (!icon.src.endsWith(fallbackSrc)) {
-          icon.src = fallbackSrc;
-          return;
-        }
-        if (!icon.src.endsWith("/icons/pc.svg")) {
-          icon.src = "/icons/pc.svg";
-        }
-      });
-      if (row.claimedProfileImageData) {
-        icon.classList.add("token-portrait");
-      }
-      left.appendChild(icon);
-      const name = document.createElement("span");
-      name.textContent = row.characterName || "Unknown";
-      left.appendChild(name);
-      const right = document.createElement("span");
-      const avg = row.averageInitiative == null ? "-" : row.averageInitiative;
-      const encounters = Number(row.encounterCount) || 0;
-      right.textContent = `${avg} avg (${encounters} encounters)`;
-      li.appendChild(left);
-      li.appendChild(right);
-      els.analyticsPcInitiativeList.appendChild(li);
-    }
-  }
+  return analyticsPageController.renderAnalyticsPage();
 }
 
 async function setAnalyticsCampaign(campaignId) {
-  if (!Number.isInteger(campaignId)) return;
-  state.analyticsSelectedCampaignId = campaignId;
-  renderAnalyticsPage();
-  try {
-    await loadCampaignStats(campaignId);
-    renderAnalyticsPage();
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
+  return analyticsPageController.setAnalyticsCampaign(campaignId);
 }
 
 async function loadCampaigns() {
@@ -5326,660 +2833,39 @@ async function loadCampaignLiveState(campaignId) {
 }
 
 function renderPlayerHome() {
-  const shared = state.playerLiveData?.shared || null;
-  const sharedScene = state.playerLiveData?.scene || null;
-  const isMapMode = state.playerLiveViewMode === "map";
-  const isSceneMode = state.playerLiveViewMode === "scene";
-  const hasEncounter = Boolean(shared);
-  const hasScene = Boolean(sharedScene && sharedScene.imageData);
-  const hasContentForMode = isSceneMode ? hasScene : hasEncounter;
-  if (els.playerWaitingTitle) {
-    els.playerWaitingTitle.textContent = isSceneMode
-      ? "Waiting for your genius DM to show a magical scene!"
-      : "Waiting for your genius DM to fire up an awesome encounter!";
-  }
-
-  els.playerWaitingWrap.classList.toggle("hidden", hasContentForMode);
-  els.playerLiveWrap.classList.toggle("hidden", !hasContentForMode);
-  if (!hasContentForMode) {
-    state.playerLiveLastActiveCombatantId = null;
-    state.playerVisibleCombatantIdsByScenario = {};
-    return;
-  }
-
-  if (hasEncounter) {
-    updatePlayerRevealMomentsFromShared(shared);
-  } else {
-    state.playerVisibleCombatantIdsByScenario = {};
-  }
-
-  if (!isMapMode) {
-    state.playerMap.hoverCombatantId = null;
-  }
-  els.playerLiveWrap.classList.toggle("player-map-mode", isMapMode);
-  els.playerLiveInitiativeWrap.classList.toggle("hidden", isSceneMode);
-  els.playerLiveMapWrap.classList.toggle("hidden", !isMapMode);
-  els.playerLiveSceneWrap.classList.toggle("hidden", !isSceneMode);
-
-  if (isSceneMode) {
-    els.playerLiveEncounterName.textContent = sharedScene?.name || "Scene View";
-    els.playerLiveRound.textContent = "";
-    if (sharedScene?.imageData) {
-      els.playerLiveSceneImage.src = sharedScene.imageData;
-      els.playerLiveSceneImage.classList.remove("hidden");
-      els.playerLiveSceneHint.classList.add("hidden");
-    } else {
-      els.playerLiveSceneImage.src = "";
-      els.playerLiveSceneImage.classList.add("hidden");
-      els.playerLiveSceneHint.classList.remove("hidden");
-    }
-    return;
-  }
-
-  els.playerLiveEncounterName.textContent = shared.name || "Shared Encounter";
-  els.playerLiveRound.textContent = `Round ${shared.round ?? 1}`;
-  els.playerLiveCombatantList.innerHTML = "";
-
-  const combatants = Array.isArray(shared.combatants) ? shared.combatants : [];
-  if (combatants.length === 0) {
-    els.playerLiveCombatantList.innerHTML = "<li>No combatants yet.</li>";
-    return;
-  }
-
-  for (const combatant of combatants) {
-    const li = document.createElement("li");
-    li.dataset.combatantId = String(combatant.id);
-    if (state.playerMap.hoverCombatantId === combatant.id) {
-      li.classList.add("map-token-hover-linked");
-    }
-    if (combatant.kind === "character") {
-      li.classList.add("run-tone-pc");
-    } else if (isAllyCombatant(combatant)) {
-      li.classList.add("run-tone-npc");
-    } else {
-      li.classList.add("run-tone-enemy");
-    }
-    const keys = Array.isArray(combatant.condition_keys) ? combatant.condition_keys : [];
-    if (keys.includes("down")) {
-      li.classList.add("run-down");
-    }
-    if (combatant.kind === "enemy" && Number(combatant.is_defeated) === 1) {
-      li.classList.add("run-defeated");
-    }
-    if (combatant.id === shared.activeCombatantId) {
-      li.classList.add("turn-active");
-    }
-
-    const row = document.createElement("div");
-    row.className = "combatant-row";
-
-    const initiative = document.createElement("span");
-    initiative.className = "run-order-init run-order-init-readonly";
-    initiative.textContent = String(combatant.initiative);
-    row.appendChild(initiative);
-
-    const reactionReady = Number(combatant.reaction_available) !== 0;
-    const reactionBadge = document.createElement("span");
-    reactionBadge.className = "reaction-btn reaction-die readonly-control";
-    reactionBadge.textContent = "R";
-    reactionBadge.classList.toggle("used", !reactionReady);
-    row.appendChild(reactionBadge);
-
-    const name = createCombatantNameElement(combatant);
-    row.appendChild(name);
-
-    const isActivePlayerTurn = combatant.kind === "character" && combatant.id === shared.activeCombatantId;
-    if (isActivePlayerTurn) {
-      const turnResourceKey = `${shared.scenarioId}:${shared.round}:${shared.activeCombatantId}`;
-      if (!state.playerTurnResourcesByKey[turnResourceKey]) {
-        state.playerTurnResourcesByKey[turnResourceKey] = {
-          actionUsed: false,
-          bonusUsed: false,
-          movementUsed: false
-        };
-      }
-      const resources = state.playerTurnResourcesByKey[turnResourceKey];
-      const controls = document.createElement("div");
-      controls.className = "player-turn-resources";
-      const options = [
-        { key: "actionUsed", label: "Action" },
-        { key: "bonusUsed", label: "Bonus Action" },
-        { key: "movementUsed", label: "Movement" }
-      ];
-      for (const option of options) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "player-turn-resource-btn";
-        const tipKey = option.key === "actionUsed" ? "action" : option.key === "bonusUsed" ? "bonus" : "movement";
-        button.setAttribute("data-tip", PLAYER_TURN_RESOURCE_TIPS[tipKey]);
-        button.setAttribute("data-tip-style", tipKey === "action" ? "action-list" : "plain");
-        const isUsed = Boolean(resources[option.key]);
-        button.classList.toggle("used", isUsed);
-        button.setAttribute("aria-pressed", isUsed ? "true" : "false");
-        button.textContent = option.label;
-        button.addEventListener("click", () => {
-          resources[option.key] = !resources[option.key];
-          const nextUsed = Boolean(resources[option.key]);
-          button.classList.toggle("used", nextUsed);
-          button.setAttribute("aria-pressed", nextUsed ? "true" : "false");
-          button.textContent = option.label;
-        });
-        controls.appendChild(button);
-      }
-      row.appendChild(controls);
-    }
-
-    if (
-      combatant.kind === "enemy" &&
-      Number(combatant.is_legendary) === 1 &&
-      Number.isInteger(Number(combatant.legendary_actions_count))
-    ) {
-      const legendaryMax = Number(combatant.legendary_actions_count);
-      const currentRemainingRaw = Number(combatant.legendary_actions_remaining);
-      const legendaryRemaining = Number.isInteger(currentRemainingRaw)
-        ? Math.max(0, Math.min(legendaryMax, currentRemainingRaw))
-        : legendaryMax;
-      const legendaryWrap = document.createElement("div");
-      legendaryWrap.className = "legendary-track";
-      for (let i = 1; i <= legendaryMax; i += 1) {
-        const pip = document.createElement("span");
-        pip.className = "legendary-btn reaction-die readonly-control";
-        pip.textContent = "L";
-        const ready = i <= legendaryRemaining;
-        pip.classList.toggle("used", !ready);
-        legendaryWrap.appendChild(pip);
-      }
-      row.appendChild(legendaryWrap);
-    }
-
-    li.appendChild(row);
-
-    applyConditionStyleReadonly(li, combatant);
-
-    els.playerLiveCombatantList.appendChild(li);
-  }
-
-  if (isMapMode) {
-    const activeChanged =
-      Number(shared.activeCombatantId) !== Number(state.playerLiveLastActiveCombatantId);
-    scrollPlayerInitiativeToActive({ smooth: activeChanged });
-    state.playerLiveLastActiveCombatantId = shared.activeCombatantId ?? null;
-  } else {
-    state.playerLiveLastActiveCombatantId = shared.activeCombatantId ?? null;
-  }
-
-  if (isMapMode) {
-    const mapImageData = `${shared.mapImageData || ""}`;
-    const mapTokensJson = `${shared.mapTokensJson || ""}`;
-    const mapFogData = `${shared.mapFogData || ""}`;
-    setPlayerMapTokenSize(shared.mapTokenSize);
-    renderPlayerLiveMap(
-      shared.scenarioId,
-      mapImageData,
-      mapFogData,
-      `${shared.mapLastPingJson || ""}`,
-      mapTokensJson,
-      combatants,
-      shared.activeCombatantId
-    );
-  }
-
-  if (state.authUser?.role !== "admin" && state.page === "player-home") {
-    maybeCelebrateEncounterWin(shared.scenarioId, combatants, { visibleOnly: true });
-  }
+  return playerLivePageController.renderPlayerHome();
 }
 
 async function loadUserSettings() {
-  state.userSettings = await api("/api/users/me/settings");
-  state.draftSettingsProfileImageData = state.userSettings?.user?.profileImageData || "";
-  if (state.authUser) {
-    state.authUser.profileImageData = state.userSettings?.user?.profileImageData || "";
-    state.authUser.diceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin);
-    state.authUser.availableDiceSkins = Array.isArray(state.userSettings?.user?.availableDiceSkins)
-      ? [...state.userSettings.user.availableDiceSkins]
-      : ["default"];
-  }
+  return userPagesController.loadUserSettings();
 }
 
 function renderSettingsPage() {
-  if (els.settingsUsernameInput) {
-    els.settingsUsernameInput.value = state.userSettings?.user?.username || "";
-  }
-  if (els.settingsDiceSkinSelect) {
-    const availableDiceSkins = getAvailableDiceSkinKeysForCurrentUser();
-    const selectedDiceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin);
-    els.settingsDiceSkinSelect.innerHTML = "";
-    for (const skin of DICE_SKIN_OPTIONS.filter((option) => availableDiceSkins.includes(option.key))) {
-      const option = document.createElement("option");
-      option.value = skin.key;
-      option.textContent = skin.label;
-      els.settingsDiceSkinSelect.appendChild(option);
-    }
-    const nextDiceSkin = availableDiceSkins.includes(selectedDiceSkin)
-      ? selectedDiceSkin
-      : availableDiceSkins[0] || "default";
-    els.settingsDiceSkinSelect.value = nextDiceSkin;
-    const hasMultipleOptions = availableDiceSkins.length > 1;
-    els.settingsDiceSkinSelect.disabled = !hasMultipleOptions;
-    if (els.saveSettingsDiceSkinBtn) {
-      els.saveSettingsDiceSkinBtn.disabled = !hasMultipleOptions;
-    }
-    if (els.settingsDiceSkinHint) {
-      els.settingsDiceSkinHint.textContent = "Used for your local 3D dice rolls.";
-    }
-    if (els.settingsDiceShopBtn) {
-      els.settingsDiceShopBtn.classList.remove("hidden");
-    }
-  }
-  if (els.settingsDiceSkinPreview) {
-    const currentSkin = getCurrentDiceSkinConfig();
-    els.settingsDiceSkinPreview.innerHTML = "";
-    const preview = createDiceShopPreview(currentSkin);
-    preview.classList.add("settings-dice-skin-preview-card");
-    els.settingsDiceSkinPreview.appendChild(preview);
-  }
-  if (els.settingsNewPasswordInput) els.settingsNewPasswordInput.value = "";
-  if (els.settingsConfirmPasswordInput) els.settingsConfirmPasswordInput.value = "";
-  setSettingsProfileImagePreview(state.draftSettingsProfileImageData || "");
-  if (els.settingsProfileImageFile) els.settingsProfileImageFile.value = "";
-  els.settingsClaimList.innerHTML = "";
-  const isAdmin = state.authUser?.role === "admin";
-  if (els.settingsCampaignSection) {
-    els.settingsCampaignSection.classList.toggle("hidden", isAdmin);
-  }
-  els.settingsClaimSection.classList.toggle("hidden", isAdmin);
-
-  if (els.settingsActiveCampaignSelect && els.saveSettingsActiveCampaignBtn) {
-    const campaigns = Array.isArray(state.userSettings?.campaigns)
-      ? state.userSettings.campaigns
-      : [];
-    const activeCampaignId = Number(state.userSettings?.activeCampaignId);
-    els.settingsActiveCampaignSelect.innerHTML = "";
-    if (!isAdmin && campaigns.length > 0) {
-      for (const campaign of campaigns) {
-        const option = document.createElement("option");
-        option.value = String(campaign.id);
-        option.textContent = campaign.name || `Campaign ${campaign.id}`;
-        els.settingsActiveCampaignSelect.appendChild(option);
-      }
-      const selectedCampaignId = campaigns.some((campaign) => campaign.id === activeCampaignId)
-        ? activeCampaignId
-        : campaigns[0].id;
-      els.settingsActiveCampaignSelect.value = String(selectedCampaignId);
-      els.settingsActiveCampaignSelect.disabled = false;
-      els.saveSettingsActiveCampaignBtn.disabled = false;
-    } else {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "No campaigns";
-      els.settingsActiveCampaignSelect.appendChild(option);
-      els.settingsActiveCampaignSelect.disabled = true;
-      els.saveSettingsActiveCampaignBtn.disabled = true;
-    }
-  }
-
-  if (!state.userSettings || !Array.isArray(state.userSettings.characters)) {
-    els.settingsClaimList.innerHTML = "<li>No claimable characters found.</li>";
-    return;
-  }
-  if (isAdmin) return;
-  if (state.userSettings.characters.length === 0) {
-    els.settingsClaimList.innerHTML = "<li>No claimable characters found.</li>";
-    return;
-  }
-
-  for (const character of state.userSettings.characters) {
-    const li = document.createElement("li");
-    const row = document.createElement("div");
-    row.className = "list-row";
-
-    const label = document.createElement("span");
-    const campaignName = character.campaign_name || "Campaign";
-    label.textContent = `${campaignName}: ${character.name} (${character.class_name})`;
-    row.appendChild(label);
-
-    const claimedByIdRaw = character.claimed_user_id;
-    const claimedById = claimedByIdRaw == null ? null : Number(claimedByIdRaw);
-    const isClaimed = Number.isInteger(claimedById) && claimedById > 0;
-    const claimedByMe = isClaimed && claimedById === state.authUser?.id;
-
-    const actionBtn = document.createElement("button");
-    actionBtn.type = "button";
-    actionBtn.textContent = claimedByMe ? "Unclaim" : "Claim";
-    if (isClaimed && !claimedByMe) {
-      actionBtn.disabled = true;
-      actionBtn.textContent = `Claimed by ${character.claimed_by_username || "another player"}`;
-    }
-    actionBtn.addEventListener("click", async () => {
-      try {
-        if (claimedByMe) {
-          await api("/api/users/me/unclaim-character", {
-            method: "POST",
-            body: JSON.stringify({ characterId: character.id })
-          });
-        } else {
-          await api("/api/users/me/claim-character", {
-            method: "POST",
-            body: JSON.stringify({ characterId: character.id })
-          });
-        }
-        await loadUserSettings();
-        renderSettingsPage();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-    row.appendChild(actionBtn);
-
-    li.appendChild(row);
-    els.settingsClaimList.appendChild(li);
-  }
+  return userPagesController.renderSettingsPage();
 }
 
 function renderDiceShopPage() {
-  if (!els.diceShopList) return;
-  const availableDiceSkins = getAvailableDiceSkinKeysForCurrentUser();
-  const currentDiceSkin = getDiceSkinKey(state.userSettings?.user?.diceSkin || state.authUser?.diceSkin);
-  els.diceShopList.innerHTML = "";
-
-  for (const skin of DICE_SKIN_OPTIONS) {
-    const card = document.createElement("article");
-    card.className = "panel dice-shop-card";
-
-    const cardTop = document.createElement("div");
-    cardTop.className = "row between";
-
-    const title = document.createElement("h3");
-    title.textContent = skin.label;
-    cardTop.appendChild(title);
-
-    const status = document.createElement("span");
-    const isUnlocked = availableDiceSkins.includes(skin.key);
-    const isEquipped = currentDiceSkin === skin.key;
-    const lockedOffer = !isUnlocked ? skin.lockedOffer : null;
-    status.className = `dice-shop-status ${isEquipped ? "equipped" : isUnlocked ? "unlocked" : "locked"}`;
-    status.textContent = isEquipped ? "Equipped" : isUnlocked ? "Owned" : "Locked";
-    cardTop.appendChild(status);
-    card.appendChild(cardTop);
-    card.appendChild(createDiceShopPreview(skin));
-
-    const description = document.createElement("div");
-    description.className = "dice-shop-description";
-    if (skin.descriptionLead) {
-      const lead = document.createElement("p");
-      lead.className = "dice-shop-description-lead";
-      lead.textContent = skin.descriptionLead;
-      description.appendChild(lead);
-    }
-    if (Array.isArray(skin.descriptionParagraphs) && skin.descriptionParagraphs.length > 0) {
-      for (const paragraphText of skin.descriptionParagraphs) {
-        const paragraph = document.createElement("p");
-        paragraph.className = "hint dice-shop-description-paragraph";
-        paragraph.textContent = paragraphText;
-        description.appendChild(paragraph);
-      }
-    } else if (skin.description) {
-      const paragraph = document.createElement("p");
-      paragraph.className = "hint dice-shop-description-paragraph";
-      paragraph.textContent = skin.description;
-      description.appendChild(paragraph);
-    }
-    if (skin.descriptionListTitle) {
-      const listTitle = document.createElement("p");
-      listTitle.className = "dice-shop-description-list-title";
-      listTitle.textContent = skin.descriptionListTitle;
-      description.appendChild(listTitle);
-    }
-    if (Array.isArray(skin.descriptionListItems) && skin.descriptionListItems.length > 0) {
-      const list = document.createElement("ul");
-      list.className = "dice-shop-description-list";
-      for (const itemText of skin.descriptionListItems) {
-        const item = document.createElement("li");
-        item.textContent = itemText;
-        list.appendChild(item);
-      }
-      description.appendChild(list);
-    }
-    card.appendChild(description);
-
-    const bannerSlot = document.createElement("div");
-    bannerSlot.className = "dice-shop-banner-slot";
-    if (lockedOffer || skin.promoBannerText) {
-      const banner = document.createElement("div");
-      banner.className = "dice-shop-special-banner";
-      if (lockedOffer) {
-        banner.classList.add("offer");
-        banner.dataset.diceShopOfferKey = skin.key;
-        banner.textContent = getDiceShopLockedOfferBannerText(skin);
-      } else {
-        banner.textContent = skin.promoBannerText;
-      }
-      bannerSlot.appendChild(banner);
-    } else {
-      bannerSlot.classList.add("is-empty");
-      bannerSlot.setAttribute("aria-hidden", "true");
-    }
-    card.appendChild(bannerSlot);
-
-    const action = document.createElement("button");
-    action.type = "button";
-    action.className = "dice-shop-action-btn";
-    if (isEquipped) {
-      action.classList.add("equipped");
-      action.textContent = "Currently Equipped";
-      action.disabled = true;
-    } else if (isUnlocked) {
-      action.classList.add("owned");
-      action.textContent = "Owned - Click to equip";
-      action.addEventListener("click", async () => {
-        try {
-          await saveDiceSkinPreference(skin.key);
-          renderSettingsPage();
-          renderDiceShopPage();
-          setStatus(`${skin.label} equipped.`, "success");
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-    } else {
-      action.classList.add("locked");
-      if (lockedOffer?.originalPriceLabel && lockedOffer?.salePriceLabel) {
-        action.classList.add("special-offer");
-        setDiceShopLockedOfferActionLabel(action, lockedOffer);
-      } else {
-        action.textContent = `Buy now - ${skin.priceLabel || "CHF 4.99"}`;
-      }
-      action.addEventListener("click", () => {
-        const popup = window.open(DICE_SHOP_REDIRECT_URL, "_blank", "noopener,noreferrer");
-        if (popup) popup.opener = null;
-      });
-    }
-    card.appendChild(action);
-
-    els.diceShopList.appendChild(card);
-  }
-
-  startDiceShopOfferTimer();
-}
-
-function getDiceShopOfferStorageKey(skinKey) {
-  return `${DICE_SHOP_OFFER_STORAGE_PREFIX}${skinKey}`;
-}
-
-function ensureDiceShopLockedOfferEndsAt(skin) {
-  const offer = skin?.lockedOffer;
-  if (!offer?.countdownDurationMs) return 0;
-  const storageKey = getDiceShopOfferStorageKey(skin.key);
-  let endsAt = 0;
-  try {
-    endsAt = Number(window.localStorage.getItem(storageKey) || "0");
-  } catch (error) {
-    endsAt = 0;
-  }
-  if (!Number.isFinite(endsAt) || endsAt <= 0) {
-    endsAt = Date.now() + offer.countdownDurationMs;
-    try {
-      window.localStorage.setItem(storageKey, String(endsAt));
-    } catch (error) {
-      // Ignore storage write failures and keep the in-memory deadline for this render.
-    }
-  }
-  return endsAt;
-}
-
-function formatDiceShopOfferCountdown(msRemaining) {
-  const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000) - 1);
-  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
-  const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
-}
-
-function getDiceShopLockedOfferBannerText(skin) {
-  const offer = skin?.lockedOffer;
-  if (!offer) return "";
-  const endsAt = ensureDiceShopLockedOfferEndsAt(skin);
-  const remainingMs = Math.max(0, endsAt - Date.now());
-  return `${offer.bannerLabel} ${formatDiceShopOfferCountdown(remainingMs)} ⚠️`;
-}
-
-function updateDiceShopOfferCountdowns() {
-  if (!els.diceShopList) return false;
-  const banners = els.diceShopList.querySelectorAll("[data-dice-shop-offer-key]");
-  if (!banners.length) return false;
-  let hasActiveCountdown = false;
-  for (const banner of banners) {
-    const skin = DICE_SKIN_CONFIG_BY_KEY[banner.dataset.diceShopOfferKey];
-    if (!skin?.lockedOffer) continue;
-    const endsAt = ensureDiceShopLockedOfferEndsAt(skin);
-    const remainingMs = Math.max(0, endsAt - Date.now());
-    banner.textContent = `${skin.lockedOffer.bannerLabel} ${formatDiceShopOfferCountdown(remainingMs)} ⚠️`;
-    if (remainingMs > 0) hasActiveCountdown = true;
-  }
-  return hasActiveCountdown;
-}
-
-function startDiceShopOfferTimer() {
-  stopDiceShopOfferTimer();
-  if (!updateDiceShopOfferCountdowns()) return;
-  state.diceShopOfferTimer = window.setInterval(() => {
-    if (!updateDiceShopOfferCountdowns()) {
-      stopDiceShopOfferTimer();
-    }
-  }, 1000);
+  return userPagesController.renderDiceShopPage();
 }
 
 function stopDiceShopOfferTimer() {
-  if (!state.diceShopOfferTimer) return;
-  clearInterval(state.diceShopOfferTimer);
-  state.diceShopOfferTimer = null;
-}
-
-function setDiceShopLockedOfferActionLabel(button, offer) {
-  button.textContent = "";
-  button.setAttribute("aria-label", `Buy now - ${offer.originalPriceLabel}, now ${offer.salePriceLabel}`);
-
-  const prefix = document.createElement("span");
-  prefix.className = "dice-shop-action-btn-label";
-  prefix.textContent = "Buy now -";
-  button.appendChild(prefix);
-
-  const originalPrice = document.createElement("span");
-  originalPrice.className = "dice-shop-action-btn-old-price";
-  originalPrice.textContent = offer.originalPriceLabel;
-  button.appendChild(originalPrice);
-
-  const salePrice = document.createElement("span");
-  salePrice.className = "dice-shop-action-btn-sale-price";
-  salePrice.textContent = offer.salePriceLabel;
-  button.appendChild(salePrice);
-}
-
-function createDiceShopPreview(skin) {
-  const preview = document.createElement("div");
-  preview.className = "dice-shop-preview";
-
-  const image = document.createElement("img");
-  image.className = "dice-shop-preview-image";
-  image.src = skin.previewImageUrl || "/images/crimson_preview.png";
-  image.alt = `${skin.label} dice preview`;
-  image.loading = "lazy";
-  image.decoding = "async";
-  preview.appendChild(image);
-
-  return preview;
+  return userPagesController.stopDiceShopOfferTimer();
 }
 
 function parseMapTokensJson(raw) {
-  const text = `${raw || ""}`.trim();
-  if (!text) return {};
-  try {
-    const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const normalized = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      const combatantId = Number(key);
-      const x = Number(value?.x);
-      const y = Number(value?.y);
-      if (!Number.isInteger(combatantId) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
-      normalized[combatantId] = { x, y };
-    }
-    return normalized;
-  } catch (_error) {
-    return {};
-  }
+  return playerLivePageController.parseMapTokensJson(raw);
 }
 
 function resetPlayerMapViewForScenario(scenarioId, mapKey) {
-  state.playerMap.scenarioId = Number.isInteger(scenarioId) ? scenarioId : null;
-  state.playerMap.mapKey = `${mapKey || ""}`;
-  state.playerMap.zoom = 1;
-  state.playerMap.panX = 0;
-  state.playerMap.panY = 0;
-  state.playerMap.dragging = false;
-  state.playerMap.dragMode = "map";
-  state.playerMap.dragCombatantId = null;
-  state.playerMap.pointerId = null;
-  if (state.playerMap.saveTimer) {
-    clearTimeout(state.playerMap.saveTimer);
-    state.playerMap.saveTimer = null;
-  }
-  state.playerMap.pendingTokenUpdate = null;
-  setPlayerMapPingModeUi(false);
-  if (els.playerMapViewport) {
-    els.playerMapViewport.classList.remove("is-dragging");
-  }
-  applyPlayerMapTransform();
+  return playerLivePageController.resetPlayerMapViewForScenario(scenarioId, mapKey);
 }
 
 async function persistPlayerMapTokenPosition(scenarioId, combatantId, x, y) {
-  if (!Number.isInteger(scenarioId) || !Number.isInteger(combatantId)) return;
-  try {
-    await api("/api/player/live/map-token", {
-      method: "POST",
-      body: JSON.stringify({ scenarioId, combatantId, x, y })
-    });
-  } catch (_error) {
-    // Keep local drag smooth even on transient network/API failures.
-  }
+  return playerLivePageController.persistPlayerMapTokenPosition(scenarioId, combatantId, x, y);
 }
 
 function schedulePlayerMapTokenSave(scenarioId, combatantId, x, y) {
-  if (!Number.isInteger(scenarioId) || !Number.isInteger(combatantId)) return;
-  state.playerMap.pendingTokenUpdate = { scenarioId, combatantId, x, y };
-  if (state.playerMap.saveTimer) clearTimeout(state.playerMap.saveTimer);
-  state.playerMap.saveTimer = setTimeout(() => {
-    state.playerMap.saveTimer = null;
-    const pending = state.playerMap.pendingTokenUpdate;
-    state.playerMap.pendingTokenUpdate = null;
-    if (!pending) return;
-    persistPlayerMapTokenPosition(
-      pending.scenarioId,
-      pending.combatantId,
-      pending.x,
-      pending.y
-    );
-  }, 120);
+  return playerLivePageController.schedulePlayerMapTokenSave(scenarioId, combatantId, x, y);
 }
 
 function renderPlayerLiveMap(
@@ -5991,213 +2877,23 @@ function renderPlayerLiveMap(
   combatants,
   activeCombatantId
 ) {
-  const hasMap = Boolean(mapImageData);
-  els.playerLiveMapHint.classList.toggle("hidden", hasMap);
-  els.playerMapControls.classList.toggle("hidden", !hasMap);
-  els.playerMapViewport.classList.toggle("hidden", !hasMap);
-  if (!hasMap) {
-    state.playerMap.dragging = false;
-    state.playerMap.dragMode = "map";
-    state.playerMap.dragCombatantId = null;
-    state.playerMap.pointerId = null;
-    state.playerMap.scenarioId = null;
-    state.playerMap.mapKey = "";
-    if (state.playerMap.saveTimer) {
-      clearTimeout(state.playerMap.saveTimer);
-      state.playerMap.saveTimer = null;
-    }
-    state.playerMap.pendingTokenUpdate = null;
-    if (els.playerMapViewport) {
-      els.playerMapViewport.classList.remove("is-dragging");
-    }
-    els.playerMapImage.src = "";
-    els.playerMapImage.classList.add("hidden");
-    setPlayerMapFogOverlay("");
-    els.playerMapTokens.innerHTML = "";
-    if (els.playerMapPings) els.playerMapPings.innerHTML = "";
-    return;
-  }
-  setPlayerMapDragLockUi(state.playerMap.dragLocked);
-
-  const nextScenarioId = Number.isInteger(Number(scenarioId)) ? Number(scenarioId) : null;
-  const nextMapKey = `${mapImageData || ""}`;
-  if (state.playerMap.scenarioId !== nextScenarioId || state.playerMap.mapKey !== nextMapKey) {
-    resetPlayerMapViewForScenario(nextScenarioId, nextMapKey);
-  }
-
-  els.playerMapImage.src = mapImageData;
-  els.playerMapImage.classList.remove("hidden");
-  setPlayerMapFogOverlay(mapFogData);
-
-  const positions = parseMapTokensJson(mapTokensJson);
-  const visibleCombatants = [];
-  for (const combatant of combatants) {
-    const isEnemyDefeated =
-      combatant.kind === "enemy" &&
-      !isAllyCombatant(combatant) &&
-      Number(combatant.is_defeated) === 1;
-    if (isEnemyDefeated) continue;
-    visibleCombatants.push(combatant);
-  }
-
-  const nextIds = new Set(visibleCombatants.map((combatant) => combatant.id));
-  const existingTokens = new Map();
-  els.playerMapTokens
-    .querySelectorAll(".player-map-token[data-combatant-id]")
-    .forEach((token) => {
-      const id = Number(token.dataset.combatantId);
-      if (Number.isInteger(id)) existingTokens.set(id, token);
-    });
-
-  for (const [id, token] of existingTokens.entries()) {
-    if (nextIds.has(id)) continue;
-    fadeOutAndRemoveToken(token, els.playerMapTokens, 240);
-  }
-
-  for (const combatant of visibleCombatants) {
-    const pos = positions[combatant.id];
-    if (!pos) continue;
-
-    let token = existingTokens.get(combatant.id) || null;
-    if (!token) {
-      token = document.createElement("span");
-      token.dataset.combatantId = String(combatant.id);
-      const icon = document.createElement("img");
-      icon.className = "player-map-token-icon";
-      token.appendChild(icon);
-      const label = document.createElement("span");
-      label.className = "player-map-token-name";
-      token.appendChild(label);
-
-      token.addEventListener("pointerdown", (event) => {
-        if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
-        if (state.playerMap.pingMode) return;
-        if (state.playerMap.dragLocked) return;
-        if (event.button !== 0) return;
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        stopPlayerLivePolling();
-        state.playerMap.dragging = true;
-        state.playerMap.dragMode = "token";
-        state.playerMap.dragCombatantId = combatantId;
-        state.playerMap.pointerId = event.pointerId;
-        state.playerMap.lastClientX = event.clientX;
-        state.playerMap.lastClientY = event.clientY;
-        if (els.playerMapViewport) {
-          els.playerMapViewport.classList.add("is-dragging");
-          els.playerMapViewport.setPointerCapture(event.pointerId);
-        }
-        token.classList.add("is-dragging");
-      });
-
-      token.addEventListener("mouseenter", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, true, true);
-      });
-      token.addEventListener("pointerenter", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, true, true);
-      });
-      token.addEventListener("mouseleave", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, true, false);
-      });
-      token.addEventListener("pointerleave", () => {
-        const combatantId = Number(token.dataset.combatantId);
-        if (!Number.isInteger(combatantId)) return;
-        setMapHoverCombatantRow(combatantId, true, false);
-      });
-    }
-
-    if (token.__fadeOutTimer) {
-      clearTimeout(token.__fadeOutTimer);
-      token.__fadeOutTimer = null;
-    }
-    token.classList.remove("token-fade-out");
-
-    token.classList.add("player-map-token");
-    const isPcToken = combatant.kind === "character";
-    const isNpcToken = !isPcToken && isAllyCombatant(combatant);
-    const isEnemyToken = !isPcToken && !isNpcToken;
-    token.classList.toggle("token-pc", isPcToken);
-    token.classList.toggle("token-npc", isNpcToken);
-    token.classList.toggle("token-enemy", isEnemyToken);
-
-    token.title = combatant.name;
-    token.dataset.combatantId = String(combatant.id);
-    token.style.left = `${pos.x}px`;
-    token.style.top = `${pos.y}px`;
-    token.style.setProperty("--token-scale", String(combatantTokenSizeScale(combatant)));
-    token.classList.toggle("is-active", isSameCombatantId(combatant.id, activeCombatantId));
-    token.classList.toggle("reveal-moment-token", hasPlayerRevealMoment(combatant.id));
-
-    const icon = token.querySelector(".player-map-token-icon");
-    if (!(icon instanceof HTMLImageElement)) continue;
-    icon.alt = combatant.name;
-    if (combatantUsesPortraitToken(combatant)) {
-      icon.classList.add("token-portrait");
-    } else {
-      icon.classList.remove("token-portrait");
-    }
-    const fallbackSrc = combatantIconFallbackSrc(combatant);
-    icon.src = combatantTokenIconSrc(combatant);
-    icon.onerror = () => {
-      if (!icon.src.endsWith(fallbackSrc)) {
-        icon.src = fallbackSrc;
-      }
-    };
-
-    const label = token.querySelector(".player-map-token-name");
-    if (!(label instanceof HTMLElement)) continue;
-    label.textContent = combatant.name;
-
-    els.playerMapTokens.appendChild(token);
-  }
-  maybeShowPlayerMapPing(mapLastPingJson);
-  applyPlayerMapTransform();
+  return playerLivePageController.renderPlayerLiveMap(
+    scenarioId,
+    mapImageData,
+    mapFogData,
+    mapLastPingJson,
+    mapTokensJson,
+    combatants,
+    activeCombatantId
+  );
 }
 
 function applyPlayerMapTransform() {
-  if (!els.playerMapViewport || !els.playerMapScene || !els.playerMapImage) return;
-  if (els.playerMapImage.classList.contains("hidden")) return;
-  const viewportWidth = els.playerMapViewport.clientWidth;
-  const viewportHeight = els.playerMapViewport.clientHeight;
-  const naturalWidth = els.playerMapImage.naturalWidth;
-  const naturalHeight = els.playerMapImage.naturalHeight;
-  if (!viewportWidth || !viewportHeight || !naturalWidth || !naturalHeight) return;
-
-  const baseScale = Math.min(viewportWidth / naturalWidth, viewportHeight / naturalHeight);
-  const totalScale = baseScale * state.playerMap.zoom;
-  const scaledWidth = naturalWidth * totalScale;
-  const scaledHeight = naturalHeight * totalScale;
-
-  if (scaledWidth <= viewportWidth) {
-    state.playerMap.panX = (viewportWidth - scaledWidth) / 2;
-  } else {
-    const minX = viewportWidth - scaledWidth;
-    state.playerMap.panX = clamp(state.playerMap.panX, minX, 0);
-  }
-
-  if (scaledHeight <= viewportHeight) {
-    state.playerMap.panY = (viewportHeight - scaledHeight) / 2;
-  } else {
-    const minY = viewportHeight - scaledHeight;
-    state.playerMap.panY = clamp(state.playerMap.panY, minY, 0);
-  }
-
-  els.playerMapScene.style.transformOrigin = "top left";
-  els.playerMapScene.style.transform = `translate(${state.playerMap.panX}px, ${state.playerMap.panY}px) scale(${totalScale})`;
+  return playerLivePageController.applyPlayerMapTransform();
 }
 
 async function loadPlayerLive() {
-  if (!state.authUser || state.authUser.role === "admin") return;
-  state.playerLiveData = await api("/api/player/live");
-  renderPlayerHome();
+  return playerLivePageController.loadPlayerLive();
 }
 
 function supportsEventStream() {
@@ -6438,273 +3134,11 @@ function startPlayerLivePolling() {
 }
 
 async function loadAdminData() {
-  if (state.authUser?.role !== "admin") return;
-  const [users, campaigns] = await Promise.all([
-    api("/api/admin/users"),
-    api("/api/campaigns")
-  ]);
-  state.adminUsers = users;
-  state.campaigns = campaigns;
-
-  if (
-    !Number.isInteger(state.adminMemberCampaignId) ||
-    !state.campaigns.some((campaign) => campaign.id === state.adminMemberCampaignId)
-  ) {
-    state.adminMemberCampaignId = state.campaigns[0]?.id ?? null;
-  }
-
-  if (Number.isInteger(state.adminMemberCampaignId)) {
-    const [members, claims] = await Promise.all([
-      api(`/api/campaigns/${state.adminMemberCampaignId}/members`),
-      api(`/api/admin/campaigns/${state.adminMemberCampaignId}/character-claims`)
-    ]);
-    state.adminCampaignMembers = members;
-    state.adminCampaignClaims = claims;
-  } else {
-    state.adminCampaignMembers = [];
-    state.adminCampaignClaims = [];
-  }
+  return adminPageController.loadAdminData();
 }
 
 function renderAdminPage() {
-  if (els.adminUserSearch.value !== state.adminUserSearchQuery) {
-    els.adminUserSearch.value = state.adminUserSearchQuery;
-  }
-  if (els.adminMemberSearch.value !== state.adminMemberSearchQuery) {
-    els.adminMemberSearch.value = state.adminMemberSearchQuery;
-  }
-
-  const userQuery = state.adminUserSearchQuery.trim().toLowerCase();
-  const memberQuery = state.adminMemberSearchQuery.trim().toLowerCase();
-  const filteredUsers = userQuery
-    ? state.adminUsers.filter((user) => {
-      const statusLabel = Number(user.active) === 1 ? "active" : "inactive";
-      return `${user.username} ${user.role} ${statusLabel}`.toLowerCase().includes(userQuery);
-    })
-    : state.adminUsers;
-
-  els.adminUserList.innerHTML = "";
-  if (filteredUsers.length === 0) {
-    els.adminUserList.innerHTML = "<li>No users yet.</li>";
-  } else {
-    for (const user of filteredUsers) {
-      const li = document.createElement("li");
-      li.className = "admin-user-item";
-      const row = document.createElement("div");
-      row.className = "list-row admin-row";
-
-      const label = document.createElement("span");
-      label.className = "admin-row-main";
-      label.textContent = user.username;
-      row.appendChild(label);
-
-      const meta = document.createElement("div");
-      meta.className = "admin-meta";
-      const roleBadge = document.createElement("span");
-      roleBadge.className = "admin-badge";
-      roleBadge.textContent = user.role === "admin" ? "Admin" : "Player";
-      meta.appendChild(roleBadge);
-      const statusBadge = document.createElement("span");
-      statusBadge.className = `admin-badge ${Number(user.active) === 1 ? "admin-badge-active" : "admin-badge-inactive"}`;
-      statusBadge.textContent = Number(user.active) === 1 ? "Active" : "Inactive";
-      meta.appendChild(statusBadge);
-      row.appendChild(meta);
-
-      const actions = document.createElement("div");
-      actions.className = "row-actions";
-
-      const resetButton = document.createElement("button");
-      resetButton.type = "button";
-      resetButton.textContent = "Reset PW";
-      resetButton.addEventListener("click", async () => {
-        const password = window.prompt(`New password for ${user.username}:`);
-        if (!password) return;
-        try {
-          await api(`/api/admin/users/${user.id}/reset-password`, {
-            method: "POST",
-            body: JSON.stringify({ password })
-          });
-          setStatus(`Reset password for ${user.username}.`, "success");
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      actions.appendChild(resetButton);
-
-      const toggleButton = document.createElement("button");
-      toggleButton.type = "button";
-      toggleButton.textContent = Number(user.active) === 1 ? "Deactivate" : "Activate";
-      if (Number(user.active) !== 1) toggleButton.classList.add("npc-heal-btn");
-      toggleButton.addEventListener("click", async () => {
-        try {
-          await api(`/api/admin/users/${user.id}/active`, {
-            method: "POST",
-            body: JSON.stringify({ active: Number(user.active) !== 1 })
-          });
-          await loadAdminData();
-          renderAdminPage();
-          setStatus(`${Number(user.active) === 1 ? "Deactivated" : "Activated"} ${user.username}.`, "success");
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      actions.appendChild(toggleButton);
-
-      if (user.role !== "admin") {
-        const diceButton = document.createElement("button");
-        diceButton.type = "button";
-        diceButton.textContent = "Dice";
-        diceButton.title = `Manage dice access for ${user.username}`;
-        diceButton.addEventListener("click", () => {
-          openAdminActionModal("dice-skins", { user });
-        });
-        actions.appendChild(diceButton);
-      }
-
-      row.appendChild(actions);
-      li.appendChild(row);
-      els.adminUserList.appendChild(li);
-    }
-  }
-
-  els.adminCampaignList.innerHTML = "";
-  if (state.campaigns.length === 0) {
-    els.adminCampaignList.innerHTML = "<li>No campaigns yet.</li>";
-  } else {
-    for (const campaign of state.campaigns) {
-      const li = document.createElement("li");
-      li.textContent = campaign.name;
-      li.dataset.campaignId = String(campaign.id);
-      if (campaign.id === state.adminMemberCampaignId) li.classList.add("active");
-      li.tabIndex = 0;
-      els.adminCampaignList.appendChild(li);
-    }
-  }
-
-  els.adminMemberUserSelect.innerHTML = "";
-  for (const user of state.adminUsers) {
-    if (Number(user.active) !== 1) continue;
-    if (user.role !== "player") continue;
-    const option = document.createElement("option");
-    option.value = String(user.id);
-    option.textContent = user.username;
-    els.adminMemberUserSelect.appendChild(option);
-  }
-  if (els.adminMemberUserSelect.options.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No active players available";
-    option.disabled = true;
-    option.selected = true;
-    els.adminMemberUserSelect.appendChild(option);
-  }
-
-  els.adminMemberList.innerHTML = "";
-  const filteredMembers = memberQuery
-    ? state.adminCampaignMembers.filter((member) =>
-      `${member.username} ${member.campaign_role}`.toLowerCase().includes(memberQuery)
-    )
-    : state.adminCampaignMembers;
-
-  if (!Number.isInteger(state.adminMemberCampaignId)) {
-    els.adminMemberList.innerHTML = "<li>Select a campaign.</li>";
-  } else if (filteredMembers.length === 0) {
-    els.adminMemberList.innerHTML = "<li>No members for this campaign yet.</li>";
-  } else {
-    for (const member of filteredMembers) {
-      const li = document.createElement("li");
-      const row = document.createElement("div");
-      row.className = "list-row admin-row";
-
-      const label = document.createElement("span");
-      label.className = "admin-row-main";
-      label.textContent = member.username;
-      row.appendChild(label);
-
-      const meta = document.createElement("div");
-      meta.className = "admin-meta";
-      const roleBadge = document.createElement("span");
-      roleBadge.className = "admin-badge";
-      roleBadge.textContent = "Player Access";
-      meta.appendChild(roleBadge);
-      row.appendChild(meta);
-
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "delete-btn";
-      removeButton.textContent = "X";
-      removeButton.addEventListener("click", async () => {
-        if (!Number.isInteger(state.adminMemberCampaignId)) return;
-        try {
-          await api(
-            `/api/campaigns/${state.adminMemberCampaignId}/members/${member.user_id}`,
-            { method: "DELETE" }
-          );
-          await loadAdminData();
-          renderAdminPage();
-          setStatus(`Removed ${member.username} from campaign.`, "success");
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      row.appendChild(removeButton);
-
-      li.appendChild(row);
-      els.adminMemberList.appendChild(li);
-    }
-  }
-
-  els.adminClaimList.innerHTML = "";
-  if (!Number.isInteger(state.adminMemberCampaignId)) {
-    els.adminClaimList.innerHTML = "<li>Select a campaign.</li>";
-  } else if (!Array.isArray(state.adminCampaignClaims) || state.adminCampaignClaims.length === 0) {
-    els.adminClaimList.innerHTML = "<li>No claimed characters in this campaign.</li>";
-  } else {
-    for (const claim of state.adminCampaignClaims) {
-      const li = document.createElement("li");
-      const row = document.createElement("div");
-      row.className = "list-row admin-row";
-
-      const label = document.createElement("span");
-      label.className = "admin-row-main";
-      label.textContent = `${claim.character_name} (${claim.class_name})`;
-      row.appendChild(label);
-
-      const meta = document.createElement("div");
-      meta.className = "admin-meta";
-      const userBadge = document.createElement("span");
-      userBadge.className = "admin-badge";
-      userBadge.textContent = claim.username;
-      meta.appendChild(userBadge);
-      row.appendChild(meta);
-
-      const unclaimButton = document.createElement("button");
-      unclaimButton.type = "button";
-      unclaimButton.className = "delete-btn";
-      unclaimButton.textContent = "Unclaim";
-      unclaimButton.addEventListener("click", async () => {
-        if (!Number.isInteger(state.adminMemberCampaignId)) return;
-        try {
-          await api(
-            `/api/admin/campaigns/${state.adminMemberCampaignId}/character-claims/${claim.character_id}`,
-            { method: "DELETE" }
-          );
-          await loadAdminData();
-          renderAdminPage();
-          setStatus(`Unclaimed ${claim.character_name}.`, "success");
-        } catch (error) {
-          setStatus(error.message, "error");
-        }
-      });
-      row.appendChild(unclaimButton);
-
-      li.appendChild(row);
-      els.adminClaimList.appendChild(li);
-    }
-  }
-
-  const hasSelectedCampaign = Number.isInteger(state.adminMemberCampaignId);
-  els.adminOpenMembershipModalBtn.disabled = !hasSelectedCampaign;
+  return adminPageController.renderAdminPage();
 }
 
 async function ensureAuthenticated() {
@@ -6831,31 +3265,9 @@ function bindEvents() {
       return;
     }
 
-    if (key === "e") {
-      if (state.page === "monsters") {
-        event.preventDefault();
-        toggleMonsterEditorMode();
-        return;
-      }
-      if (!state.selectedScenarioId) return;
-      if (state.page === "scenario-run" || state.page === "scenario-map") {
-        event.preventDefault();
-        const scenario = selectedScenario();
-        if (Number(scenario?.is_completed) === 1) {
-          navigateToPage("scenario-completed-edit", {
-            campaignId: state.selectedCampaignId,
-            scenarioId: state.selectedScenarioId
-          });
-        } else {
-          els.goEditFromRunBtn.click();
-        }
-      } else if (state.page === "scenario-edit") {
-        event.preventDefault();
-        navigateToPage("scenario-map", {
-          campaignId: state.selectedCampaignId,
-          scenarioId: state.selectedScenarioId
-        });
-      }
+    if (key === "e" && state.page === "monsters") {
+      event.preventDefault();
+      toggleMonsterEditorMode();
       return;
     }
 
@@ -6865,34 +3277,8 @@ function bindEvents() {
       return;
     }
 
-    if (key === "s" && state.page === "scenario-map" && state.authUser?.role === "admin") {
-      event.preventDefault();
-      hideMapStatblockHover();
-      const combatant = pickMapShortcutPreviewCombatant();
-      if (!combatant) {
-        setStatus("No NPC/Enemy available to preview.");
-        return;
-      }
-      inspectCombatantStatblock(combatant);
+    if (scenarioRunPageController.handleKeyboardShortcut(event)) {
       return;
-    }
-
-    if (state.page === "scenario-map" && state.authUser?.role === "admin") {
-      if (key === "f") {
-        event.preventDefault();
-        setRunMapFogMode(state.runMap.fogMode === "paint" ? "navigate" : "paint");
-        return;
-      }
-      if (key === "d") {
-        event.preventDefault();
-        setRunMapFogMode(state.runMap.fogMode === "erase" ? "navigate" : "erase");
-        return;
-      }
-      if (key === "g") {
-        event.preventDefault();
-        setRunMapPingModeUi(!state.runMap.pingMode);
-        return;
-      }
     }
 
     if (state.page === "player-home" && state.playerLiveViewMode === "map" && key === "g") {
@@ -6900,29 +3286,6 @@ function bindEvents() {
       setPlayerMapPingModeUi(!state.playerMap.pingMode);
       return;
     }
-
-    if (state.page !== "scenario-run" && state.page !== "scenario-map") return;
-    if (!["n", "b", "r", "l"].includes(key)) return;
-    if (key === "n" && els.nextTurnBtn.disabled) return;
-    if (key === "b" && els.revokeTurnBtn.disabled) return;
-    event.preventDefault();
-    if (key === "n") {
-      els.nextTurnBtn.click();
-      return;
-    }
-    if (key === "b") {
-      els.revokeTurnBtn.click();
-      return;
-    }
-    if (key === "r") {
-      toggleActiveCombatantReaction().catch((error) => {
-        setStatus(error.message, "error");
-      });
-      return;
-    }
-    cycleActiveCombatantLegendaryAction().catch((error) => {
-      setStatus(error.message, "error");
-    });
   });
   els.activeMonsterImage.addEventListener("click", () => {
     if (!els.activeMonsterImage.src) return;
@@ -8093,29 +4456,16 @@ function bindEvents() {
   });
 
   els.nextTurnBtn.addEventListener("click", async () => {
-    if (!state.selectedScenarioId) return;
     try {
-      state.combat = await api(`/api/scenarios/${state.selectedScenarioId}/combat/next-turn`, {
-        method: "POST"
-      });
-      focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
-      renderScenarioRunPage();
-      scrollRunInitiativeToActive({ smooth: true });
+      await scenarioRunPageController.advanceTurn();
     } catch (error) {
       setStatus(error.message, "error");
     }
   });
 
   els.revokeTurnBtn.addEventListener("click", async () => {
-    if (!state.selectedScenarioId) return;
     try {
-      state.combat = await api(`/api/scenarios/${state.selectedScenarioId}/combat/prev-turn`, {
-        method: "POST"
-      });
-      focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
-      renderScenarioRunPage();
+      await scenarioRunPageController.revokeTurn();
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -8130,15 +4480,8 @@ function bindEvents() {
   });
 
   els.resetCombatBtn.addEventListener("click", async () => {
-    if (!state.selectedScenarioId) return;
-    if (!window.confirm("Reset combat to Round 1 and first turn?")) return;
     try {
-      state.combat = await api(`/api/scenarios/${state.selectedScenarioId}/combat/reset`, {
-        method: "POST"
-      });
-      focusPreviewOnActiveNonPc();
-      state.lastScenarioPage = state.page === "scenario-map" ? "scenario-map" : "scenario-run";
-      renderScenarioRunPage();
+      await scenarioRunPageController.resetCombat();
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -8639,17 +4982,18 @@ function bindEvents() {
   });
 
   document.addEventListener("mouseout", (event) => {
-    if (!conditionTooltipChip) return;
+    const activeChip = getActiveConditionTooltipChip();
+    if (!activeChip) return;
     const targetChip =
       event.target instanceof Element
         ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
-    if (targetChip !== conditionTooltipChip) return;
+    if (targetChip !== activeChip) return;
     const relatedChip =
       event.relatedTarget instanceof Element
         ? event.relatedTarget.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
-    if (relatedChip === conditionTooltipChip) return;
+    if (relatedChip === activeChip) return;
     hideConditionTooltip();
   });
 
@@ -8663,35 +5007,313 @@ function bindEvents() {
   });
 
   document.addEventListener("focusout", (event) => {
-    if (!conditionTooltipChip) return;
+    const activeChip = getActiveConditionTooltipChip();
+    if (!activeChip) return;
     const targetChip =
       event.target instanceof Element
         ? event.target.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
-    if (targetChip !== conditionTooltipChip) return;
+    if (targetChip !== activeChip) return;
     const relatedChip =
       event.relatedTarget instanceof Element
         ? event.relatedTarget.closest(".condition-chip, .player-turn-resource-btn[data-tip]")
         : null;
-    if (relatedChip === conditionTooltipChip) return;
+    if (relatedChip === activeChip) return;
     hideConditionTooltip();
   });
 
   window.addEventListener(
     "scroll",
     () => {
-      if (!conditionTooltipChip) return;
-      positionConditionTooltip(conditionTooltipChip);
+      const activeChip = getActiveConditionTooltipChip();
+      if (!activeChip) return;
+      positionConditionTooltip(activeChip);
     },
     true
   );
 
   window.addEventListener("resize", () => {
-    if (conditionTooltipChip) positionConditionTooltip(conditionTooltipChip);
+    const activeChip = getActiveConditionTooltipChip();
+    if (activeChip) positionConditionTooltip(activeChip);
     hideMapStatblockHover();
     if (state.page === "scenario-map") applyRunMapTransform();
   });
 }
+
+const { api } = window.FWDTApi.createApiClient({
+  state,
+  onAuthRequired: () => {
+    setLoginStatus("Please sign in.");
+    showPage("login");
+  },
+  isLoginPath: (path) => path === "/api/auth/login"
+});
+
+const tooltipController = window.FWDTTooltips.createTooltipController();
+const {
+  PLAYER_TURN_RESOURCE_TIPS,
+  getActiveConditionTooltipChip,
+  hideConditionTooltip,
+  hideMapStatblockHover,
+  positionConditionTooltip,
+  showConditionTooltip,
+  showMapStatblockHover,
+  showTooltipForElement
+} = tooltipController;
+
+const diceController = window.FWDTDice.createDiceController({
+  state,
+  els,
+  api,
+  setStatus,
+  diceSkinOptions: DICE_SKIN_OPTIONS,
+  diceSkinConfigByKey: DICE_SKIN_CONFIG_BY_KEY,
+  maxDicePoolCount: MAX_DICE_POOL_COUNT,
+  getDicePoolSegments: getDicePoolSegmentsBase,
+  getDicePoolTotalCount: getDicePoolTotalCountBase,
+  buildDicePoolNotation: buildDicePoolNotationBase,
+  formatDiceNotation: formatDiceNotationBase,
+  buildDiceEntry: buildDiceEntryBase,
+  addDieToPoolState: addDieToPoolStateBase,
+  resetDicePoolState: resetDicePoolStateBase,
+  resolveCurrentDiceSkinConfig: resolveCurrentDiceSkinConfigBase,
+  getDiceSkinKey: getDiceSkinKeyBase,
+  windowRef: window
+});
+const {
+  addDieToPool,
+  getAvailableDiceSkinKeysForCurrentUser,
+  getCurrentDiceSkinConfig,
+  renderDiceOverlay,
+  resetDicePool,
+  rollDicePool,
+  saveDiceSkinPreference,
+  setDiceOverlayOpen
+} = diceController;
+const getDiceSkinKey = (value) => getDiceSkinKeyBase(value, DICE_SKIN_CONFIG_BY_KEY);
+
+const routingController = window.FWDTRouting.createRoutingController({
+  state,
+  parseRouteBase,
+  routePathForBase,
+  historyRef: history,
+  locationRef: window.location,
+  setStatus,
+  showPage,
+  loadMonsters,
+  loadUserSettings,
+  renderSettingsPage,
+  renderDiceShopPage,
+  loadPlayerLive,
+  startPlayerLivePolling,
+  loadCampaigns,
+  setAnalyticsCampaign,
+  renderAnalyticsPage,
+  loadAdminData,
+  renderAdminPage,
+  stopPlayerLivePolling,
+  safeLoadCombatState,
+  loadCampaignData,
+  renderCompletedScenariosPage,
+  loadSceneImages,
+  renderScenePage,
+  selectedScenario,
+  focusPreviewOnActiveNonPc,
+  renderScenarioRunPage,
+  renderScenarioCompletedEditPage,
+  renderScenarioEditPage
+});
+const { navigateToPath, navigateToPage, routePathFor } = routingController;
+
+const welcomePageController = window.FWDTWelcomePage.createWelcomePageController({
+  state,
+  els,
+  slugifyClassName,
+  navigateToPage
+});
+
+const libraryPageController = window.FWDTLibraryPage.createLibraryPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  selectedMonster,
+  setMonsterPasteTarget,
+  updateMonsterLegendaryFieldsVisibility,
+  setMonsterImagePreview,
+  setMonsterTokenImagePreview,
+  setEnemyMonsterPreview,
+  setMonsterEditorReadOnly,
+  openImageModal
+});
+
+const campaignPageController = window.FWDTCampaignPage.createCampaignPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  loadCampaignData,
+  navigateToPage,
+  selectedCampaign,
+  renderNav,
+  windowRef: window
+});
+
+const combatUiController = window.FWDTCombatUI.createCombatUiController({
+  api,
+  setStatus,
+  safeLoadCombatState,
+  rerenderCurrentScenarioPage,
+  isAllyCombatant,
+  hasRevealMoment,
+  triggerRevealMoment,
+  hideConditionTooltip,
+  CONDITIONS,
+  CONDITION_BY_KEY,
+  combatantUsesPortraitToken,
+  combatantIconFallbackSrc,
+  combatantTokenIconSrc,
+  documentRef: document
+});
+
+const scenarioEditPageController = window.FWDTScenarioEditPage.createScenarioEditPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  selectedScenario,
+  setScenarioMapPreview,
+  createCombatantNameElement,
+  hasRevealMoment,
+  createPlayerVisibilityToggle,
+  createConditionSelect,
+  attachInitiativeBlurUpdate,
+  attachEnemyHpBlurUpdate,
+  applyConditionStyle,
+  applyConditionStyleReadonly,
+  renderScenarioRunPage,
+  combatantKindLabel,
+  safeLoadCombatState,
+  loadCampaignData,
+  navigateToPage,
+  windowRef: window
+});
+
+const playerLivePageController = window.FWDTPlayerLivePage.createPlayerLivePageController({
+  state,
+  els,
+  api,
+  createCombatantNameElement,
+  applyConditionStyleReadonly,
+  isAllyCombatant,
+  setPlayerMapTokenSize,
+  scrollPlayerInitiativeToActive,
+  updatePlayerRevealMomentsFromShared,
+  maybeCelebrateEncounterWin,
+  playerTurnResourceTips: PLAYER_TURN_RESOURCE_TIPS,
+  combatantTokenSizeScale,
+  isSameCombatantId,
+  hasPlayerRevealMoment,
+  combatantUsesPortraitToken,
+  combatantIconFallbackSrc,
+  combatantTokenIconSrc,
+  fadeOutAndRemoveToken,
+  setPlayerMapFogOverlay,
+  setPlayerMapDragLockUi,
+  setPlayerMapPingModeUi,
+  maybeShowPlayerMapPing,
+  clamp,
+  stopPlayerLivePolling
+});
+
+const scenarioRunPageController = window.FWDTScenarioRunPage.createScenarioRunPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  selectedScenario,
+  isAllyCombatant,
+  scenarioMapTokenSize,
+  hydrateRunMapTokensFromScenario,
+  startRunMapSyncPolling,
+  stopRunMapSyncPolling,
+  setRunMapTokenSizeUI,
+  setRunMapDragLockUi,
+  ensureRunMapFogCanvasFromScenario,
+  resetRunMapViewForScenario,
+  maybeShowRunMapPing,
+  applyRunMapTransform,
+  hideRunMapFogCursorPreview,
+  clearRunMapFogCanvas,
+  navigateToPage,
+  createCombatantNameElement,
+  hasRevealMoment,
+  createPlayerVisibilityToggle,
+  createConditionSelect,
+  setupRunQuickEditInput,
+  attachInitiativeBlurUpdate,
+  attachEnemyHpBlurUpdate,
+  applyConditionStyle,
+  safeLoadCombatState,
+  getScenarioTokenPositions,
+  mapNaturalSize,
+  ensureMapTokensForCombatants,
+  fadeOutAndRemoveToken,
+  clamp,
+  combatantTokenSizeScale,
+  isSameCombatantId,
+  combatantUsesPortraitToken,
+  combatantIconFallbackSrc,
+  combatantTokenIconSrc,
+  hideMapStatblockHover,
+  showMapStatblockHover,
+  openImageModal,
+  maybeCelebrateEncounterWin,
+  setRunMapFogMode,
+  setRunMapPingModeUi,
+  windowRef: window
+});
+
+const userPagesController = window.FWDTUserPages.createUserPagesController({
+  state,
+  els,
+  api,
+  setStatus,
+  setSettingsProfileImagePreview,
+  getAvailableDiceSkinKeysForCurrentUser,
+  getCurrentDiceSkinConfig,
+  getDiceSkinKey,
+  saveDiceSkinPreference,
+  diceSkinOptions: DICE_SKIN_OPTIONS,
+  diceSkinConfigByKey: DICE_SKIN_CONFIG_BY_KEY,
+  diceShopRedirectUrl: DICE_SHOP_REDIRECT_URL,
+  diceShopOfferStoragePrefix: DICE_SHOP_OFFER_STORAGE_PREFIX,
+  windowRef: window
+});
+
+const scenePageController = window.FWDTScenePage.createScenePageController({
+  state,
+  els,
+  api,
+  setSceneDraftImagePreview
+});
+
+const analyticsPageController = window.FWDTAnalyticsPage.createAnalyticsPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  slugifyClassName
+});
+
+const adminPageController = window.FWDTAdminPage.createAdminPageController({
+  state,
+  els,
+  api,
+  setStatus,
+  openAdminActionModal,
+  windowRef: window
+});
 
 async function init() {
   bindEvents();

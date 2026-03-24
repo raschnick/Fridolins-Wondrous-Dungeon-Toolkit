@@ -1,0 +1,289 @@
+.player-map-viewport {
+  position: relative;
+  --map-token-size: 44px;
+  width: 100%;
+  height: calc(100vh - 20rem);
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0d1420;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.player-map-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.player-map-scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.player-map-fog-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  object-fit: unset;
+  pointer-events: none;
+  opacity: 0.72;
+  z-index: 2;
+}
+
+.player-map-scene .monster-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  object-fit: unset;
+  pointer-events: none;
+}
+
+.player-map-tokens {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.player-map-token {
+  --token-scale: 1;
+  --token-size-effective: calc(var(--map-token-size) * var(--token-scale));
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: var(--token-size-effective);
+  height: var(--token-size-effective);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #7db0ff;
+  background: rgba(10, 20, 32, 0.86);
+  box-shadow: 0 0 0 2px rgba(5, 12, 20, 0.5);
+  z-index: 2;
+  overflow: visible;
+  cursor: grab;
+}
+
+.player-map-token.is-dragging {
+  cursor: grabbing;
+}
+
+.player-map-token.token-pc {
+  border-color: #7db0ff;
+  background: rgba(10, 20, 32, 0.86);
+}
+
+.player-map-token.token-enemy {
+  border-color: #d66c6c;
+  background: rgba(48, 20, 24, 0.88);
+}
+
+.player-map-token.token-npc {
+  border-color: #63b78a;
+  background: rgba(20, 40, 30, 0.88);
+}
+
+.player-map-token-icon {
+  width: calc(var(--token-size-effective) * 0.9);
+  height: calc(var(--token-size-effective) * 0.9);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.player-map-token-icon.token-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 999px;
+  image-rendering: auto;
+}
+
+.player-map-token-name {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: none;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(8, 13, 20, 0.82);
+  border: 1px solid rgba(66, 84, 105, 0.7);
+  color: #e6edf5;
+  font-size: clamp(0.7rem, calc(var(--token-size-effective) * 0.28), 1.8rem);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  pointer-events: none;
+}
+
+.player-map-token.token-pc.is-active {
+  border-width: 3px;
+  animation: none;
+  box-shadow:
+    0 0 0 2px rgba(5, 12, 20, 0.5),
+    0 0 0 3px rgba(74, 132, 196, 1),
+    0 0 34px rgba(240, 254, 255, 1),
+    0 0 70px rgba(170, 223, 255, 1);
+}
+
+.player-map-token.token-enemy.is-active {
+  border-width: 3px;
+  animation: token-glow-pulse-red 1.9s ease-in-out infinite;
+  box-shadow:
+    0 0 0 2px rgba(20, 5, 8, 0.5),
+    0 0 0 3px rgba(158, 62, 69, 1),
+    0 0 26px rgba(255, 228, 228, 1),
+    0 0 56px rgba(234, 124, 124, 1);
+}
+
+.player-map-token.token-npc.is-active {
+  border-width: 3px;
+  animation: none;
+  box-shadow:
+    0 0 0 2px rgba(5, 20, 12, 0.5),
+    0 0 0 3px rgba(62, 136, 96, 1),
+    0 0 34px rgba(242, 255, 248, 1),
+    0 0 70px rgba(142, 222, 178, 1);
+}
+
+@keyframes token-glow-pulse-blue {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(5, 12, 20, 0.5),
+      0 0 0 3px rgba(74, 132, 196, 0.98),
+      0 0 20px rgba(230, 250, 255, 1),
+      0 0 44px rgba(154, 214, 255, 0.98);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(5, 12, 20, 0.5),
+      0 0 0 3px rgba(84, 146, 212, 1),
+      0 0 34px rgba(240, 254, 255, 1),
+      0 0 70px rgba(170, 223, 255, 1);
+  }
+}
+
+@keyframes token-glow-pulse-red {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(20, 5, 8, 0.5),
+      0 0 0 3px rgba(158, 62, 69, 0.98),
+      0 0 20px rgba(255, 220, 220, 1),
+      0 0 44px rgba(234, 124, 124, 0.98);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(20, 5, 8, 0.5),
+      0 0 0 3px rgba(176, 70, 78, 1),
+      0 0 34px rgba(255, 236, 236, 1),
+      0 0 70px rgba(244, 136, 136, 1);
+  }
+}
+
+@keyframes token-glow-pulse-green {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(5, 20, 12, 0.5),
+      0 0 0 3px rgba(62, 136, 96, 0.98),
+      0 0 20px rgba(228, 255, 240, 1),
+      0 0 44px rgba(122, 208, 160, 0.98);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(5, 20, 12, 0.5),
+      0 0 0 3px rgba(76, 158, 114, 1),
+      0 0 34px rgba(242, 255, 248, 1),
+      0 0 70px rgba(142, 222, 178, 1);
+  }
+}
+
+.player-waiting {
+  margin-top: 2.2rem;
+  min-height: 62vh;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.player-waiting-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.2vw, 2rem);
+  line-height: 1.2;
+}
+
+.player-waiting-image {
+  display: block;
+  width: min(62vw, 520px);
+  max-width: 100%;
+  height: auto;
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 860px) {
+  .campaign-overview-grid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .campaign-scenario-count {
+    text-align: left;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-footer-logo {
+    width: min(46vw, 180px);
+  }
+
+  #runMapViewport {
+    min-height: 320px;
+    height: calc(100vh - 16.5rem);
+  }
+
+  .player-map-viewport {
+    min-height: 300px;
+    height: calc(100vh - 22rem);
+  }
+
+  .map-fog-brush-controls {
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: 4.3rem;
+    min-width: 0;
+  }
+}
