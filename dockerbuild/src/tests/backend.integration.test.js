@@ -628,6 +628,13 @@ test("reports PC average initiative dominance across campaign encounters", async
   );
   assert.equal(scenarioTwo.status, 201);
 
+  const scenarioThree = await admin.request(
+    "POST",
+    `/api/campaigns/${campaign.json.id}/scenarios`,
+    { name: "Encounter Three", notes: "" }
+  );
+  assert.equal(scenarioThree.status, 201);
+
   const combatOne = await admin.request("GET", `/api/scenarios/${scenarioOne.json.id}/combat`);
   assert.equal(combatOne.status, 200);
   const aylaOne = combatOne.json.combatants.find(
@@ -658,6 +665,32 @@ test("reports PC average initiative dominance across campaign encounters", async
   response = await admin.request("PUT", `/api/combatants/${aylaTwo.id}`, { initiative: 14 });
   assert.equal(response.status, 200);
   response = await admin.request("PUT", `/api/combatants/${borinTwo.id}`, { initiative: 16 });
+  assert.equal(response.status, 200);
+
+  const completeOne = await admin.request("POST", `/api/scenarios/${scenarioOne.json.id}/completed`, {
+    completed: true
+  });
+  assert.equal(completeOne.status, 200);
+
+  const completeTwo = await admin.request("POST", `/api/scenarios/${scenarioTwo.json.id}/completed`, {
+    completed: true
+  });
+  assert.equal(completeTwo.status, 200);
+
+  const combatThree = await admin.request("GET", `/api/scenarios/${scenarioThree.json.id}/combat`);
+  assert.equal(combatThree.status, 200);
+  const aylaThree = combatThree.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcA.json.id
+  );
+  const borinThree = combatThree.json.combatants.find(
+    (entry) => entry.kind === "character" && entry.character_id === pcB.json.id
+  );
+  assert.ok(aylaThree);
+  assert.ok(borinThree);
+
+  response = await admin.request("PUT", `/api/combatants/${aylaThree.id}`, { initiative: 2 });
+  assert.equal(response.status, 200);
+  response = await admin.request("PUT", `/api/combatants/${borinThree.id}`, { initiative: 99 });
   assert.equal(response.status, 200);
 
   const stats = await admin.request("GET", `/api/campaigns/${campaign.json.id}/stats`);

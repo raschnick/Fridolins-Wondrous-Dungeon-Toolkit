@@ -222,7 +222,8 @@ const {
   resolveCurrentDiceSkinConfig: resolveCurrentDiceSkinConfigBase,
   parseRoute: parseRouteBase,
   routePathFor: routePathForBase,
-  deriveRunMapSyncSnapshot: deriveRunMapSyncSnapshotBase
+  deriveRunMapSyncSnapshot: deriveRunMapSyncSnapshotBase,
+  fogAlphaToPlayerVisibilityAlpha: fogAlphaToPlayerVisibilityAlphaBase
 } = window.FWDTAppLogic;
 
 const els = {
@@ -2022,7 +2023,7 @@ function setPlayerMapFogOverlay(fogData) {
           data[i] = 255;
           data[i + 1] = 255;
           data[i + 2] = 255;
-          data[i + 3] = 255 - fogAlpha;
+          data[i + 3] = fogAlphaToPlayerVisibilityAlphaBase(fogAlpha);
         }
         ctx.putImageData(imageData, 0, 0);
         resolve(canvas.toDataURL("image/png"));

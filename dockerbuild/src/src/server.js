@@ -1656,6 +1656,7 @@ app.get("/api/campaigns/:campaignId/stats", (req, res) => {
        LEFT JOIN users cu ON cu.id = cc.user_id
        LEFT JOIN combat_scenarios cs
          ON cs.campaign_id = c.campaign_id
+        AND cs.is_completed = 1
        LEFT JOIN scenario_combatants sc
          ON sc.scenario_id = cs.id
         AND sc.kind = 'character'

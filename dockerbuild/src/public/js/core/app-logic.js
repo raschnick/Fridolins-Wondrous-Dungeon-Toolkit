@@ -258,6 +258,11 @@
     };
   }
 
+  function fogAlphaToPlayerVisibilityAlpha(fogAlpha, hiddenThreshold = 24) {
+    const normalized = clamp(Math.round(Number(fogAlpha) || 0), 0, 255);
+    return normalized >= hiddenThreshold ? 0 : 255;
+  }
+
   return {
     DICE_POOL_ORDER,
     MAX_DICE_POOL_COUNT,
@@ -275,6 +280,7 @@
     getDiceSkinKey,
     resolveCurrentDiceSkinConfig,
     buildDiceSkinPreviewModel,
-    deriveRunMapSyncSnapshot
+    deriveRunMapSyncSnapshot,
+    fogAlphaToPlayerVisibilityAlpha
   };
 });

@@ -7,6 +7,7 @@ const {
   buildDicePoolNotation,
   buildDiceSkinPreviewModel,
   deriveRunMapSyncSnapshot,
+  fogAlphaToPlayerVisibilityAlpha,
   getDicePoolSegments,
   getDicePoolTotalCount,
   parseRoute,
@@ -137,6 +138,14 @@ test("run map sync snapshot does not flag fog changes when only token positions 
   assert.equal(next.pingChanged, false);
   assert.equal(next.nextMapFogData, "fog-data-a");
   assert.equal(next.changed, true);
+});
+
+test("player fog mask normalizes fog alpha into a binary visibility mask", () => {
+  assert.equal(fogAlphaToPlayerVisibilityAlpha(0), 255);
+  assert.equal(fogAlphaToPlayerVisibilityAlpha(12), 255);
+  assert.equal(fogAlphaToPlayerVisibilityAlpha(24), 0);
+  assert.equal(fogAlphaToPlayerVisibilityAlpha(128), 0);
+  assert.equal(fogAlphaToPlayerVisibilityAlpha(255), 0);
 });
 
 test("dice pool helpers support mixed dice notation and reset cleanly", () => {
