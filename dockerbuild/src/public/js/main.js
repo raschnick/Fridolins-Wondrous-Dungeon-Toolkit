@@ -2233,11 +2233,10 @@ function maybeShowPlayerMapPing(pingRaw) {
 async function sendRunMapPing(scenarioId, x, y) {
   if (!Number.isInteger(scenarioId)) return;
   try {
-    const result = await api(`/api/scenarios/${scenarioId}/map-ping`, {
+    await api(`/api/scenarios/${scenarioId}/map-ping`, {
       method: "POST",
       body: JSON.stringify({ x, y })
     });
-    maybeShowRunMapPing(JSON.stringify(result?.ping || ""));
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -2246,11 +2245,10 @@ async function sendRunMapPing(scenarioId, x, y) {
 async function sendPlayerMapPing(scenarioId, x, y) {
   if (!Number.isInteger(scenarioId)) return;
   try {
-    const result = await api("/api/player/live/map-ping", {
+    await api("/api/player/live/map-ping", {
       method: "POST",
       body: JSON.stringify({ scenarioId, x, y })
     });
-    maybeShowPlayerMapPing(JSON.stringify(result?.ping || ""));
   } catch (_error) {
     // Ignore transient ping errors for players.
   }
