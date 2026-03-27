@@ -1890,6 +1890,28 @@ function runMapCurrentTotalScale() {
   return totalScale;
 }
 
+function focusRunMapViewportForShortcuts() {
+  const viewport = els.runMapViewport;
+  if (!(viewport instanceof HTMLElement)) return;
+  if (!viewport.hasAttribute("tabindex")) {
+    viewport.setAttribute("tabindex", "-1");
+  }
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLElement &&
+    active !== viewport &&
+    (
+      active.tagName === "INPUT" ||
+      active.tagName === "TEXTAREA" ||
+      active.tagName === "SELECT" ||
+      active.isContentEditable
+    )
+  ) {
+    active.blur();
+  }
+  viewport.focus({ preventScroll: true });
+}
+
 function hideRunMapFogCursorPreview() {
   if (!els.runMapFogCursorPreview) return;
   els.runMapFogCursorPreview.classList.add("hidden");
@@ -4722,6 +4744,7 @@ function bindEvents() {
         return;
       }
       if (event.button !== 0) return;
+      focusRunMapViewportForShortcuts();
       if (state.runMap.pingMode) {
         const scenario = selectedScenario();
         if (!scenario) return;
@@ -5271,6 +5294,7 @@ const scenarioRunPageController = window.FWDTScenarioRunPage.createScenarioRunPa
   maybeCelebrateEncounterWin,
   setRunMapFogMode,
   setRunMapPingModeUi,
+  focusRunMapViewportForShortcuts,
   windowRef: window
 });
 

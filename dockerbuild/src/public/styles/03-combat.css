@@ -440,6 +440,10 @@ body.page-player #playerLiveWrap {
   cursor: grabbing;
 }
 
+#runMapViewport:focus {
+  outline: none;
+}
+
 .run-map-token-size-controls {
   display: inline-flex;
   align-items: center;
@@ -1470,4 +1474,3 @@ li.turn-active.map-token-hover-linked {
 .toast.is-exiting {
   animation: toast-exit 160ms ease-in forwards;
 }
-

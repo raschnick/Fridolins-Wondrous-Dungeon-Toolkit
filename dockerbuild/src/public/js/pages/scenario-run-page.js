@@ -50,6 +50,7 @@
     maybeCelebrateEncounterWin,
     setRunMapFogMode,
     setRunMapPingModeUi,
+    focusRunMapViewportForShortcuts,
     windowRef = typeof window !== "undefined" ? window : null
   }) {
     function setMapHoverCombatantRow(combatantId, isPlayerView, on) {
@@ -342,6 +343,7 @@
             if (state.runMap.fogMode !== "navigate") return;
             if (state.runMap.dragLocked) return;
             if (event.button !== 0) return;
+            focusRunMapViewportForShortcuts();
             event.preventDefault();
             event.stopPropagation();
             const combatantId = Number(token.dataset.combatantId);
