@@ -2,8 +2,17 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const { db, dbPath, initDb } = require("./db");
+const { logger, serializeError } = require("./logger");
 
-initDb();
+try {
+  initDb();
+} catch (error) {
+  logger.fatal("Database initialization failed.", {
+    dbPath,
+    error: serializeError(error)
+  });
+  throw error;
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -1043,6 +1052,42 @@ function closeScenarioMapSubscribersForUser(userId) {
       }
     }
   }
+}
+
+function closeAllLiveSubscribers() {
+  let playerUserCount = 0;
+  let playerStreamCount = 0;
+  for (const [userId, subscribers] of playerLiveSubscribersByUser.entries()) {
+    playerUserCount += 1;
+    playerStreamCount += subscribers.size;
+    closePlayerLiveSubscribersForUser(userId);
+  }
+
+  let scenarioCount = 0;
+  let scenarioStreamCount = 0;
+  for (const [scenarioId, subscribers] of scenarioMapSubscribersByScenario.entries()) {
+    scenarioCount += 1;
+    scenarioStreamCount += subscribers.size;
+    for (const [, subscriber] of subscribers.entries()) {
+      clearInterval(subscriber.keepAliveTimer);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    scenarioMapSubscribersByScenario.delete(scenarioId);
+    const timer = scenarioMapPushTimersByScenario.get(scenarioId);
+    if (timer) {
+      clearTimeout(timer);
+      scenarioMapPushTimersByScenario.delete(scenarioId);
+    }
+  }
+
+  return {
+    playerUserCount,
+    playerStreamCount,
+    scenarioCount,
+    scenarioStreamCount
+  };
 }
 
 function closeStreamsForUser(userId) {
@@ -3141,51 +3186,138 @@ app.get(/^\/(?!api\/).*/, (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "index.html"));
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
+app.use((err, req, res, _next) => {
+  logger.error("Unhandled request error.", {
+    method: req.method,
+    path: req.originalUrl || req.url,
+    error: serializeError(err)
+  });
   res.status(500).json({ error: "Internal server error." });
 });
 
 if (require.main === module) {
-  const server = app.listen(port, () => {
-    console.log(`Fridolins Wondrous Dungeon Toolkit running at http://localhost:${port}`);
+  logger.info("Starting Fridolins Wondrous Dungeon Toolkit.", {
+    port: Number(port),
+    dbPath,
+    pid: process.pid,
+    nodeEnv: process.env.NODE_ENV || "development"
   });
 
-  const shutdown = (signal) => {
-    console.log(`[shutdown] ${signal} received, shutting down gracefully…`);
+  const server = app.listen(port, () => {
+    logger.info("HTTP server listening.", {
+      port: Number(port),
+      url: `http://localhost:${port}`,
+      pid: process.pid
+    });
+  });
 
-    // Stop accepting new connections
-    server.close(() => {
-      console.log("[shutdown] HTTP server closed.");
+  let shutdownInProgress = false;
+  let forceExitTimer = null;
 
-      // Close all active SSE streams cleanly
-      for (const [userId] of playerLiveSubscribersByUser) {
-        closePlayerLiveSubscribersForUser(userId);
-      }
-      for (const [scenarioId, subscribers] of scenarioMapSubscribersByScenario) {
-        for (const [, subscriber] of subscribers) {
-          clearInterval(subscriber.keepAliveTimer);
-          if (!subscriber.res.writableEnded) subscriber.res.end();
-        }
-        scenarioMapSubscribersByScenario.delete(scenarioId);
-      }
-
-      // Close SQLite — better-sqlite3 is synchronous, this is safe
-      db.close();
-      console.log("[shutdown] Database closed.");
-
-      process.exit(0);
+  const finalizeShutdown = (reason, requestedExitCode, closeError = null) => {
+    const streamSummary = closeAllLiveSubscribers();
+    logger.info("Closed live subscribers.", {
+      reason,
+      ...streamSummary
     });
 
-    // Force exit if graceful shutdown takes too long
-    setTimeout(() => {
-      console.error("[shutdown] Timeout — forcing exit.");
-      process.exit(1);
-    }, 10_000).unref();
+    let exitCode = requestedExitCode;
+    if (closeError) {
+      exitCode = 1;
+      logger.error("HTTP server close failed.", {
+        reason,
+        error: serializeError(closeError)
+      });
+    } else {
+      logger.info("HTTP server closed.", { reason });
+    }
+
+    try {
+      db.close();
+      logger.info("Database closed.", { reason, dbPath });
+    } catch (error) {
+      exitCode = 1;
+      logger.error("Database close failed.", {
+        reason,
+        dbPath,
+        error: serializeError(error)
+      });
+    }
+
+    if (forceExitTimer) {
+      clearTimeout(forceExitTimer);
+      forceExitTimer = null;
+    }
+
+    logger.info("Shutdown complete.", { reason, exitCode });
+    process.exit(exitCode);
   };
 
+  const shutdown = (reason, { exitCode = 0, error = null } = {}) => {
+    if (shutdownInProgress) {
+      logger.warn("Shutdown already in progress.", {
+        reason,
+        exitCode
+      });
+      return;
+    }
+
+    shutdownInProgress = true;
+    const logMetadata = { reason, exitCode };
+    if (error) {
+      logMetadata.error = serializeError(error);
+    }
+
+    if (exitCode === 0) {
+      logger.info("Shutdown requested.", logMetadata);
+    } else {
+      logger.fatal("Fatal shutdown requested.", logMetadata);
+    }
+
+    forceExitTimer = setTimeout(() => {
+      logger.fatal("Graceful shutdown timed out. Forcing exit.", {
+        reason,
+        timeoutMs: 10_000
+      });
+      process.exit(1);
+    }, 10_000);
+    forceExitTimer.unref();
+
+    if (!server.listening) {
+      finalizeShutdown(reason, exitCode);
+      return;
+    }
+
+    server.close((closeError) => {
+      finalizeShutdown(reason, exitCode, closeError || null);
+    });
+  };
+
+  server.on("error", (error) => {
+    logger.error("HTTP server error.", {
+      port: Number(port),
+      error: serializeError(error)
+    });
+    shutdown("server_error", { exitCode: 1, error });
+  });
+
   process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT",  () => shutdown("SIGINT"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("uncaughtException", (error) => {
+    logger.fatal("Uncaught exception.", {
+      error: serializeError(error)
+    });
+    shutdown("uncaughtException", { exitCode: 1, error });
+  });
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal("Unhandled promise rejection.", {
+      reason: serializeError(reason)
+    });
+    shutdown("unhandledRejection", {
+      exitCode: 1,
+      error: reason instanceof Error ? reason : null
+    });
+  });
 }
 
 module.exports = { app };
