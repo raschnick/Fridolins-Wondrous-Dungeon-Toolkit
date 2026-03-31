@@ -27,6 +27,9 @@
       return { page: "player-home", playerMode: "initiative" };
     }
     if (path === "/player/map") return { page: "player-home", playerMode: "map" };
+    if (path === "/player/campaign-map") {
+      return { page: "player-home", playerMode: "campaign-map" };
+    }
     if (path === "/player/scene") return { page: "player-home", playerMode: "scene" };
     if (path === "/") return { page: "welcome" };
     if (path === "/library" || path === "/monsters") return { page: "monsters" };
@@ -46,6 +49,11 @@
     match = path.match(/^\/campaigns\/(\d+)\/scene$/);
     if (match) {
       return { page: "campaign-scene", campaignId: Number(match[1]) };
+    }
+
+    match = path.match(/^\/campaigns\/(\d+)\/map$/);
+    if (match) {
+      return { page: "campaign-map", campaignId: Number(match[1]) };
     }
 
     match = path.match(/^\/campaigns\/(\d+)\/scenarios\/(\d+)\/(edit|initiative|map|run)$/);
@@ -79,6 +87,7 @@
     if (page === "login") return "/login";
     if (page === "player-home") {
       if (playerMode === "map") return "/player/map";
+      if (playerMode === "campaign-map") return "/player/campaign-map";
       if (playerMode === "scene") return "/player/scene";
       return "/player/initiative";
     }
@@ -96,6 +105,9 @@
     }
     if (page === "campaign-scene" && Number.isInteger(campaignId)) {
       return `/campaigns/${campaignId}/scene`;
+    }
+    if (page === "campaign-map" && Number.isInteger(campaignId)) {
+      return `/campaigns/${campaignId}/map`;
     }
     if (
       (

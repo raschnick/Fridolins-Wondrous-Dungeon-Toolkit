@@ -265,6 +265,99 @@ test("player can switch active campaign for initiative/map/scene live data", asy
   assert.equal(switchedLive.json.shared.campaignId, otherCampaignId);
 });
 
+test("campaign map follows the player's active campaign and accepts shared player drawing and pings", async () => {
+  const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
+  const playerIdentity = await createPlayer(admin, `campaign_map_${Date.now()}`);
+  const player = await login(playerIdentity.username, playerIdentity.password);
+
+  const campaignA = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("CampaignMapA")
+  });
+  assert.equal(campaignA.status, 201);
+  const campaignB = await admin.request("POST", "/api/campaigns", {
+    name: uniqueName("CampaignMapB")
+  });
+  assert.equal(campaignB.status, 201);
+
+  let response = await admin.request("POST", `/api/campaigns/${campaignA.json.id}/members`, {
+    userId: playerIdentity.id,
+    role: "player"
+  });
+  assert.equal(response.status, 204);
+  response = await admin.request("POST", `/api/campaigns/${campaignB.json.id}/members`, {
+    userId: playerIdentity.id,
+    role: "player"
+  });
+  assert.equal(response.status, 204);
+
+  response = await admin.request("PUT", `/api/campaigns/${campaignA.json.id}/map`, {
+    mapImageData: "data:image/png;base64,AAAA"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.campaignId, campaignA.json.id);
+  assert.equal(response.json.mapImageData, "data:image/png;base64,AAAA");
+  assert.equal(response.json.mapDrawData, "");
+
+  response = await admin.request("POST", `/api/campaigns/${campaignA.json.id}/map-draw`, {
+    drawData: "data:image/png;base64,DRAW_A"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.campaignId, campaignA.json.id);
+  assert.equal(response.json.mapDrawData, "data:image/png;base64,DRAW_A");
+
+  let live = await player.request("GET", "/api/player/live");
+  assert.equal(live.status, 200);
+  assert.equal(live.json.activeCampaignId, campaignA.json.id);
+  assert.equal(live.json.campaignMap.campaignId, campaignA.json.id);
+  assert.equal(live.json.campaignMap.mapImageData, "data:image/png;base64,AAAA");
+  assert.equal(live.json.campaignMap.mapDrawData, "data:image/png;base64,DRAW_A");
+
+  response = await player.request("POST", "/api/player/live/campaign-map-draw", {
+    campaignId: campaignA.json.id,
+    drawData: "data:image/png;base64,DRAW_PLAYER"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.campaignId, campaignA.json.id);
+  assert.equal(response.json.mapDrawData, "data:image/png;base64,DRAW_PLAYER");
+
+  response = await player.request("POST", "/api/player/live/campaign-map-ping", {
+    campaignId: campaignA.json.id,
+    x: 123.45,
+    y: 67.89
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.json.campaignId, campaignA.json.id);
+  assert.equal(response.json.ping.source, "player");
+
+  live = await player.request("GET", "/api/player/live");
+  assert.equal(live.status, 200);
+  assert.equal(live.json.campaignMap.mapDrawData, "data:image/png;base64,DRAW_PLAYER");
+  assert.ok(live.json.campaignMap.mapLastPingJson.includes("\"source\":\"player\""));
+
+  response = await player.request("POST", "/api/users/me/active-campaign", {
+    campaignId: campaignB.json.id
+  });
+  assert.equal(response.status, 204);
+
+  live = await player.request("GET", "/api/player/live");
+  assert.equal(live.status, 200);
+  assert.equal(live.json.activeCampaignId, campaignB.json.id);
+  assert.equal(live.json.campaignMap, null);
+
+  response = await player.request("POST", "/api/player/live/campaign-map-ping", {
+    campaignId: campaignB.json.id,
+    x: 50,
+    y: 60
+  });
+  assert.equal(response.status, 403);
+
+  response = await player.request("POST", "/api/player/live/campaign-map-draw", {
+    campaignId: campaignB.json.id,
+    drawData: "data:image/png;base64,NOPE"
+  });
+  assert.equal(response.status, 403);
+});
+
 test("logs out session after username change", async () => {
   const admin = await login("fridolin", "eeZ8Z2n7EkLe8OP0mN43");
   const { username, password } = await createPlayer(admin, "rename");

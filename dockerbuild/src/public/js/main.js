@@ -70,11 +70,52 @@ const state = {
     lastClientY: 0,
     dragLocked: false,
     pingMode: false,
+    drawMode: "navigate",
+    drawPainting: false,
+    drawPointerId: null,
+    lastDrawX: null,
+    lastDrawY: null,
     lastPingId: null,
     saveTimer: null,
+    saveDrawTimer: null,
     pendingTokenUpdate: null,
     fogMaskByFogData: {},
-    fogMaskRequestId: 0
+    fogMaskRequestId: 0,
+    drawCanvasLoadedKey: null
+  },
+  campaignMapData: null,
+  campaignMap: {
+    campaignId: null,
+    mapKey: "",
+    zoom: 1,
+    minZoom: 1,
+    maxZoom: 4,
+    panX: 0,
+    panY: 0,
+    dragging: false,
+    pointerId: null,
+    lastClientX: 0,
+    lastClientY: 0,
+    dragLocked: false,
+    pingMode: false,
+    drawMode: "navigate",
+    drawPainting: false,
+    drawPointerId: null,
+    lastDrawX: null,
+    lastDrawY: null,
+    lastPingId: null,
+    fogMode: "navigate",
+    fogBrushSize: 56,
+    fogBrushShape: "round",
+    fogPainting: false,
+    fogPointerId: null,
+    fogCanvasLoadedCampaignId: null,
+    fogCanvasLoadedKey: null,
+    drawCanvasLoadedCampaignId: null,
+    drawCanvasLoadedKey: null,
+    pendingRemoteSync: null,
+    saveFogTimer: null,
+    saveDrawTimer: null
   },
   playerTurnResourcesByKey: {},
   runPreviewEnemyId: null,
@@ -108,6 +149,10 @@ const state = {
   runMapSyncEventSource: null,
   runMapSyncReconnectTimer: null,
   runMapSyncScenarioId: null,
+  campaignMapSyncPollTimer: null,
+  campaignMapSyncEventSource: null,
+  campaignMapSyncReconnectTimer: null,
+  campaignMapSyncCampaignId: null,
   playerLiveViewMode: "initiative",
   diceShopOfferTimer: null,
   loginAweTimer: null,
@@ -137,6 +182,8 @@ const state = {
 
 const RUN_MAP_FOG_BRUSH_SESSION_KEY = "runMapFogBrushSize";
 const RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY = "runMapFogBrushShape";
+const CAMPAIGN_MAP_DRAW_BRUSH_RADIUS = 8;
+const CAMPAIGN_MAP_DRAW_COLOR = "rgba(255, 99, 99, 0.94)";
 const DICE_SKIN_OPTIONS = [
   {
     key: "default",
@@ -235,6 +282,7 @@ const els = {
   pageWelcome: document.getElementById("pageWelcome"),
   pagePlayerHome: document.getElementById("pagePlayerHome"),
   pageScene: document.getElementById("pageScene"),
+  pageCampaignMap: document.getElementById("pageCampaignMap"),
   pageSettings: document.getElementById("pageSettings"),
   pageDiceShop: document.getElementById("pageDiceShop"),
   pageMonsters: document.getElementById("pageMonsters"),
@@ -253,8 +301,10 @@ const els = {
   pageScenarioRun: document.getElementById("pageScenarioRun"),
   mainHomeBtn: document.getElementById("mainHomeBtn"),
   mainSceneBtn: document.getElementById("mainSceneBtn"),
+  mainCampaignMapBtn: document.getElementById("mainCampaignMapBtn"),
   mainPlayerInitiativeBtn: document.getElementById("mainPlayerInitiativeBtn"),
   mainPlayerMapBtn: document.getElementById("mainPlayerMapBtn"),
+  mainPlayerCampaignMapBtn: document.getElementById("mainPlayerCampaignMapBtn"),
   mainPlayerSceneBtn: document.getElementById("mainPlayerSceneBtn"),
   mainMonstersBtn: document.getElementById("mainMonstersBtn"),
   mainAnalyticsBtn: document.getElementById("mainAnalyticsBtn"),
@@ -299,8 +349,11 @@ const els = {
   playerMapResetBtn: document.getElementById("playerMapResetBtn"),
   playerMapDragLockBtn: document.getElementById("playerMapDragLockBtn"),
   playerMapPingBtn: document.getElementById("playerMapPingBtn"),
+  playerMapDrawBtn: document.getElementById("playerMapDrawBtn"),
+  playerMapEraseBtn: document.getElementById("playerMapEraseBtn"),
   playerMapScene: document.getElementById("playerMapScene"),
   playerMapImage: document.getElementById("playerMapImage"),
+  playerMapDrawCanvas: document.getElementById("playerMapDrawCanvas"),
   playerMapFogImage: document.getElementById("playerMapFogImage"),
   playerMapTokens: document.getElementById("playerMapTokens"),
   playerMapPings: document.getElementById("playerMapPings"),
@@ -372,8 +425,39 @@ const els = {
   newCampaignName: document.getElementById("newCampaignName"),
   campaignPageTitle: document.getElementById("campaignPageTitle"),
   scenePageTitle: document.getElementById("scenePageTitle"),
+  campaignMapPageTitle: document.getElementById("campaignMapPageTitle"),
+  uploadCampaignMapBtn: document.getElementById("uploadCampaignMapBtn"),
+  clearCampaignMapBtn: document.getElementById("clearCampaignMapBtn"),
+  backToCampaignFromMapBtn: document.getElementById("backToCampaignFromMapBtn"),
+  campaignMapFile: document.getElementById("campaignMapFile"),
+  campaignMapHint: document.getElementById("campaignMapHint"),
+  campaignMapControls: document.getElementById("campaignMapControls"),
+  campaignMapDmControls: document.getElementById("campaignMapDmControls"),
+  campaignMapZoomOutBtn: document.getElementById("campaignMapZoomOutBtn"),
+  campaignMapZoomInBtn: document.getElementById("campaignMapZoomInBtn"),
+  campaignMapResetBtn: document.getElementById("campaignMapResetBtn"),
+  campaignMapDragLockBtn: document.getElementById("campaignMapDragLockBtn"),
+  campaignMapPingBtn: document.getElementById("campaignMapPingBtn"),
+  campaignMapDrawBtn: document.getElementById("campaignMapDrawBtn"),
+  campaignMapEraseBtn: document.getElementById("campaignMapEraseBtn"),
+  campaignMapFogPaintBtn: document.getElementById("campaignMapFogPaintBtn"),
+  campaignMapFogEraseBtn: document.getElementById("campaignMapFogEraseBtn"),
+  campaignMapFogClearBtn: document.getElementById("campaignMapFogClearBtn"),
+  campaignMapFogBrushControls: document.getElementById("campaignMapFogBrushControls"),
+  campaignMapFogBrushSizeInput: document.getElementById("campaignMapFogBrushSizeInput"),
+  campaignMapFogBrushSizeNumber: document.getElementById("campaignMapFogBrushSizeNumber"),
+  campaignMapFogBrushShapeRound: document.getElementById("campaignMapFogBrushShapeRound"),
+  campaignMapFogBrushShapeSquare: document.getElementById("campaignMapFogBrushShapeSquare"),
+  campaignMapViewport: document.getElementById("campaignMapViewport"),
+  campaignMapScene: document.getElementById("campaignMapScene"),
+  campaignMapImage: document.getElementById("campaignMapImage"),
+  campaignMapDrawCanvas: document.getElementById("campaignMapDrawCanvas"),
+  campaignMapFogCanvas: document.getElementById("campaignMapFogCanvas"),
+  campaignMapPings: document.getElementById("campaignMapPings"),
+  campaignMapFogCursorPreview: document.getElementById("campaignMapFogCursorPreview"),
   sceneCampaignSelect: document.getElementById("sceneCampaignSelect"),
   openSceneModalBtn: document.getElementById("openSceneModalBtn"),
+  goCampaignMapBtn: document.getElementById("goCampaignMapBtn"),
   goSceneViewBtn: document.getElementById("goSceneViewBtn"),
   backToCampaignFromSceneBtn: document.getElementById("backToCampaignFromSceneBtn"),
   sceneSearchInput: document.getElementById("sceneSearchInput"),
@@ -488,6 +572,7 @@ const els = {
   shareScenarioBtn: document.getElementById("shareScenarioBtn"),
   completeScenarioBtn: document.getElementById("completeScenarioBtn"),
   goEditFromRunBtn: document.getElementById("goEditFromRunBtn"),
+  goCampaignMapFromRunBtn: document.getElementById("goCampaignMapFromRunBtn"),
   activeMonsterImageWrap: document.getElementById("activeMonsterImageWrap"),
   activeMonsterImageHint: document.getElementById("activeMonsterImageHint"),
   activeMonsterImage: document.getElementById("activeMonsterImage"),
@@ -1504,18 +1589,25 @@ function showPage(page) {
   if (page !== "scenario-map") {
     stopRunMapSyncPolling();
   }
+  if (page !== "campaign-map") {
+    stopCampaignMapSyncPolling();
+  }
   if (page !== "dice-shop") {
     stopDiceShopOfferTimer();
   }
   document.body.classList.toggle("page-login", page === "login");
   document.body.classList.toggle("page-player", page === "player-home");
-  document.body.classList.toggle("page-run", page === "scenario-run" || page === "scenario-map");
+  document.body.classList.toggle(
+    "page-run",
+    page === "scenario-run" || page === "scenario-map" || page === "campaign-map"
+  );
   els.pageLogin.classList.toggle("hidden", page !== "login");
   els.loginPageLogo.classList.toggle("hidden", page !== "login");
   const hideTopNav = page === "login" || (state.authUser?.role !== "admin");
   els.topNav.classList.toggle("hidden", hideTopNav);
   els.pageWelcome.classList.toggle("hidden", page !== "welcome");
   els.pagePlayerHome.classList.toggle("hidden", page !== "player-home");
+  els.pageCampaignMap.classList.toggle("hidden", page !== "campaign-map");
   els.pageSettings.classList.toggle("hidden", page !== "settings");
   els.pageDiceShop.classList.toggle("hidden", page !== "dice-shop");
   els.pageMonsters.classList.toggle("hidden", page !== "monsters");
@@ -1537,8 +1629,10 @@ function renderMainSections() {
   const isPlayer = isAuthed && state.authUser?.role !== "admin";
   els.mainHomeBtn.classList.toggle("hidden", !isAuthed || isPlayer);
   els.mainSceneBtn.classList.toggle("hidden", !isAuthed || isPlayer);
+  els.mainCampaignMapBtn.classList.toggle("hidden", !isAuthed || isPlayer);
   els.mainPlayerInitiativeBtn.classList.toggle("hidden", !isPlayer);
   els.mainPlayerMapBtn.classList.toggle("hidden", !isPlayer);
+  els.mainPlayerCampaignMapBtn.classList.toggle("hidden", !isPlayer);
   els.mainPlayerSceneBtn.classList.toggle("hidden", !isPlayer);
   els.userMenu.classList.toggle("hidden", !isAuthed);
   const showLibrary = isAuthed && state.authUser?.role === "admin";
@@ -1559,6 +1653,7 @@ function renderMainSections() {
     state.page === "welcome" ||
     state.page === "player-home" ||
     state.page === "campaign" ||
+    state.page === "campaign-map" ||
     state.page === "campaign-scene" ||
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
@@ -1575,11 +1670,16 @@ function renderMainSections() {
     "active",
     inPlayerHome && state.playerLiveViewMode === "map"
   );
+  els.mainPlayerCampaignMapBtn.classList.toggle(
+    "active",
+    inPlayerHome && state.playerLiveViewMode === "campaign-map"
+  );
   els.mainPlayerSceneBtn.classList.toggle(
     "active",
     inPlayerHome && state.playerLiveViewMode === "scene"
   );
   els.mainSceneBtn.classList.toggle("active", state.page === "campaign-scene");
+  els.mainCampaignMapBtn.classList.toggle("active", state.page === "campaign-map");
   els.mainMonstersBtn.classList.toggle("active", state.page === "monsters");
   els.mainAnalyticsBtn.classList.toggle("active", state.page === "analytics");
 }
@@ -1592,6 +1692,7 @@ function renderNav() {
   const inHomePath =
     state.page === "welcome" ||
     state.page === "campaign" ||
+    state.page === "campaign-map" ||
     state.page === "campaign-scene" ||
     state.page === "campaign-completed" ||
     state.page === "scenario-edit" ||
@@ -1625,6 +1726,7 @@ function renderNav() {
     Boolean(campaign) &&
     (
       state.page === "campaign" ||
+      state.page === "campaign-map" ||
       state.page === "campaign-scene" ||
       state.page === "campaign-completed" ||
       state.page === "scenario-edit" ||
@@ -1644,19 +1746,23 @@ function renderNav() {
     Boolean(scenario) &&
     (state.page === "scenario-edit" || state.page === "scenario-run" || state.page === "scenario-map");
   const showSceneCrumb = inHomePath && Boolean(campaign) && state.page === "campaign-scene";
+  const showCampaignMapCrumb = inHomePath && Boolean(campaign) && state.page === "campaign-map";
   const showCompletedScenarioCrumb =
     inHomePath &&
     Boolean(scenario) &&
     state.page === "scenario-completed-edit";
   els.navScenarioBtn.classList.toggle(
     "hidden",
-    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb)
+    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb || showCampaignMapCrumb)
   );
   els.navSepScenario.classList.toggle(
     "hidden",
-    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb)
+    !(showScenarioCrumb || showCompletedScenarioCrumb || showSceneCrumb || showCampaignMapCrumb)
   );
-  if (showSceneCrumb) {
+  if (showCampaignMapCrumb) {
+    els.navScenarioBtn.textContent = "Campaign Map";
+    els.navScenarioBtn.disabled = true;
+  } else if (showSceneCrumb) {
     els.navScenarioBtn.textContent = "Scene View";
     els.navScenarioBtn.disabled = true;
   } else if ((showScenarioCrumb || showCompletedScenarioCrumb) && scenario) {
@@ -1893,6 +1999,28 @@ function runMapCurrentTotalScale() {
 
 function focusRunMapViewportForShortcuts() {
   const viewport = els.runMapViewport;
+  if (!(viewport instanceof HTMLElement)) return;
+  if (!viewport.hasAttribute("tabindex")) {
+    viewport.setAttribute("tabindex", "-1");
+  }
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLElement &&
+    active !== viewport &&
+    (
+      active.tagName === "INPUT" ||
+      active.tagName === "TEXTAREA" ||
+      active.tagName === "SELECT" ||
+      active.isContentEditable
+    )
+  ) {
+    active.blur();
+  }
+  viewport.focus({ preventScroll: true });
+}
+
+function focusCampaignMapViewportForShortcuts() {
+  const viewport = els.campaignMapViewport;
   if (!(viewport instanceof HTMLElement)) return;
   if (!viewport.hasAttribute("tabindex")) {
     viewport.setAttribute("tabindex", "-1");
@@ -2342,14 +2470,653 @@ function setPlayerMapPingModeUi(enabled) {
   if (els.playerMapPingBtn) {
     els.playerMapPingBtn.setAttribute("aria-pressed", state.playerMap.pingMode ? "true" : "false");
   }
+  if (state.playerMap.pingMode && state.playerMap.drawMode !== "navigate") {
+    setPlayerMapDrawModeUi("navigate");
+  }
+}
+
+function setPlayerMapDrawModeUi(mode) {
+  const nextMode = mode === "draw" || mode === "erase" ? mode : "navigate";
+  state.playerMap.drawMode = nextMode;
+  if (els.playerMapDrawBtn) {
+    els.playerMapDrawBtn.setAttribute("aria-pressed", nextMode === "draw" ? "true" : "false");
+  }
+  if (els.playerMapEraseBtn) {
+    els.playerMapEraseBtn.setAttribute("aria-pressed", nextMode === "erase" ? "true" : "false");
+  }
+  if (els.playerMapViewport) {
+    els.playerMapViewport.classList.toggle("map-draw-mode", nextMode !== "navigate");
+  }
+  if (nextMode !== "navigate" && state.playerMap.pingMode) {
+    setPlayerMapPingModeUi(false);
+  }
+}
+
+function drawStrokeOnSharedMapCanvas(canvas, fromX, fromY, toX, toY, mode) {
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const startX = Number.isFinite(fromX) ? fromX : toX;
+  const startY = Number.isFinite(fromY) ? fromY : toY;
+  const endX = Number.isFinite(toX) ? toX : startX;
+  const endY = Number.isFinite(toY) ? toY : startY;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = CAMPAIGN_MAP_DRAW_BRUSH_RADIUS * 2;
+  ctx.globalCompositeOperation = mode === "erase" ? "destination-out" : "source-over";
+  ctx.strokeStyle = CAMPAIGN_MAP_DRAW_COLOR;
+  ctx.fillStyle = CAMPAIGN_MAP_DRAW_COLOR;
+  if (startX === endX && startY === endY) {
+    ctx.beginPath();
+    ctx.arc(endX, endY, CAMPAIGN_MAP_DRAW_BRUSH_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function serializeSharedMapCanvas(canvas) {
+  if (!(canvas instanceof HTMLCanvasElement) || canvas.width <= 0 || canvas.height <= 0) return "";
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 8) {
+      return canvas.toDataURL("image/png");
+    }
+  }
+  return "";
+}
+
+function loadDataUrlIntoCanvas(canvas, raw) {
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!raw) return;
+  const image = new Image();
+  image.onload = () => {
+    const nextCtx = canvas.getContext("2d");
+    if (!nextCtx) return;
+    nextCtx.clearRect(0, 0, canvas.width, canvas.height);
+    nextCtx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  };
+  image.src = raw;
+}
+
+function ensurePlayerMapDrawCanvasSize() {
+  const canvas = els.playerMapDrawCanvas;
+  const image = els.playerMapImage;
+  if (!(canvas instanceof HTMLCanvasElement) || !image) return false;
+  if (!image.naturalWidth || !image.naturalHeight) return false;
+  if (canvas.width !== image.naturalWidth || canvas.height !== image.naturalHeight) {
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+  }
+  return true;
+}
+
+function clearPlayerMapDrawCanvas() {
+  const canvas = els.playerMapDrawCanvas;
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function ensurePlayerMapDrawCanvasFromData(drawData) {
+  if (!Number.isInteger(state.playerMap.scenarioId)) return;
+  if (!ensurePlayerMapDrawCanvasSize()) return;
+  const normalizedDrawData = `${drawData || ""}`.trim();
+  const key = `${state.playerMap.scenarioId}:${normalizedDrawData}`;
+  if (state.playerMap.drawCanvasLoadedKey === key) return;
+  state.playerMap.drawCanvasLoadedKey = key;
+  loadDataUrlIntoCanvas(els.playerMapDrawCanvas, normalizedDrawData);
+}
+
+function paintPlayerMapDrawAt(x, y, mode = "draw") {
+  if (!ensurePlayerMapDrawCanvasSize()) return;
+  drawStrokeOnSharedMapCanvas(
+    els.playerMapDrawCanvas,
+    state.playerMap.lastDrawX,
+    state.playerMap.lastDrawY,
+    x,
+    y,
+    mode
+  );
+  state.playerMap.lastDrawX = x;
+  state.playerMap.lastDrawY = y;
+}
+
+function serializePlayerMapDrawCanvas() {
+  return serializeSharedMapCanvas(els.playerMapDrawCanvas);
+}
+
+async function persistPlayerCampaignMapDraw(campaignId, drawData) {
+  if (!Number.isInteger(campaignId)) return;
+  try {
+    const result = await api("/api/player/live/campaign-map-draw", {
+      method: "POST",
+      body: JSON.stringify({ campaignId, drawData })
+    });
+    const normalized = `${result?.mapDrawData || ""}`;
+    state.playerMap.drawCanvasLoadedKey = `${campaignId}:${normalized}`;
+    if (
+      state.playerLiveData?.campaignMap &&
+      Number(state.playerLiveData.campaignMap.campaignId) === campaignId
+    ) {
+      state.playerLiveData = {
+        ...state.playerLiveData,
+        campaignMap: {
+          ...state.playerLiveData.campaignMap,
+          mapDrawData: normalized,
+          updatedAt: result?.updatedAt ?? state.playerLiveData.campaignMap.updatedAt ?? null
+        }
+      };
+    }
+  } catch (_error) {
+    // Keep local drawing smooth even on transient network/API failures.
+  }
+}
+
+function campaignMapCurrentTotalScale() {
+  if (!els.campaignMapViewport || !els.campaignMapImage) return null;
+  if (!els.campaignMapImage.naturalWidth || !els.campaignMapImage.naturalHeight) return null;
+  const viewportWidth = els.campaignMapViewport.clientWidth;
+  const viewportHeight = els.campaignMapViewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return null;
+  const baseScale = Math.min(
+    viewportWidth / els.campaignMapImage.naturalWidth,
+    viewportHeight / els.campaignMapImage.naturalHeight
+  );
+  const totalScale = baseScale * state.campaignMap.zoom;
+  if (!Number.isFinite(totalScale) || totalScale <= 0) return null;
+  return totalScale;
+}
+
+function hideCampaignMapFogCursorPreview() {
+  if (!els.campaignMapFogCursorPreview) return;
+  els.campaignMapFogCursorPreview.classList.add("hidden");
+}
+
+function updateCampaignMapFogCursorPreview(clientX, clientY, eventTarget = null) {
+  if (!els.campaignMapViewport || !els.campaignMapFogCursorPreview) return;
+  if (state.page !== "campaign-map" || state.campaignMap.fogMode === "navigate") {
+    hideCampaignMapFogCursorPreview();
+    return;
+  }
+  if (els.campaignMapImage.classList.contains("hidden")) {
+    hideCampaignMapFogCursorPreview();
+    return;
+  }
+  if (
+    eventTarget instanceof Element &&
+    eventTarget.closest(".map-touch-controls, .map-fog-brush-controls")
+  ) {
+    hideCampaignMapFogCursorPreview();
+    return;
+  }
+  const rect = els.campaignMapViewport.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+    hideCampaignMapFogCursorPreview();
+    return;
+  }
+  const totalScale = campaignMapCurrentTotalScale();
+  if (!totalScale) {
+    hideCampaignMapFogCursorPreview();
+    return;
+  }
+  const radius = clamp((Number(state.campaignMap.fogBrushSize) || 56) * totalScale, 6, 520);
+  const diameter = radius * 2;
+  const preview = els.campaignMapFogCursorPreview;
+  preview.classList.toggle("is-square", state.campaignMap.fogBrushShape === "square");
+  preview.style.left = `${x}px`;
+  preview.style.top = `${y}px`;
+  preview.style.width = `${diameter}px`;
+  preview.style.height = `${diameter}px`;
+  preview.dataset.clientX = String(clientX);
+  preview.dataset.clientY = String(clientY);
+  preview.classList.remove("hidden");
+}
+
+function setCampaignMapFogMode(mode) {
+  const nextMode = mode === "paint" || mode === "erase" ? mode : "navigate";
+  state.campaignMap.fogMode = nextMode;
+  if (nextMode !== "navigate" && state.campaignMap.pingMode) {
+    setCampaignMapPingModeUi(false);
+  }
+  if (nextMode !== "navigate" && state.campaignMap.drawMode !== "navigate") {
+    setCampaignMapDrawMode("navigate");
+  }
+  if (els.campaignMapFogPaintBtn) {
+    els.campaignMapFogPaintBtn.setAttribute("aria-pressed", nextMode === "paint" ? "true" : "false");
+  }
+  if (els.campaignMapFogEraseBtn) {
+    els.campaignMapFogEraseBtn.setAttribute("aria-pressed", nextMode === "erase" ? "true" : "false");
+  }
+  if (els.campaignMapViewport) {
+    els.campaignMapViewport.classList.toggle("fog-paint-mode", nextMode !== "navigate");
+  }
+  if (els.campaignMapFogBrushControls) {
+    els.campaignMapFogBrushControls.classList.toggle("hidden", nextMode === "navigate");
+  }
+  if (nextMode === "navigate") {
+    hideCampaignMapFogCursorPreview();
+  }
+}
+
+function setCampaignMapDragLockUi(locked) {
+  state.campaignMap.dragLocked = Boolean(locked);
+  if (els.campaignMapViewport) {
+    els.campaignMapViewport.classList.toggle("drag-locked", state.campaignMap.dragLocked);
+  }
+  if (els.campaignMapDragLockBtn) {
+    els.campaignMapDragLockBtn.setAttribute(
+      "aria-pressed",
+      state.campaignMap.dragLocked ? "true" : "false"
+    );
+    els.campaignMapDragLockBtn.setAttribute(
+      "aria-label",
+      state.campaignMap.dragLocked ? "Unlock map dragging" : "Lock map dragging"
+    );
+    els.campaignMapDragLockBtn.title = state.campaignMap.dragLocked
+      ? "Unlock Dragging"
+      : "Lock Dragging";
+  }
+}
+
+function setCampaignMapPingModeUi(enabled) {
+  state.campaignMap.pingMode = Boolean(enabled);
+  if (els.campaignMapPingBtn) {
+    els.campaignMapPingBtn.setAttribute(
+      "aria-pressed",
+      state.campaignMap.pingMode ? "true" : "false"
+    );
+  }
+  if (state.campaignMap.pingMode && state.campaignMap.fogMode !== "navigate") {
+    setCampaignMapFogMode("navigate");
+  }
+  if (state.campaignMap.pingMode && state.campaignMap.drawMode !== "navigate") {
+    setCampaignMapDrawMode("navigate");
+  }
+}
+
+function setCampaignMapDrawMode(mode) {
+  const nextMode = mode === "draw" || mode === "erase" ? mode : "navigate";
+  state.campaignMap.drawMode = nextMode;
+  if (els.campaignMapDrawBtn) {
+    els.campaignMapDrawBtn.setAttribute("aria-pressed", nextMode === "draw" ? "true" : "false");
+  }
+  if (els.campaignMapEraseBtn) {
+    els.campaignMapEraseBtn.setAttribute("aria-pressed", nextMode === "erase" ? "true" : "false");
+  }
+  if (els.campaignMapViewport) {
+    els.campaignMapViewport.classList.toggle("map-draw-mode", nextMode !== "navigate");
+  }
+  if (nextMode !== "navigate" && state.campaignMap.pingMode) {
+    setCampaignMapPingModeUi(false);
+  }
+  if (nextMode !== "navigate" && state.campaignMap.fogMode !== "navigate") {
+    setCampaignMapFogMode("navigate");
+  }
+}
+
+function setCampaignMapFogBrushSizeUi(size) {
+  const finalSize = clamp(Math.round(Number(size) || 56), 12, 220);
+  state.campaignMap.fogBrushSize = finalSize;
+  if (els.campaignMapFogBrushSizeInput) {
+    els.campaignMapFogBrushSizeInput.value = String(finalSize);
+  }
+  if (els.campaignMapFogBrushSizeNumber) {
+    els.campaignMapFogBrushSizeNumber.value = String(finalSize);
+  }
+}
+
+function setCampaignMapFogBrushShapeUi(shape) {
+  const finalShape = shape === "square" ? "square" : "round";
+  state.campaignMap.fogBrushShape = finalShape;
+  if (els.campaignMapFogBrushShapeRound) {
+    els.campaignMapFogBrushShapeRound.checked = finalShape === "round";
+  }
+  if (els.campaignMapFogBrushShapeSquare) {
+    els.campaignMapFogBrushShapeSquare.checked = finalShape === "square";
+  }
+  if (els.campaignMapFogCursorPreview) {
+    els.campaignMapFogCursorPreview.classList.toggle("is-square", finalShape === "square");
+  }
+}
+
+function applyCampaignMapTransform() {
+  const viewport = els.campaignMapViewport;
+  const image = els.campaignMapImage;
+  const scene = els.campaignMapScene;
+  if (!viewport || !image || !scene || image.classList.contains("hidden")) return;
+  if (!image.naturalWidth || !image.naturalHeight) return;
+
+  const viewportWidth = viewport.clientWidth;
+  const viewportHeight = viewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return;
+
+  const baseScale = Math.min(viewportWidth / image.naturalWidth, viewportHeight / image.naturalHeight);
+  const totalScale = baseScale * state.campaignMap.zoom;
+  const scaledWidth = image.naturalWidth * totalScale;
+  const scaledHeight = image.naturalHeight * totalScale;
+
+  if (scaledWidth <= viewportWidth) {
+    state.campaignMap.panX = (viewportWidth - scaledWidth) / 2;
+  } else {
+    const minX = viewportWidth - scaledWidth;
+    state.campaignMap.panX = clamp(state.campaignMap.panX, minX, 0);
+  }
+
+  if (scaledHeight <= viewportHeight) {
+    state.campaignMap.panY = (viewportHeight - scaledHeight) / 2;
+  } else {
+    const minY = viewportHeight - scaledHeight;
+    state.campaignMap.panY = clamp(state.campaignMap.panY, minY, 0);
+  }
+
+  scene.style.width = `${image.naturalWidth}px`;
+  scene.style.height = `${image.naturalHeight}px`;
+  scene.style.transformOrigin = "top left";
+  scene.style.transform = `translate(${state.campaignMap.panX}px, ${state.campaignMap.panY}px) scale(${totalScale})`;
+  if (els.campaignMapFogCursorPreview && !els.campaignMapFogCursorPreview.classList.contains("hidden")) {
+    const clientX = Number(els.campaignMapFogCursorPreview.dataset.clientX);
+    const clientY = Number(els.campaignMapFogCursorPreview.dataset.clientY);
+    if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+      updateCampaignMapFogCursorPreview(clientX, clientY);
+    }
+  }
+}
+
+function resetCampaignMapView(campaignId, mapKey) {
+  state.campaignMap.campaignId = Number.isInteger(campaignId) ? campaignId : null;
+  state.campaignMap.mapKey = `${mapKey || ""}`;
+  state.campaignMap.zoom = 1;
+  state.campaignMap.panX = 0;
+  state.campaignMap.panY = 0;
+  state.campaignMap.dragging = false;
+  state.campaignMap.pointerId = null;
+  state.campaignMap.drawPainting = false;
+  state.campaignMap.drawPointerId = null;
+  state.campaignMap.lastDrawX = null;
+  state.campaignMap.lastDrawY = null;
+  state.campaignMap.fogPainting = false;
+  state.campaignMap.fogPointerId = null;
+  state.campaignMap.pendingRemoteSync = null;
+  if (state.campaignMap.saveDrawTimer) {
+    clearTimeout(state.campaignMap.saveDrawTimer);
+    state.campaignMap.saveDrawTimer = null;
+  }
+  state.campaignMap.drawCanvasLoadedCampaignId = null;
+  state.campaignMap.drawCanvasLoadedKey = null;
+  setCampaignMapPingModeUi(false);
+  setCampaignMapDrawMode("navigate");
+  applyCampaignMapTransform();
+}
+
+function ensureCampaignMapFogCanvasSize() {
+  const canvas = els.campaignMapFogCanvas;
+  const image = els.campaignMapImage;
+  if (!(canvas instanceof HTMLCanvasElement) || !image) return false;
+  if (!image.naturalWidth || !image.naturalHeight) return false;
+  if (canvas.width !== image.naturalWidth || canvas.height !== image.naturalHeight) {
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+  }
+  return true;
+}
+
+function ensureCampaignMapDrawCanvasSize() {
+  const canvas = els.campaignMapDrawCanvas;
+  const image = els.campaignMapImage;
+  if (!(canvas instanceof HTMLCanvasElement) || !image) return false;
+  if (!image.naturalWidth || !image.naturalHeight) return false;
+  if (canvas.width !== image.naturalWidth || canvas.height !== image.naturalHeight) {
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+  }
+  return true;
+}
+
+function clearCampaignMapFogCanvas() {
+  const canvas = els.campaignMapFogCanvas;
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function clearCampaignMapDrawCanvas() {
+  const canvas = els.campaignMapDrawCanvas;
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawFogDataToCampaignMapCanvas(fogData) {
+  if (!ensureCampaignMapFogCanvasSize()) return;
+  clearCampaignMapFogCanvas();
+  const raw = `${fogData || ""}`.trim();
+  if (!raw) return;
+  const image = new Image();
+  image.onload = () => {
+    const canvas = els.campaignMapFogCanvas;
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  };
+  image.src = raw;
+}
+
+function ensureCampaignMapFogCanvasFromData(fogData) {
+  if (!Number.isInteger(state.campaignMap.campaignId)) return;
+  if (!ensureCampaignMapFogCanvasSize()) return;
+  const normalizedFogData = `${fogData || ""}`.trim();
+  const key = `${state.campaignMap.campaignId}:${normalizedFogData}`;
+  if (
+    state.campaignMap.fogCanvasLoadedCampaignId === state.campaignMap.campaignId &&
+    state.campaignMap.fogCanvasLoadedKey === key
+  ) {
+    return;
+  }
+  state.campaignMap.fogCanvasLoadedCampaignId = state.campaignMap.campaignId;
+  state.campaignMap.fogCanvasLoadedKey = key;
+  drawFogDataToCampaignMapCanvas(normalizedFogData);
+}
+
+function ensureCampaignMapDrawCanvasFromData(drawData) {
+  if (!Number.isInteger(state.campaignMap.campaignId)) return;
+  if (!ensureCampaignMapDrawCanvasSize()) return;
+  const normalizedDrawData = `${drawData || ""}`.trim();
+  const key = `${state.campaignMap.campaignId}:${normalizedDrawData}`;
+  if (
+    state.campaignMap.drawCanvasLoadedCampaignId === state.campaignMap.campaignId &&
+    state.campaignMap.drawCanvasLoadedKey === key
+  ) {
+    return;
+  }
+  state.campaignMap.drawCanvasLoadedCampaignId = state.campaignMap.campaignId;
+  state.campaignMap.drawCanvasLoadedKey = key;
+  loadDataUrlIntoCanvas(els.campaignMapDrawCanvas, normalizedDrawData);
+}
+
+function campaignMapPointerToImageCoords(event) {
+  if (!els.campaignMapViewport || !els.campaignMapImage) return null;
+  if (!els.campaignMapImage.naturalWidth || !els.campaignMapImage.naturalHeight) return null;
+  const rect = els.campaignMapViewport.getBoundingClientRect();
+  const pointerX = event.clientX - rect.left;
+  const pointerY = event.clientY - rect.top;
+  const totalScale = campaignMapCurrentTotalScale();
+  if (!totalScale) return null;
+  const imageX = (pointerX - state.campaignMap.panX) / totalScale;
+  const imageY = (pointerY - state.campaignMap.panY) / totalScale;
+  return {
+    x: clamp(imageX, 0, els.campaignMapImage.naturalWidth),
+    y: clamp(imageY, 0, els.campaignMapImage.naturalHeight)
+  };
+}
+
+function paintCampaignMapFogAt(x, y, mode = "paint") {
+  const canvas = els.campaignMapFogCanvas;
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const radius = Math.max(12, Math.min(220, Number(state.campaignMap.fogBrushSize) || 56));
+  const square = state.campaignMap.fogBrushShape === "square";
+  ctx.save();
+  ctx.beginPath();
+  if (square) {
+    const size = radius * 2;
+    ctx.rect(x - radius, y - radius, size, size);
+  } else {
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+  }
+  if (mode === "erase") {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fill();
+  } else {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(10, 14, 20, 0.92)";
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function paintCampaignMapDrawAt(x, y, mode = "draw") {
+  if (!ensureCampaignMapDrawCanvasSize()) return;
+  drawStrokeOnSharedMapCanvas(
+    els.campaignMapDrawCanvas,
+    state.campaignMap.lastDrawX,
+    state.campaignMap.lastDrawY,
+    x,
+    y,
+    mode
+  );
+  state.campaignMap.lastDrawX = x;
+  state.campaignMap.lastDrawY = y;
+}
+
+function serializeCampaignMapFogCanvas() {
+  const canvas = els.campaignMapFogCanvas;
+  if (!(canvas instanceof HTMLCanvasElement) || canvas.width <= 0 || canvas.height <= 0) return "";
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let hasFog = false;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 8) {
+      hasFog = true;
+      break;
+    }
+  }
+  if (!hasFog) return "";
+  return canvas.toDataURL("image/png");
+}
+
+function serializeCampaignMapDrawCanvas() {
+  return serializeSharedMapCanvas(els.campaignMapDrawCanvas);
+}
+
+async function persistCampaignMapDraw(campaignId, drawData) {
+  try {
+    const result = await api(`/api/campaigns/${campaignId}/map-draw`, {
+      method: "POST",
+      body: JSON.stringify({ drawData })
+    });
+    if (state.campaignMapData && state.campaignMapData.campaignId === campaignId) {
+      state.campaignMapData = {
+        ...state.campaignMapData,
+        mapDrawData: `${result?.mapDrawData || ""}`,
+        updatedAt: result?.updatedAt ?? state.campaignMapData.updatedAt ?? null
+      };
+    }
+    state.campaignMap.drawCanvasLoadedCampaignId = campaignId;
+    state.campaignMap.drawCanvasLoadedKey = `${campaignId}:${result?.mapDrawData || ""}`;
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function persistCampaignMapFog(campaignId, fogData) {
+  try {
+    const result = await api(`/api/campaigns/${campaignId}/map-fog`, {
+      method: "POST",
+      body: JSON.stringify({ fogData })
+    });
+    if (state.campaignMapData && state.campaignMapData.campaignId === campaignId) {
+      state.campaignMapData = {
+        ...state.campaignMapData,
+        mapFogData: `${result?.mapFogData || ""}`
+      };
+    }
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+function scheduleCampaignMapFogSave(campaignId, fogData) {
+  if (!Number.isInteger(campaignId)) return;
+  if (state.campaignMap.saveFogTimer) clearTimeout(state.campaignMap.saveFogTimer);
+  state.campaignMap.saveFogTimer = setTimeout(() => {
+    state.campaignMap.saveFogTimer = null;
+    persistCampaignMapFog(campaignId, fogData);
+  }, 220);
+}
+
+function maybeShowCampaignMapPing(pingRaw) {
+  const ping = parseMapPingJson(pingRaw);
+  if (!ping) return;
+  if (state.campaignMap.lastPingId === ping.id) return;
+  state.campaignMap.lastPingId = ping.id;
+  const sentAtMs = ping.sentAt ? Date.parse(ping.sentAt) : NaN;
+  if (Number.isFinite(sentAtMs) && Date.now() - sentAtMs > 8000) return;
+  renderMapPing(els.campaignMapPings, ping);
+}
+
+async function sendCampaignMapPing(campaignId, x, y) {
+  if (!Number.isInteger(campaignId)) return;
+  try {
+    await api(`/api/campaigns/${campaignId}/map-ping`, {
+      method: "POST",
+      body: JSON.stringify({ x, y })
+    });
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function sendPlayerCampaignMapPing(campaignId, x, y) {
+  if (!Number.isInteger(campaignId)) return;
+  try {
+    await api("/api/player/live/campaign-map-ping", {
+      method: "POST",
+      body: JSON.stringify({ campaignId, x, y })
+    });
+  } catch (_error) {
+    // Ignore transient ping errors for players.
+  }
 }
 
 function clearMapViewSelectionsOnEsc() {
   let changed = false;
 
   const onDmMapView = state.page === "scenario-map";
-  const onPlayerMapView = state.page === "player-home" && state.playerLiveViewMode === "map";
-  if (!onDmMapView && !onPlayerMapView) return false;
+  const onCampaignMapView = state.page === "campaign-map";
+  const onPlayerMapView =
+    state.page === "player-home" &&
+    (state.playerLiveViewMode === "map" || state.playerLiveViewMode === "campaign-map");
+  if (!onDmMapView && !onCampaignMapView && !onPlayerMapView) return false;
 
   hideConditionTooltip();
   hideMapStatblockHover();
@@ -2400,7 +3167,61 @@ function clearMapViewSelectionsOnEsc() {
     });
   }
 
+  if (onCampaignMapView) {
+    if (state.campaignMap.fogMode !== "navigate") {
+      setCampaignMapFogMode("navigate");
+      changed = true;
+    }
+    if (state.campaignMap.drawMode !== "navigate") {
+      setCampaignMapDrawMode("navigate");
+      changed = true;
+    }
+    if (state.campaignMap.pingMode) {
+      setCampaignMapPingModeUi(false);
+      changed = true;
+    }
+    if (state.campaignMap.dragLocked) {
+      setCampaignMapDragLockUi(false);
+      changed = true;
+    }
+    if (state.campaignMap.dragging || state.campaignMap.fogPainting || state.campaignMap.drawPainting) {
+      changed = true;
+    }
+    if (els.campaignMapViewport && Number.isInteger(state.campaignMap.pointerId)) {
+      try {
+        if (els.campaignMapViewport.hasPointerCapture(state.campaignMap.pointerId)) {
+          els.campaignMapViewport.releasePointerCapture(state.campaignMap.pointerId);
+        }
+      } catch (_error) {}
+    }
+    if (els.campaignMapViewport && Number.isInteger(state.campaignMap.fogPointerId)) {
+      try {
+        if (els.campaignMapViewport.hasPointerCapture(state.campaignMap.fogPointerId)) {
+          els.campaignMapViewport.releasePointerCapture(state.campaignMap.fogPointerId);
+        }
+      } catch (_error) {}
+    }
+    if (els.campaignMapViewport && Number.isInteger(state.campaignMap.drawPointerId)) {
+      try {
+        if (els.campaignMapViewport.hasPointerCapture(state.campaignMap.drawPointerId)) {
+          els.campaignMapViewport.releasePointerCapture(state.campaignMap.drawPointerId);
+        }
+      } catch (_error) {}
+    }
+    state.campaignMap.dragging = false;
+    state.campaignMap.pointerId = null;
+    state.campaignMap.fogPainting = false;
+    state.campaignMap.fogPointerId = null;
+    state.campaignMap.drawPainting = false;
+    state.campaignMap.drawPointerId = null;
+    state.campaignMap.lastDrawX = null;
+    state.campaignMap.lastDrawY = null;
+    els.campaignMapViewport?.classList.remove("is-dragging");
+    hideCampaignMapFogCursorPreview();
+  }
+
   if (onPlayerMapView) {
+    const wasPlayerMapInteracting = state.playerMap.dragging || state.playerMap.drawPainting;
     if (Number.isInteger(state.playerMap.hoverCombatantId)) {
       setMapHoverCombatantRow(state.playerMap.hoverCombatantId, true, false);
       changed = true;
@@ -2413,7 +3234,11 @@ function clearMapViewSelectionsOnEsc() {
       setPlayerMapPingModeUi(false);
       changed = true;
     }
-    if (state.playerMap.dragging) {
+    if (state.playerMap.drawMode !== "navigate") {
+      setPlayerMapDrawModeUi("navigate");
+      changed = true;
+    }
+    if (state.playerMap.dragging || state.playerMap.drawPainting) {
       changed = true;
     }
     if (els.playerMapViewport && Number.isInteger(state.playerMap.pointerId)) {
@@ -2423,14 +3248,28 @@ function clearMapViewSelectionsOnEsc() {
         }
       } catch (_error) {}
     }
+    if (els.playerMapViewport && Number.isInteger(state.playerMap.drawPointerId)) {
+      try {
+        if (els.playerMapViewport.hasPointerCapture(state.playerMap.drawPointerId)) {
+          els.playerMapViewport.releasePointerCapture(state.playerMap.drawPointerId);
+        }
+      } catch (_error) {}
+    }
     state.playerMap.dragging = false;
     state.playerMap.dragMode = "map";
     state.playerMap.dragCombatantId = null;
     state.playerMap.pointerId = null;
+    state.playerMap.drawPainting = false;
+    state.playerMap.drawPointerId = null;
+    state.playerMap.lastDrawX = null;
+    state.playerMap.lastDrawY = null;
     els.playerMapViewport?.classList.remove("is-dragging");
     els.playerMapTokens?.querySelectorAll(".player-map-token.is-dragging").forEach((token) => {
       token.classList.remove("is-dragging");
     });
+    if (wasPlayerMapInteracting && state.page === "player-home" && state.authUser?.role !== "admin") {
+      startPlayerLivePolling();
+    }
   }
 
   return changed;
@@ -2484,6 +3323,31 @@ function zoomPlayerMapAtPointer(factor, pointerX = null, pointerY = null) {
   state.playerMap.panX = focusX - imageX * nextTotalScale;
   state.playerMap.panY = focusY - imageY * nextTotalScale;
   applyPlayerMapTransform();
+}
+
+function zoomCampaignMapAtPointer(factor, pointerX = null, pointerY = null) {
+  if (!els.campaignMapViewport || !els.campaignMapImage || els.campaignMapImage.classList.contains("hidden")) return;
+  if (!els.campaignMapImage.naturalWidth || !els.campaignMapImage.naturalHeight) return;
+  const viewportWidth = els.campaignMapViewport.clientWidth;
+  const viewportHeight = els.campaignMapViewport.clientHeight;
+  if (viewportWidth <= 0 || viewportHeight <= 0) return;
+  const focusX = Number.isFinite(pointerX) ? pointerX : viewportWidth / 2;
+  const focusY = Number.isFinite(pointerY) ? pointerY : viewportHeight / 2;
+  const baseScale = Math.min(
+    viewportWidth / els.campaignMapImage.naturalWidth,
+    viewportHeight / els.campaignMapImage.naturalHeight
+  );
+  const prevZoom = state.campaignMap.zoom;
+  const nextZoom = clamp(prevZoom * factor, state.campaignMap.minZoom, state.campaignMap.maxZoom);
+  if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+  const prevTotalScale = baseScale * prevZoom;
+  const nextTotalScale = baseScale * nextZoom;
+  const imageX = (focusX - state.campaignMap.panX) / prevTotalScale;
+  const imageY = (focusY - state.campaignMap.panY) / prevTotalScale;
+  state.campaignMap.zoom = nextZoom;
+  state.campaignMap.panX = focusX - imageX * nextTotalScale;
+  state.campaignMap.panY = focusY - imageY * nextTotalScale;
+  applyCampaignMapTransform();
 }
 
 async function persistRunMapTokenSize(scenarioId, tokenSize) {
@@ -2757,12 +3621,40 @@ function preferredSceneCampaignId() {
   return scenePageController.preferredSceneCampaignId();
 }
 
+function preferredCampaignMapCampaignId() {
+  const validCampaignIds = new Set(
+    (Array.isArray(state.campaigns) ? state.campaigns : [])
+      .map((campaign) => campaign.id)
+      .filter((id) => Number.isInteger(id))
+  );
+  if (Number.isInteger(state.selectedCampaignId) && validCampaignIds.has(state.selectedCampaignId)) {
+    return state.selectedCampaignId;
+  }
+  if (Number.isInteger(state.lastHomeCampaignId) && validCampaignIds.has(state.lastHomeCampaignId)) {
+    return state.lastHomeCampaignId;
+  }
+  const firstCampaignId = state.campaigns?.[0]?.id;
+  return Number.isInteger(firstCampaignId) ? firstCampaignId : null;
+}
+
 async function loadSceneImages(campaignId) {
   return scenePageController.loadSceneImages(campaignId);
 }
 
 function renderScenePage() {
   return scenePageController.renderScenePage();
+}
+
+async function loadCampaignMapData(campaignId) {
+  if (!Number.isInteger(campaignId)) {
+    state.campaignMapData = null;
+    return;
+  }
+  state.campaignMapData = await api(`/api/campaigns/${campaignId}/map`);
+}
+
+function renderCampaignMapPage() {
+  return campaignMapPageController.renderCampaignMapPage();
 }
 
 async function loadCampaignStats(campaignId) {
@@ -2892,6 +3784,7 @@ function schedulePlayerMapTokenSave(scenarioId, combatantId, x, y) {
 function renderPlayerLiveMap(
   scenarioId,
   mapImageData,
+  mapDrawData,
   mapFogData,
   mapLastPingJson,
   mapTokensJson,
@@ -2901,6 +3794,7 @@ function renderPlayerLiveMap(
   return playerLivePageController.renderPlayerLiveMap(
     scenarioId,
     mapImageData,
+    mapDrawData,
     mapFogData,
     mapLastPingJson,
     mapTokensJson,
@@ -2932,6 +3826,13 @@ function clearRunMapSyncReconnectTimer() {
   if (state.runMapSyncReconnectTimer) {
     clearTimeout(state.runMapSyncReconnectTimer);
     state.runMapSyncReconnectTimer = null;
+  }
+}
+
+function clearCampaignMapSyncReconnectTimer() {
+  if (state.campaignMapSyncReconnectTimer) {
+    clearTimeout(state.campaignMapSyncReconnectTimer);
+    state.campaignMapSyncReconnectTimer = null;
   }
 }
 
@@ -3021,6 +3922,46 @@ function stopRunMapSyncPolling() {
   }
 }
 
+function applyCampaignMapSyncSnapshot(snapshot, { force = false } = {}) {
+  const campaignId = Number(snapshot?.campaignId ?? snapshot?.id);
+  if (!Number.isInteger(campaignId)) return;
+
+  const current = state.campaignMapData && state.campaignMapData.campaignId === campaignId
+    ? state.campaignMapData
+    : {
+        campaignId,
+        name: selectedCampaign()?.name || "",
+        mapImageData: "",
+        mapDrawData: "",
+        mapFogData: "",
+        mapLastPingJson: "",
+        updatedAt: null
+      };
+
+  const nextState = {
+    campaignId,
+    name: `${snapshot?.name ?? current.name ?? ""}`,
+    mapImageData: `${snapshot?.mapImageData ?? current.mapImageData ?? ""}`,
+    mapDrawData: `${snapshot?.mapDrawData ?? current.mapDrawData ?? ""}`,
+    mapFogData: `${snapshot?.mapFogData ?? current.mapFogData ?? ""}`,
+    mapLastPingJson: `${snapshot?.mapLastPingJson ?? current.mapLastPingJson ?? ""}`,
+    updatedAt: snapshot?.updatedAt ?? current.updatedAt ?? null
+  };
+
+  const changed =
+    nextState.name !== current.name ||
+    nextState.mapImageData !== current.mapImageData ||
+    nextState.mapDrawData !== current.mapDrawData ||
+    nextState.mapFogData !== current.mapFogData ||
+    nextState.mapLastPingJson !== current.mapLastPingJson ||
+    nextState.updatedAt !== current.updatedAt;
+  if (!changed && !force) return;
+
+  state.campaignMapData = nextState;
+  if (state.page !== "campaign-map" || state.selectedCampaignId !== campaignId) return;
+  renderCampaignMapPage();
+}
+
 function startRunMapSyncPolling() {
   if (state.page !== "scenario-map" || !state.selectedScenarioId) {
     stopRunMapSyncPolling();
@@ -3102,6 +4043,103 @@ function startRunMapSyncPolling() {
       state.runMapSyncReconnectTimer = null;
       if (state.page !== "scenario-map" || state.selectedScenarioId !== scenarioId) return;
       startRunMapSyncPolling();
+    }, 1200);
+  };
+}
+
+function stopCampaignMapSyncPolling() {
+  clearCampaignMapSyncReconnectTimer();
+  if (state.campaignMapSyncEventSource) {
+    state.campaignMapSyncEventSource.close();
+    state.campaignMapSyncEventSource = null;
+  }
+  state.campaignMapSyncCampaignId = null;
+  state.campaignMap.pendingRemoteSync = null;
+  if (state.campaignMapSyncPollTimer) {
+    clearInterval(state.campaignMapSyncPollTimer);
+    state.campaignMapSyncPollTimer = null;
+  }
+}
+
+function startCampaignMapSyncPolling() {
+  if (state.page !== "campaign-map" || !state.selectedCampaignId) {
+    stopCampaignMapSyncPolling();
+    return;
+  }
+  const campaignId = state.selectedCampaignId;
+  const canUseStream = supportsEventStream();
+  if (
+    canUseStream &&
+    state.campaignMapSyncEventSource &&
+    state.campaignMapSyncCampaignId === campaignId
+  ) {
+    return;
+  }
+  if (
+    !canUseStream &&
+    state.campaignMapSyncPollTimer &&
+    state.campaignMapSyncCampaignId === campaignId
+  ) {
+    return;
+  }
+
+  stopCampaignMapSyncPolling();
+  state.campaignMapSyncCampaignId = campaignId;
+
+  if (!canUseStream) {
+    state.campaignMapSyncPollTimer = setInterval(async () => {
+      if (state.page !== "campaign-map" || state.selectedCampaignId !== campaignId) return;
+      if (state.campaignMap.dragging || state.campaignMap.fogPainting || state.campaignMap.drawPainting) return;
+      try {
+        const latest = await api(`/api/campaigns/${campaignId}/map`);
+        applyCampaignMapSyncSnapshot(latest);
+      } catch (_error) {
+        // Ignore transient polling errors.
+      }
+    }, 1000);
+    return;
+  }
+
+  const source = new EventSource(`/api/campaigns/${campaignId}/map/stream`);
+  state.campaignMapSyncEventSource = source;
+
+  source.addEventListener("campaign-map", (event) => {
+    if (state.campaignMapSyncEventSource !== source) return;
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch (_error) {
+      return;
+    }
+    if (!payload || Number(payload.campaignId) !== campaignId) return;
+    if (payload.deleted) {
+      setStatus("This campaign map is no longer available.");
+      stopCampaignMapSyncPolling();
+      return;
+    }
+    if (state.page !== "campaign-map" || state.selectedCampaignId !== campaignId) return;
+    if (state.campaignMap.dragging || state.campaignMap.fogPainting || state.campaignMap.drawPainting) {
+      state.campaignMap.pendingRemoteSync = payload;
+      return;
+    }
+    applyCampaignMapSyncSnapshot(payload);
+  });
+
+  source.onopen = () => {
+    if (state.campaignMapSyncEventSource !== source) return;
+    clearCampaignMapSyncReconnectTimer();
+  };
+
+  source.onerror = () => {
+    if (state.campaignMapSyncEventSource !== source) return;
+    source.close();
+    state.campaignMapSyncEventSource = null;
+    if (state.page !== "campaign-map" || state.selectedCampaignId !== campaignId) return;
+    clearCampaignMapSyncReconnectTimer();
+    state.campaignMapSyncReconnectTimer = setTimeout(() => {
+      state.campaignMapSyncReconnectTimer = null;
+      if (state.page !== "campaign-map" || state.selectedCampaignId !== campaignId) return;
+      startCampaignMapSyncPolling();
     }, 1200);
   };
 }
@@ -3302,7 +4340,29 @@ function bindEvents() {
       return;
     }
 
-    if (state.page === "player-home" && state.playerLiveViewMode === "map" && key === "g") {
+    if (state.page === "campaign-map" && state.authUser?.role === "admin") {
+      if (key === "f") {
+        event.preventDefault();
+        setCampaignMapFogMode(state.campaignMap.fogMode === "paint" ? "navigate" : "paint");
+        return;
+      }
+      if (key === "d") {
+        event.preventDefault();
+        setCampaignMapFogMode(state.campaignMap.fogMode === "erase" ? "navigate" : "erase");
+        return;
+      }
+      if (key === "g") {
+        event.preventDefault();
+        setCampaignMapPingModeUi(!state.campaignMap.pingMode);
+        return;
+      }
+    }
+
+    if (
+      state.page === "player-home" &&
+      (state.playerLiveViewMode === "map" || state.playerLiveViewMode === "campaign-map") &&
+      key === "g"
+    ) {
       event.preventDefault();
       setPlayerMapPingModeUi(!state.playerMap.pingMode);
       return;
@@ -3402,7 +4462,21 @@ function bindEvents() {
     });
   });
 
+  els.goCampaignMapBtn?.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign-map", {
+      campaignId: state.selectedCampaignId
+    });
+  });
+
   els.backToCampaignFromSceneBtn.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign", {
+      campaignId: state.selectedCampaignId
+    });
+  });
+
+  els.backToCampaignFromMapBtn?.addEventListener("click", async () => {
     if (!state.selectedCampaignId) return;
     await navigateToPage("campaign", {
       campaignId: state.selectedCampaignId
@@ -3576,11 +4650,31 @@ function bindEvents() {
       setStatus(error.message, "error");
     }
   });
+  els.mainCampaignMapBtn.addEventListener("click", async () => {
+    if (state.authUser?.role !== "admin") return;
+    try {
+      if (!Array.isArray(state.campaigns) || state.campaigns.length === 0) {
+        await loadCampaigns();
+      }
+      const campaignId = preferredCampaignMapCampaignId();
+      if (!Number.isInteger(campaignId)) {
+        setStatus("No campaigns available yet.");
+        await navigateToPage("welcome");
+        return;
+      }
+      await navigateToPage("campaign-map", { campaignId });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
   els.mainPlayerInitiativeBtn.addEventListener("click", async () => {
     await navigateToPath("/player/initiative");
   });
   els.mainPlayerMapBtn.addEventListener("click", async () => {
     await navigateToPath("/player/map");
+  });
+  els.mainPlayerCampaignMapBtn?.addEventListener("click", async () => {
+    await navigateToPath("/player/campaign-map");
   });
   els.mainPlayerSceneBtn.addEventListener("click", async () => {
     await navigateToPath("/player/scene");
@@ -3590,16 +4684,74 @@ function bindEvents() {
     window.location.reload();
   });
 
+  els.uploadCampaignMapBtn?.addEventListener("click", () => {
+    els.campaignMapFile?.click();
+  });
+
+  els.campaignMapFile?.addEventListener("change", async () => {
+    if (!state.selectedCampaignId) return;
+    const file = els.campaignMapFile.files?.[0];
+    if (!file) return;
+    try {
+      const mapImageData = await readFileAsDataUrl(file);
+      const updated = await api(`/api/campaigns/${state.selectedCampaignId}/map`, {
+        method: "PUT",
+        body: JSON.stringify({ mapImageData })
+      });
+      state.campaignMapData = updated;
+      renderCampaignMapPage();
+      setStatus("Campaign map updated.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    } finally {
+      els.campaignMapFile.value = "";
+    }
+  });
+
+  els.clearCampaignMapBtn?.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    try {
+      const updated = await api(`/api/campaigns/${state.selectedCampaignId}/map`, {
+        method: "PUT",
+        body: JSON.stringify({ mapImageData: "" })
+      });
+      state.campaignMapData = updated;
+      renderCampaignMapPage();
+      setStatus("Campaign map cleared.", "success");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   els.playerMapImage.addEventListener("load", () => {
     if (!els.playerMapScene || !els.playerMapImage.naturalWidth || !els.playerMapImage.naturalHeight) return;
     els.playerMapScene.style.width = `${els.playerMapImage.naturalWidth}px`;
     els.playerMapScene.style.height = `${els.playerMapImage.naturalHeight}px`;
+    if (state.playerLiveViewMode === "campaign-map") {
+      ensurePlayerMapDrawCanvasFromData(`${state.playerLiveData?.campaignMap?.mapDrawData || ""}`);
+    }
     applyPlayerMapTransform();
   });
 
+  els.campaignMapImage?.addEventListener("load", () => {
+    if (state.page !== "campaign-map") return;
+    if (!els.campaignMapScene || !els.campaignMapImage.naturalWidth || !els.campaignMapImage.naturalHeight) return;
+    els.campaignMapScene.style.width = `${els.campaignMapImage.naturalWidth}px`;
+    els.campaignMapScene.style.height = `${els.campaignMapImage.naturalHeight}px`;
+    ensureCampaignMapDrawCanvasFromData(`${state.campaignMapData?.mapDrawData || ""}`);
+    ensureCampaignMapFogCanvasFromData(`${state.campaignMapData?.mapFogData || ""}`);
+    applyCampaignMapTransform();
+  });
+
   window.addEventListener("resize", () => {
-    if (state.page === "player-home" && state.playerLiveViewMode === "map") {
+    if (
+      state.page === "player-home" &&
+      (state.playerLiveViewMode === "map" || state.playerLiveViewMode === "campaign-map")
+    ) {
       applyPlayerMapTransform();
+    }
+    if (state.page === "campaign-map") {
+      applyCampaignMapTransform();
     }
   });
 
@@ -4552,6 +5704,12 @@ function bindEvents() {
       scenarioId: state.selectedScenarioId
     });
   });
+  els.goCampaignMapFromRunBtn?.addEventListener("click", async () => {
+    if (!state.selectedCampaignId) return;
+    await navigateToPage("campaign-map", {
+      campaignId: state.selectedCampaignId
+    });
+  });
 
   const onRunMapTokenSizeChange = () => {
     const scenario = selectedScenario();
@@ -4590,8 +5748,15 @@ function bindEvents() {
   const fogBrushShapeFromSession = loadRunMapFogBrushShapeFromSession();
   setRunMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.runMap.fogBrushShape);
   setPlayerMapDragLockUi(false);
+  setCampaignMapDragLockUi(false);
+  setCampaignMapFogMode("navigate");
+  setCampaignMapFogBrushSizeUi(fogBrushSizeFromSession ?? state.campaignMap.fogBrushSize);
+  setCampaignMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.campaignMap.fogBrushShape);
   setRunMapPingModeUi(false);
   setPlayerMapPingModeUi(false);
+  setPlayerMapDrawModeUi("navigate");
+  setCampaignMapPingModeUi(false);
+  setCampaignMapDrawMode("navigate");
 
   els.runMapZoomOutBtn?.addEventListener("click", () => {
     zoomRunMapAtPointer(1 / 1.12);
@@ -4698,6 +5863,105 @@ function bindEvents() {
   });
   els.playerMapPingBtn?.addEventListener("click", () => {
     setPlayerMapPingModeUi(!state.playerMap.pingMode);
+  });
+  els.playerMapDrawBtn?.addEventListener("click", () => {
+    setPlayerMapDrawModeUi(state.playerMap.drawMode === "draw" ? "navigate" : "draw");
+  });
+  els.playerMapEraseBtn?.addEventListener("click", () => {
+    setPlayerMapDrawModeUi(state.playerMap.drawMode === "erase" ? "navigate" : "erase");
+  });
+
+  els.campaignMapZoomOutBtn?.addEventListener("click", () => {
+    zoomCampaignMapAtPointer(1 / 1.12);
+  });
+  els.campaignMapZoomInBtn?.addEventListener("click", () => {
+    zoomCampaignMapAtPointer(1.12);
+  });
+  els.campaignMapResetBtn?.addEventListener("click", () => {
+    resetCampaignMapView(state.campaignMap.campaignId, state.campaignMap.mapKey);
+  });
+  els.campaignMapFogPaintBtn?.addEventListener("click", () => {
+    setCampaignMapFogMode(state.campaignMap.fogMode === "paint" ? "navigate" : "paint");
+  });
+  els.campaignMapFogEraseBtn?.addEventListener("click", () => {
+    setCampaignMapFogMode(state.campaignMap.fogMode === "erase" ? "navigate" : "erase");
+  });
+  els.campaignMapFogClearBtn?.addEventListener("click", () => {
+    if (!state.selectedCampaignId || state.page !== "campaign-map") return;
+    const confirmed = window.confirm(
+      "Clear all fog of war for this campaign map?"
+    );
+    if (!confirmed) return;
+    clearCampaignMapFogCanvas();
+    state.campaignMap.fogCanvasLoadedCampaignId = state.selectedCampaignId;
+    state.campaignMap.fogCanvasLoadedKey = `${state.selectedCampaignId}:`;
+    scheduleCampaignMapFogSave(state.selectedCampaignId, "");
+  });
+  const onCampaignMapFogBrushSizeChange = () => {
+    const nextSize = clamp(Math.round(Number(els.campaignMapFogBrushSizeInput?.value) || 56), 12, 220);
+    setCampaignMapFogBrushSizeUi(nextSize);
+    saveRunMapFogBrushSizeToSession(nextSize);
+    if (els.campaignMapFogCursorPreview && !els.campaignMapFogCursorPreview.classList.contains("hidden")) {
+      const clientX = Number(els.campaignMapFogCursorPreview.dataset.clientX);
+      const clientY = Number(els.campaignMapFogCursorPreview.dataset.clientY);
+      if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+        updateCampaignMapFogCursorPreview(clientX, clientY);
+      }
+    }
+  };
+  const onCampaignMapFogBrushSizeNumberApply = () => {
+    const parsed = parseRoundedNumberOrNull(els.campaignMapFogBrushSizeNumber?.value);
+    if (parsed == null) return;
+    const nextSize = clamp(parsed, 12, 220);
+    setCampaignMapFogBrushSizeUi(nextSize);
+    saveRunMapFogBrushSizeToSession(nextSize);
+    if (els.campaignMapFogCursorPreview && !els.campaignMapFogCursorPreview.classList.contains("hidden")) {
+      const clientX = Number(els.campaignMapFogCursorPreview.dataset.clientX);
+      const clientY = Number(els.campaignMapFogCursorPreview.dataset.clientY);
+      if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+        updateCampaignMapFogCursorPreview(clientX, clientY);
+      }
+    }
+  };
+  const onCampaignMapFogBrushSizeNumberCommit = () => {
+    const parsed = parseRoundedNumberOrNull(els.campaignMapFogBrushSizeNumber?.value);
+    if (parsed == null) {
+      setCampaignMapFogBrushSizeUi(Number(els.campaignMapFogBrushSizeInput?.value) || 56);
+      return;
+    }
+    onCampaignMapFogBrushSizeNumberApply();
+  };
+  const onCampaignMapFogBrushSizeNumberKeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    onCampaignMapFogBrushSizeNumberCommit();
+    els.campaignMapFogBrushSizeNumber?.blur();
+  };
+  els.campaignMapFogBrushSizeInput?.addEventListener("input", onCampaignMapFogBrushSizeChange);
+  els.campaignMapFogBrushSizeInput?.addEventListener("change", onCampaignMapFogBrushSizeChange);
+  els.campaignMapFogBrushSizeNumber?.addEventListener("change", onCampaignMapFogBrushSizeNumberCommit);
+  els.campaignMapFogBrushSizeNumber?.addEventListener("blur", onCampaignMapFogBrushSizeNumberCommit);
+  els.campaignMapFogBrushSizeNumber?.addEventListener("keydown", onCampaignMapFogBrushSizeNumberKeydown);
+  const onCampaignMapFogBrushShapeChange = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.checked) return;
+    const shape = target.value === "square" ? "square" : "round";
+    setCampaignMapFogBrushShapeUi(shape);
+    saveRunMapFogBrushShapeToSession(shape);
+  };
+  els.campaignMapFogBrushShapeRound?.addEventListener("change", onCampaignMapFogBrushShapeChange);
+  els.campaignMapFogBrushShapeSquare?.addEventListener("change", onCampaignMapFogBrushShapeChange);
+  els.campaignMapDragLockBtn?.addEventListener("click", () => {
+    setCampaignMapDragLockUi(!state.campaignMap.dragLocked);
+  });
+  els.campaignMapPingBtn?.addEventListener("click", () => {
+    setCampaignMapPingModeUi(!state.campaignMap.pingMode);
+  });
+  els.campaignMapDrawBtn?.addEventListener("click", () => {
+    setCampaignMapDrawMode(state.campaignMap.drawMode === "draw" ? "navigate" : "draw");
+  });
+  els.campaignMapEraseBtn?.addEventListener("click", () => {
+    setCampaignMapDrawMode(state.campaignMap.drawMode === "erase" ? "navigate" : "erase");
   });
 
   if (els.runMapImage) {
@@ -4884,7 +6148,12 @@ function bindEvents() {
     els.playerMapViewport.addEventListener(
       "wheel",
       (event) => {
-        if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+        if (
+          state.page !== "player-home" ||
+          (state.playerLiveViewMode !== "map" && state.playerLiveViewMode !== "campaign-map")
+        ) {
+          return;
+        }
         if (els.playerMapImage.classList.contains("hidden")) return;
         event.preventDefault();
         const rect = els.playerMapViewport.getBoundingClientRect();
@@ -4896,14 +6165,36 @@ function bindEvents() {
     );
 
     els.playerMapViewport.addEventListener("pointerdown", (event) => {
-      if (state.page !== "player-home" || state.playerLiveViewMode !== "map") return;
+      if (
+        state.page !== "player-home" ||
+        (state.playerLiveViewMode !== "map" && state.playerLiveViewMode !== "campaign-map")
+      ) {
+        return;
+      }
       if (els.playerMapImage.classList.contains("hidden")) return;
       if (event.target instanceof Element && event.target.closest(".map-touch-controls")) return;
       if (event.button !== 0) return;
+      if (state.playerLiveViewMode === "campaign-map" && state.playerMap.drawMode !== "navigate") {
+        const point = playerMapPointerToImageCoords(event);
+        if (!point || !Number.isInteger(state.playerMap.scenarioId)) return;
+        event.preventDefault();
+        stopPlayerLivePolling();
+        state.playerMap.drawPainting = true;
+        state.playerMap.drawPointerId = event.pointerId;
+        state.playerMap.lastDrawX = null;
+        state.playerMap.lastDrawY = null;
+        els.playerMapViewport.setPointerCapture(event.pointerId);
+        paintPlayerMapDrawAt(point.x, point.y, state.playerMap.drawMode);
+        return;
+      }
       if (state.playerMap.pingMode) {
         const point = playerMapPointerToImageCoords(event);
         if (!point || !Number.isInteger(state.playerMap.scenarioId)) return;
-        sendPlayerMapPing(state.playerMap.scenarioId, point.x, point.y);
+        if (state.playerLiveViewMode === "campaign-map") {
+          sendPlayerCampaignMapPing(state.playerMap.scenarioId, point.x, point.y);
+        } else {
+          sendPlayerMapPing(state.playerMap.scenarioId, point.x, point.y);
+        }
         event.preventDefault();
         return;
       }
@@ -4920,6 +6211,12 @@ function bindEvents() {
     });
 
     els.playerMapViewport.addEventListener("pointermove", (event) => {
+      if (state.playerMap.drawPainting && state.playerMap.drawPointerId === event.pointerId) {
+        const point = playerMapPointerToImageCoords(event);
+        if (!point) return;
+        paintPlayerMapDrawAt(point.x, point.y, state.playerMap.drawMode);
+        return;
+      }
       if (!state.playerMap.dragging || state.playerMap.pointerId !== event.pointerId) return;
       const dx = event.clientX - state.playerMap.lastClientX;
       const dy = event.clientY - state.playerMap.lastClientY;
@@ -4963,6 +6260,22 @@ function bindEvents() {
     });
 
     const endPlayerMapDrag = (event) => {
+      if (state.playerMap.drawPainting && state.playerMap.drawPointerId === event.pointerId) {
+        state.playerMap.drawPainting = false;
+        state.playerMap.drawPointerId = null;
+        state.playerMap.lastDrawX = null;
+        state.playerMap.lastDrawY = null;
+        const campaignId = state.playerLiveViewMode === "campaign-map" ? state.playerMap.scenarioId : null;
+        if (Number.isInteger(campaignId)) {
+          const drawData = serializePlayerMapDrawCanvas();
+          state.playerMap.drawCanvasLoadedKey = `${campaignId}:${drawData}`;
+          persistPlayerCampaignMapDraw(campaignId, drawData);
+        }
+        if (state.page === "player-home" && state.authUser?.role !== "admin") {
+          startPlayerLivePolling();
+        }
+        return;
+      }
       if (!state.playerMap.dragging || state.playerMap.pointerId !== event.pointerId) return;
       state.playerMap.dragging = false;
       state.playerMap.dragMode = "map";
@@ -4992,6 +6305,156 @@ function bindEvents() {
     };
     els.playerMapViewport.addEventListener("pointerup", endPlayerMapDrag);
     els.playerMapViewport.addEventListener("pointercancel", endPlayerMapDrag);
+  }
+
+  if (els.campaignMapViewport) {
+    els.campaignMapViewport.addEventListener("selectstart", (event) => {
+      event.preventDefault();
+    });
+    els.campaignMapViewport.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
+    els.campaignMapViewport.addEventListener(
+      "wheel",
+      (event) => {
+        if (state.page !== "campaign-map" || els.campaignMapImage.classList.contains("hidden")) return;
+        event.preventDefault();
+        const rect = els.campaignMapViewport.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        zoomCampaignMapAtPointer(event.deltaY < 0 ? 1.12 : 1 / 1.12, pointerX, pointerY);
+        updateCampaignMapFogCursorPreview(event.clientX, event.clientY, event.target);
+      },
+      { passive: false }
+    );
+
+    els.campaignMapViewport.addEventListener("pointerdown", (event) => {
+      if (state.page !== "campaign-map" || els.campaignMapImage.classList.contains("hidden")) return;
+      updateCampaignMapFogCursorPreview(event.clientX, event.clientY, event.target);
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".map-touch-controls, .map-fog-brush-controls")
+      ) {
+        return;
+      }
+      if (event.button !== 0) return;
+      focusCampaignMapViewportForShortcuts();
+      if (state.campaignMap.drawMode !== "navigate") {
+        if (!Number.isInteger(state.selectedCampaignId)) return;
+        const point = campaignMapPointerToImageCoords(event);
+        if (!point) return;
+        state.campaignMap.drawPainting = true;
+        state.campaignMap.drawPointerId = event.pointerId;
+        state.campaignMap.lastDrawX = null;
+        state.campaignMap.lastDrawY = null;
+        els.campaignMapViewport.setPointerCapture(event.pointerId);
+        paintCampaignMapDrawAt(point.x, point.y, state.campaignMap.drawMode);
+        event.preventDefault();
+        return;
+      }
+      if (state.campaignMap.pingMode) {
+        if (!Number.isInteger(state.selectedCampaignId)) return;
+        const point = campaignMapPointerToImageCoords(event);
+        if (!point) return;
+        sendCampaignMapPing(state.selectedCampaignId, point.x, point.y);
+        event.preventDefault();
+        return;
+      }
+      if (state.campaignMap.fogMode !== "navigate") {
+        if (!Number.isInteger(state.selectedCampaignId)) return;
+        const point = campaignMapPointerToImageCoords(event);
+        if (!point) return;
+        state.campaignMap.fogPainting = true;
+        state.campaignMap.fogPointerId = event.pointerId;
+        els.campaignMapViewport.setPointerCapture(event.pointerId);
+        paintCampaignMapFogAt(point.x, point.y, state.campaignMap.fogMode);
+        event.preventDefault();
+        return;
+      }
+      if (state.campaignMap.dragLocked) return;
+      state.campaignMap.dragging = true;
+      state.campaignMap.pointerId = event.pointerId;
+      state.campaignMap.lastClientX = event.clientX;
+      state.campaignMap.lastClientY = event.clientY;
+      els.campaignMapViewport.classList.add("is-dragging");
+      els.campaignMapViewport.setPointerCapture(event.pointerId);
+    });
+
+    els.campaignMapViewport.addEventListener("pointermove", (event) => {
+      updateCampaignMapFogCursorPreview(event.clientX, event.clientY, event.target);
+      if (state.campaignMap.drawPainting && state.campaignMap.drawPointerId === event.pointerId) {
+        const point = campaignMapPointerToImageCoords(event);
+        if (!point) return;
+        paintCampaignMapDrawAt(point.x, point.y, state.campaignMap.drawMode);
+        return;
+      }
+      if (state.campaignMap.fogPainting && state.campaignMap.fogPointerId === event.pointerId) {
+        const point = campaignMapPointerToImageCoords(event);
+        if (!point) return;
+        paintCampaignMapFogAt(point.x, point.y, state.campaignMap.fogMode);
+        return;
+      }
+      if (!state.campaignMap.dragging || state.campaignMap.pointerId !== event.pointerId) return;
+      const dx = event.clientX - state.campaignMap.lastClientX;
+      const dy = event.clientY - state.campaignMap.lastClientY;
+      state.campaignMap.lastClientX = event.clientX;
+      state.campaignMap.lastClientY = event.clientY;
+      state.campaignMap.panX += dx;
+      state.campaignMap.panY += dy;
+      applyCampaignMapTransform();
+    });
+
+    const endCampaignMapDrag = (event) => {
+      if (state.campaignMap.drawPainting && state.campaignMap.drawPointerId === event.pointerId) {
+        state.campaignMap.drawPainting = false;
+        state.campaignMap.drawPointerId = null;
+        state.campaignMap.lastDrawX = null;
+        state.campaignMap.lastDrawY = null;
+        if (Number.isInteger(state.selectedCampaignId)) {
+          const drawData = serializeCampaignMapDrawCanvas();
+          state.campaignMap.drawCanvasLoadedCampaignId = state.selectedCampaignId;
+          state.campaignMap.drawCanvasLoadedKey = `${state.selectedCampaignId}:${drawData}`;
+          persistCampaignMapDraw(state.selectedCampaignId, drawData);
+        }
+        if (state.campaignMap.pendingRemoteSync) {
+          const pending = state.campaignMap.pendingRemoteSync;
+          state.campaignMap.pendingRemoteSync = null;
+          applyCampaignMapSyncSnapshot(pending, { force: true });
+        }
+        return;
+      }
+      if (state.campaignMap.fogPainting && state.campaignMap.fogPointerId === event.pointerId) {
+        state.campaignMap.fogPainting = false;
+        state.campaignMap.fogPointerId = null;
+        if (Number.isInteger(state.selectedCampaignId)) {
+          const fogData = serializeCampaignMapFogCanvas();
+          state.campaignMap.fogCanvasLoadedCampaignId = state.selectedCampaignId;
+          state.campaignMap.fogCanvasLoadedKey = `${state.selectedCampaignId}:${fogData}`;
+          scheduleCampaignMapFogSave(state.selectedCampaignId, fogData);
+        }
+        if (state.campaignMap.pendingRemoteSync) {
+          const pending = state.campaignMap.pendingRemoteSync;
+          state.campaignMap.pendingRemoteSync = null;
+          applyCampaignMapSyncSnapshot(pending, { force: true });
+        }
+        return;
+      }
+      if (!state.campaignMap.dragging || state.campaignMap.pointerId !== event.pointerId) return;
+      state.campaignMap.dragging = false;
+      state.campaignMap.pointerId = null;
+      els.campaignMapViewport.classList.remove("is-dragging");
+      if (state.campaignMap.pendingRemoteSync) {
+        const pending = state.campaignMap.pendingRemoteSync;
+        state.campaignMap.pendingRemoteSync = null;
+        applyCampaignMapSyncSnapshot(pending, { force: true });
+      }
+    };
+
+    els.campaignMapViewport.addEventListener("pointerleave", () => {
+      hideCampaignMapFogCursorPreview();
+    });
+    els.campaignMapViewport.addEventListener("pointerup", endCampaignMapDrag);
+    els.campaignMapViewport.addEventListener("pointercancel", endCampaignMapDrag);
   }
 
   document.addEventListener("mouseover", (event) => {
@@ -5059,6 +6522,7 @@ function bindEvents() {
     if (activeChip) positionConditionTooltip(activeChip);
     hideMapStatblockHover();
     if (state.page === "scenario-map") applyRunMapTransform();
+    if (state.page === "campaign-map") applyCampaignMapTransform();
   });
 }
 
@@ -5136,7 +6600,9 @@ const routingController = window.FWDTRouting.createRoutingController({
   stopPlayerLivePolling,
   safeLoadCombatState,
   loadCampaignData,
+  loadCampaignMapData,
   renderCompletedScenariosPage,
+  renderCampaignMapPage,
   loadSceneImages,
   renderScenePage,
   selectedScenario,
@@ -5179,6 +6645,19 @@ const campaignPageController = window.FWDTCampaignPage.createCampaignPageControl
   selectedCampaign,
   renderNav,
   windowRef: window
+});
+
+const campaignMapPageController = window.FWDTCampaignMapPage.createCampaignMapPageController({
+  state,
+  els,
+  selectedCampaign,
+  ensureCampaignMapDrawCanvasFromData,
+  ensureCampaignMapFogCanvasFromData,
+  maybeShowCampaignMapPing,
+  applyCampaignMapTransform,
+  resetCampaignMapView,
+  startCampaignMapSyncPolling,
+  stopCampaignMapSyncPolling
 });
 
 const combatUiController = window.FWDTCombatUI.createCombatUiController({
@@ -5243,6 +6722,9 @@ const playerLivePageController = window.FWDTPlayerLivePage.createPlayerLivePageC
   setPlayerMapFogOverlay,
   setPlayerMapDragLockUi,
   setPlayerMapPingModeUi,
+  setPlayerMapDrawModeUi,
+  ensurePlayerMapDrawCanvasFromData,
+  clearPlayerMapDrawCanvas,
   maybeShowPlayerMapPing,
   clamp,
   stopPlayerLivePolling

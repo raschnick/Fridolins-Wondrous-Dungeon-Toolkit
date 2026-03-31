@@ -20,6 +20,7 @@
     loadPlayerLive,
     startPlayerLivePolling,
     loadCampaigns,
+    loadCampaignMapData,
     setAnalyticsCampaign,
     renderAnalyticsPage,
     loadAdminData,
@@ -28,6 +29,7 @@
     safeLoadCombatState,
     loadCampaignData,
     renderCompletedScenariosPage,
+    renderCampaignMapPage,
     loadSceneImages,
     renderScenePage,
     selectedScenario,
@@ -118,6 +120,8 @@
         state.playerLiveViewMode =
           route.playerMode === "map"
             ? "map"
+            : route.playerMode === "campaign-map"
+              ? "campaign-map"
             : route.playerMode === "scene"
               ? "scene"
               : "initiative";
@@ -238,6 +242,19 @@
         renderCompletedScenariosPage();
         showPage("campaign-completed");
         await syncHistory(routePathFor("campaign-completed", route.campaignId), { replace });
+        return;
+      }
+
+      if (route.page === "campaign-map") {
+        try {
+          await loadCampaignMapData(route.campaignId);
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+        if (!isCurrent()) return;
+        showPage("campaign-map");
+        renderCampaignMapPage();
+        await syncHistory(routePathFor("campaign-map", route.campaignId), { replace });
         return;
       }
 

@@ -22,6 +22,7 @@ const { createCampaignPageController } = require("../public/js/pages/campaign-pa
 const { createScenarioEditPageController } = require("../public/js/pages/scenario-edit-page.js");
 const { createPlayerLivePageController } = require("../public/js/pages/player-live-page.js");
 const { createScenarioRunPageController } = require("../public/js/pages/scenario-run-page.js");
+const { createCampaignMapPageController } = require("../public/js/pages/campaign-map-page.js");
 
 const DICE_SKIN_OPTIONS = [
   {
@@ -203,12 +204,22 @@ test("settings dice preview resolves the currently equipped skin image", () => {
 test("route helpers parse and rebuild key deep links", () => {
   assert.deepEqual(parseRoute("/shop"), { page: "dice-shop" });
   assert.deepEqual(parseRoute("/player/map"), { page: "player-home", playerMode: "map" });
+  assert.deepEqual(parseRoute("/player/campaign-map"), {
+    page: "player-home",
+    playerMode: "campaign-map"
+  });
+  assert.deepEqual(parseRoute("/campaigns/7/map"), {
+    page: "campaign-map",
+    campaignId: 7
+  });
   assert.deepEqual(parseRoute("/campaigns/7/scenarios/11/map"), {
     page: "scenario-map",
     campaignId: 7,
     scenarioId: 11
   });
   assert.equal(routePathFor("player-home", null, null, "map"), "/player/map");
+  assert.equal(routePathFor("player-home", null, null, "campaign-map"), "/player/campaign-map");
+  assert.equal(routePathFor("campaign-map", 7), "/campaigns/7/map");
   assert.equal(routePathFor("scenario-run", 7, 11), "/campaigns/7/scenarios/11/initiative");
   assert.equal(routePathFor("dice-shop"), "/shop");
 });
@@ -293,6 +304,67 @@ test("routing controller loads settings view and syncs history", async () => {
   ]);
 });
 
+test("routing controller shows campaign map before rendering it", async () => {
+  const state = {
+    authUser: { id: 1, role: "admin" },
+    campaigns: [],
+    scenarios: [],
+    characters: [],
+    selectedCampaignId: null,
+    selectedScenarioId: null,
+    analyticsSelectedCampaignId: null
+  };
+  const calls = [];
+  const controller = createRoutingController({
+    state,
+    parseRouteBase: parseRoute,
+    routePathForBase: routePathFor,
+    historyRef: {
+      replaceState: (_state, _title, path) => calls.push(`replace:${path}`),
+      pushState: (_state, _title, path) => calls.push(`push:${path}`)
+    },
+    locationRef: { pathname: "/campaigns/7/map" },
+    setStatus: (message) => calls.push(`status:${message}`),
+    showPage: (page) => calls.push(`page:${page}`),
+    loadMonsters: async () => {},
+    loadUserSettings: async () => {},
+    renderSettingsPage: () => {},
+    renderDiceShopPage: () => {},
+    loadPlayerLive: async () => {},
+    startPlayerLivePolling: () => {},
+    loadCampaigns: async () => {
+      state.campaigns = [{ id: 7, name: "Demo" }];
+    },
+    loadCampaignMapData: async () => calls.push("loadCampaignMapData"),
+    setAnalyticsCampaign: async () => {},
+    renderAnalyticsPage: () => {},
+    loadAdminData: async () => {},
+    renderAdminPage: () => {},
+    stopPlayerLivePolling: () => {},
+    safeLoadCombatState: async () => {},
+    loadCampaignData: async () => calls.push("loadCampaignData"),
+    renderCompletedScenariosPage: () => {},
+    renderCampaignMapPage: () => calls.push("renderCampaignMapPage"),
+    loadSceneImages: async () => {},
+    renderScenePage: () => {},
+    selectedScenario: () => null,
+    focusPreviewOnActiveNonPc: () => {},
+    renderScenarioRunPage: () => {},
+    renderScenarioCompletedEditPage: () => {},
+    renderScenarioEditPage: () => {}
+  });
+
+  await controller.navigateToPath("/campaigns/7/map", { replace: true });
+
+  assert.deepEqual(calls, [
+    "loadCampaignData",
+    "loadCampaignMapData",
+    "page:campaign-map",
+    "renderCampaignMapPage",
+    "replace:/campaigns/7/map"
+  ]);
+});
+
 test("scenario run shortcut handler toggles fog mode in DM map view", () => {
   const { controller, calls } = createScenarioRunShortcutHarness();
   let prevented = false;
@@ -339,4 +411,5 @@ test("page-specific controller modules export controller factories", () => {
   assert.equal(typeof createScenarioEditPageController, "function");
   assert.equal(typeof createPlayerLivePageController, "function");
   assert.equal(typeof createScenarioRunPageController, "function");
+  assert.equal(typeof createCampaignMapPageController, "function");
 });

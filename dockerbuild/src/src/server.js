@@ -27,8 +27,10 @@ const DEFAULT_ADMIN_PASSWORD =
 let nextStreamClientId = 1;
 const playerLiveSubscribersByUser = new Map();
 const scenarioMapSubscribersByScenario = new Map();
+const campaignMapSubscribersByCampaign = new Map();
 const playerLivePushTimersByUser = new Map();
 const scenarioMapPushTimersByScenario = new Map();
+const campaignMapPushTimersByCampaign = new Map();
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -121,6 +123,23 @@ function getScenario(scenarioId) {
       "SELECT id, campaign_id, name, notes, map_image_data, map_tokens_json, map_fog_data, map_last_ping_json, map_token_size, is_completed, current_round, current_turn_index, created_at, updated_at FROM combat_scenarios WHERE id = ?"
     )
     .get(scenarioId);
+}
+
+function getCampaignMap(campaignId) {
+  return db
+    .prepare(
+      `SELECT
+        id,
+        name,
+        map_image_data,
+        map_draw_data,
+        map_fog_data,
+        map_last_ping_json,
+        updated_at
+       FROM campaigns
+       WHERE id = ?`
+    )
+    .get(campaignId);
 }
 
 function listCombatants(scenarioId) {
@@ -543,6 +562,8 @@ function isPlayerAllowedApiRequest(req) {
   if (method === "GET" && path === "/player/live/stream") return true;
   if (method === "POST" && path === "/player/live/map-token") return true;
   if (method === "POST" && path === "/player/live/map-ping") return true;
+  if (method === "POST" && path === "/player/live/campaign-map-draw") return true;
+  if (method === "POST" && path === "/player/live/campaign-map-ping") return true;
   if (method === "GET" && path === "/campaigns") return true;
   if (method === "GET" && /^\/campaigns\/\d+\/stats$/.test(path)) return true;
   return false;
@@ -712,6 +733,7 @@ function buildPlayerLiveSnapshotForUser(userId) {
     return {
       shared: null,
       scene: null,
+      campaignMap: null,
       activeCampaignId: null
     };
   }
@@ -719,8 +741,21 @@ function buildPlayerLiveSnapshotForUser(userId) {
   const payload = {
     shared: null,
     scene: null,
+    campaignMap: null,
     activeCampaignId: activeCampaign.activeCampaignId
   };
+  const campaignMap = getCampaignMap(activeCampaign.activeCampaignId);
+  if (campaignMap && `${campaignMap.map_image_data || ""}`.trim()) {
+    payload.campaignMap = {
+      campaignId: campaignMap.id,
+      name: campaignMap.name,
+      mapImageData: campaignMap.map_image_data || "",
+      mapDrawData: campaignMap.map_draw_data || "",
+      mapFogData: campaignMap.map_fog_data || "",
+      mapLastPingJson: campaignMap.map_last_ping_json || "",
+      updatedAt: campaignMap.updated_at || null
+    };
+  }
   if (!shared) return payload;
 
   if (Number.isInteger(shared.scenario_id)) {
@@ -793,7 +828,7 @@ function buildPlayerLiveSnapshotForUser(userId) {
     }
   }
 
-  if (!payload.shared && !payload.scene) {
+  if (!payload.shared && !payload.scene && !payload.campaignMap) {
     return payload;
   }
   return payload;
@@ -905,6 +940,43 @@ function addScenarioMapSubscriber(scenarioId, res, userId) {
   return cleanup;
 }
 
+function addCampaignMapSubscriber(campaignId, res, userId) {
+  const clientId = nextStreamClientId++;
+  let subscribers = campaignMapSubscribersByCampaign.get(campaignId);
+  if (!subscribers) {
+    subscribers = new Map();
+    campaignMapSubscribersByCampaign.set(campaignId, subscribers);
+  }
+
+  const keepAliveTimer = setInterval(() => {
+    writeSseComment(res);
+  }, STREAM_KEEPALIVE_MS);
+
+  subscribers.set(clientId, { userId, res, keepAliveTimer });
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearInterval(keepAliveTimer);
+    const current = campaignMapSubscribersByCampaign.get(campaignId);
+    if (!current) return;
+    current.delete(clientId);
+    if (current.size === 0) {
+      campaignMapSubscribersByCampaign.delete(campaignId);
+      const timer = campaignMapPushTimersByCampaign.get(campaignId);
+      if (timer) {
+        clearTimeout(timer);
+        campaignMapPushTimersByCampaign.delete(campaignId);
+      }
+    }
+  };
+
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+  return cleanup;
+}
+
 function flushPlayerLivePushForUser(userId) {
   const subscribers = playerLiveSubscribersByUser.get(userId);
   if (!subscribers || subscribers.size === 0) return;
@@ -1004,6 +1076,47 @@ function flushScenarioMapPushForScenario(scenarioId) {
   }
 }
 
+function flushCampaignMapPushForCampaign(campaignId) {
+  const subscribers = campaignMapSubscribersByCampaign.get(campaignId);
+  if (!subscribers || subscribers.size === 0) return;
+
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) {
+    for (const [clientId, subscriber] of subscribers.entries()) {
+      writeSseEvent(subscriber.res, "campaign-map", {
+        campaignId,
+        deleted: true
+      });
+      clearInterval(subscriber.keepAliveTimer);
+      subscribers.delete(clientId);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    campaignMapSubscribersByCampaign.delete(campaignId);
+    return;
+  }
+
+  const payload = {
+    campaignId: campaign.id,
+    name: campaign.name,
+    mapImageData: `${campaign.map_image_data || ""}`,
+    mapDrawData: `${campaign.map_draw_data || ""}`,
+    mapFogData: `${campaign.map_fog_data || ""}`,
+    mapLastPingJson: `${campaign.map_last_ping_json || ""}`,
+    updatedAt: campaign.updated_at || null
+  };
+
+  for (const [clientId, subscriber] of subscribers.entries()) {
+    if (writeSseEvent(subscriber.res, "campaign-map", payload)) continue;
+    clearInterval(subscriber.keepAliveTimer);
+    subscribers.delete(clientId);
+  }
+  if (subscribers.size === 0) {
+    campaignMapSubscribersByCampaign.delete(campaignId);
+  }
+}
+
 function scheduleScenarioMapPushForScenario(scenarioId, delayMs = 70) {
   if (!Number.isInteger(scenarioId)) return;
   if (!scenarioMapSubscribersByScenario.has(scenarioId)) return;
@@ -1013,6 +1126,17 @@ function scheduleScenarioMapPushForScenario(scenarioId, delayMs = 70) {
     flushScenarioMapPushForScenario(scenarioId);
   }, delayMs);
   scenarioMapPushTimersByScenario.set(scenarioId, timer);
+}
+
+function scheduleCampaignMapPushForCampaign(campaignId, delayMs = 70) {
+  if (!Number.isInteger(campaignId)) return;
+  if (!campaignMapSubscribersByCampaign.has(campaignId)) return;
+  if (campaignMapPushTimersByCampaign.has(campaignId)) return;
+  const timer = setTimeout(() => {
+    campaignMapPushTimersByCampaign.delete(campaignId);
+    flushCampaignMapPushForCampaign(campaignId);
+  }, delayMs);
+  campaignMapPushTimersByCampaign.set(campaignId, timer);
 }
 
 function closePlayerLiveSubscribersForUser(userId) {
@@ -1054,6 +1178,27 @@ function closeScenarioMapSubscribersForUser(userId) {
   }
 }
 
+function closeCampaignMapSubscribersForUser(userId) {
+  for (const [campaignId, subscribers] of campaignMapSubscribersByCampaign.entries()) {
+    for (const [clientId, subscriber] of subscribers.entries()) {
+      if (subscriber.userId !== userId) continue;
+      clearInterval(subscriber.keepAliveTimer);
+      subscribers.delete(clientId);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    if (subscribers.size === 0) {
+      campaignMapSubscribersByCampaign.delete(campaignId);
+      const timer = campaignMapPushTimersByCampaign.get(campaignId);
+      if (timer) {
+        clearTimeout(timer);
+        campaignMapPushTimersByCampaign.delete(campaignId);
+      }
+    }
+  }
+}
+
 function closeAllLiveSubscribers() {
   let playerUserCount = 0;
   let playerStreamCount = 0;
@@ -1082,11 +1227,32 @@ function closeAllLiveSubscribers() {
     }
   }
 
+  let campaignCount = 0;
+  let campaignStreamCount = 0;
+  for (const [campaignId, subscribers] of campaignMapSubscribersByCampaign.entries()) {
+    campaignCount += 1;
+    campaignStreamCount += subscribers.size;
+    for (const [, subscriber] of subscribers.entries()) {
+      clearInterval(subscriber.keepAliveTimer);
+      if (!subscriber.res.writableEnded) {
+        subscriber.res.end();
+      }
+    }
+    campaignMapSubscribersByCampaign.delete(campaignId);
+    const timer = campaignMapPushTimersByCampaign.get(campaignId);
+    if (timer) {
+      clearTimeout(timer);
+      campaignMapPushTimersByCampaign.delete(campaignId);
+    }
+  }
+
   return {
     playerUserCount,
     playerStreamCount,
     scenarioCount,
-    scenarioStreamCount
+    scenarioStreamCount,
+    campaignCount,
+    campaignStreamCount
   };
 }
 
@@ -1094,6 +1260,7 @@ function closeStreamsForUser(userId) {
   if (!Number.isInteger(userId)) return;
   closePlayerLiveSubscribersForUser(userId);
   closeScenarioMapSubscribersForUser(userId);
+  closeCampaignMapSubscribersForUser(userId);
 }
 
 ensureDefaultAdminUser();
@@ -1820,6 +1987,156 @@ app.get("/api/campaigns/:campaignId/live", (req, res) => {
   res.json(getCampaignLiveState(campaignId));
 });
 
+app.get("/api/campaigns/:campaignId/map", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) return badRequest(res, "Campaign not found.");
+  res.json({
+    campaignId: campaign.id,
+    name: campaign.name,
+    mapImageData: campaign.map_image_data || "",
+    mapDrawData: campaign.map_draw_data || "",
+    mapFogData: campaign.map_fog_data || "",
+    mapLastPingJson: campaign.map_last_ping_json || "",
+    updatedAt: campaign.updated_at || null
+  });
+});
+
+app.put("/api/campaigns/:campaignId/map", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) return badRequest(res, "Campaign not found.");
+
+  const mapImageData = `${req.body?.mapImageData || ""}`.trim();
+  if (mapImageData.length > 10_000_000) {
+    return badRequest(res, "Campaign map image is too large.");
+  }
+  const normalizedMapImageData =
+    mapImageData && mapImageData.startsWith("data:image/") ? mapImageData : "";
+
+  db.prepare(
+    `UPDATE campaigns
+     SET map_image_data = ?,
+         map_draw_data = '',
+         map_fog_data = '',
+         map_last_ping_json = '',
+         updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(normalizedMapImageData, campaignId);
+
+  notifyPlayerLiveForCampaign(campaignId);
+  scheduleCampaignMapPushForCampaign(campaignId);
+  const updated = getCampaignMap(campaignId);
+  res.json({
+    campaignId: updated.id,
+    name: updated.name,
+    mapImageData: updated.map_image_data || "",
+    mapDrawData: updated.map_draw_data || "",
+    mapFogData: updated.map_fog_data || "",
+    mapLastPingJson: updated.map_last_ping_json || "",
+    updatedAt: updated.updated_at || null
+  });
+});
+
+app.get("/api/campaigns/:campaignId/map/stream", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) return badRequest(res, "Campaign not found.");
+
+  beginSseStream(res);
+  writeSseEvent(res, "campaign-map", {
+    campaignId: campaign.id,
+    name: campaign.name,
+    mapImageData: `${campaign.map_image_data || ""}`,
+    mapDrawData: `${campaign.map_draw_data || ""}`,
+    mapFogData: `${campaign.map_fog_data || ""}`,
+    mapLastPingJson: `${campaign.map_last_ping_json || ""}`,
+    updatedAt: campaign.updated_at || null
+  });
+  addCampaignMapSubscriber(campaign.id, res, req.authUser.id);
+});
+
+app.post("/api/campaigns/:campaignId/map-draw", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) return badRequest(res, "Campaign not found.");
+  if (!`${campaign.map_image_data || ""}`.trim()) {
+    return badRequest(res, "Campaign map not found.");
+  }
+
+  const drawDataRaw = `${req.body?.drawData || ""}`.trim();
+  if (drawDataRaw.length > 6_000_000) {
+    return badRequest(res, "Campaign drawing is too large.");
+  }
+  const normalizedDrawData =
+    drawDataRaw && drawDataRaw.startsWith("data:image/") ? drawDataRaw : "";
+
+  db.prepare(
+    `UPDATE campaigns
+     SET map_draw_data = ?,
+         updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(normalizedDrawData, campaignId);
+
+  notifyPlayerLiveForCampaign(campaignId);
+  scheduleCampaignMapPushForCampaign(campaignId);
+  const updated = getCampaignMap(campaignId);
+  res.json({
+    campaignId: updated.id,
+    mapDrawData: updated.map_draw_data || "",
+    updatedAt: updated.updated_at || null
+  });
+});
+
+app.post("/api/campaigns/:campaignId/map-fog", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign) return badRequest(res, "Campaign not found.");
+
+  const fogDataRaw = `${req.body?.fogData || ""}`.trim();
+  if (fogDataRaw.length > 2_000_000) {
+    return badRequest(res, "fogData is too large.");
+  }
+  const fogData = fogDataRaw && fogDataRaw.startsWith("data:image/") ? fogDataRaw : "";
+
+  db.prepare(
+    "UPDATE campaigns SET map_fog_data = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(fogData, campaignId);
+  notifyPlayerLiveForCampaign(campaignId);
+  scheduleCampaignMapPushForCampaign(campaignId);
+  res.json({ campaignId, mapFogData: fogData });
+});
+
+app.post("/api/campaigns/:campaignId/map-ping", (req, res) => {
+  const campaignId = asId(req.params.campaignId);
+  if (campaignId === null) return badRequest(res, "Invalid campaign id.");
+  if (!ensureCampaignAccess(req, res, campaignId)) return;
+  const campaign = getCampaignMap(campaignId);
+  if (!campaign || !`${campaign.map_image_data || ""}`.trim()) {
+    return badRequest(res, "Campaign map not found.");
+  }
+
+  const xRaw = Number(req.body?.x);
+  const yRaw = Number(req.body?.y);
+  if (!Number.isFinite(xRaw) || !Number.isFinite(yRaw)) {
+    return badRequest(res, "Invalid ping position.");
+  }
+
+  const source = isAdminUser(req.authUser) ? "dm" : "player";
+  const ping = publishCampaignMapPing(campaignId, xRaw, yRaw, source);
+  res.json({ campaignId, ping });
+});
+
 app.get("/api/campaigns/:campaignId/scenes", (req, res) => {
   const campaignId = asId(req.params.campaignId);
   if (campaignId === null) return badRequest(res, "Invalid campaign id.");
@@ -2043,7 +2360,7 @@ app.post("/api/scenarios/:scenarioId/share", (req, res) => {
 
 app.get("/api/player/live", (req, res) => {
   if (isAdminUser(req.authUser)) {
-    return res.json({ shared: null, scene: null });
+    return res.json({ shared: null, scene: null, campaignMap: null });
   }
   return res.json(buildPlayerLiveSnapshotForUser(req.authUser.id));
 });
@@ -2074,6 +2391,25 @@ function publishScenarioMapPing(scenarioId, campaignId, xRaw, yRaw, source = "dm
   ).run(mapLastPingJson, scenarioId);
   notifyPlayerLiveForCampaign(campaignId);
   scheduleScenarioMapPushForScenario(scenarioId);
+  return ping;
+}
+
+function publishCampaignMapPing(campaignId, xRaw, yRaw, source = "dm") {
+  const x = Math.max(-100000, Math.min(100000, Math.round(Number(xRaw) * 100) / 100));
+  const y = Math.max(-100000, Math.min(100000, Math.round(Number(yRaw) * 100) / 100));
+  const ping = {
+    id: `${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
+    x,
+    y,
+    source: source === "player" ? "player" : "dm",
+    sentAt: new Date().toISOString()
+  };
+  const mapLastPingJson = JSON.stringify(ping);
+  db.prepare(
+    "UPDATE campaigns SET map_last_ping_json = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(mapLastPingJson, campaignId);
+  notifyPlayerLiveForCampaign(campaignId);
+  scheduleCampaignMapPushForCampaign(campaignId);
   return ping;
 }
 
@@ -2200,6 +2536,79 @@ app.post("/api/player/live/map-ping", (req, res) => {
 
   const ping = publishScenarioMapPing(shared.scenario_id, shared.campaign_id, xRaw, yRaw, "player");
   return res.json({ scenarioId: shared.scenario_id, ping });
+});
+
+app.post("/api/player/live/campaign-map-ping", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return res.status(403).json({ error: "Player endpoint is not available for admin users." });
+  }
+  const campaignIdInput = asId(req.body?.campaignId);
+  const xRaw = Number(req.body?.x);
+  const yRaw = Number(req.body?.y);
+  if (campaignIdInput === null) return badRequest(res, "Invalid campaign id.");
+  if (!Number.isFinite(xRaw) || !Number.isFinite(yRaw)) {
+    return badRequest(res, "Invalid ping position.");
+  }
+
+  const activeCampaign = ensureValidActiveCampaignForUser(req.authUser.id);
+  if (!Number.isInteger(activeCampaign.activeCampaignId)) {
+    return res.status(403).json({ error: "No active campaign selected." });
+  }
+  if (activeCampaign.activeCampaignId !== campaignIdInput) {
+    return res.status(403).json({ error: "Campaign map is no longer active." });
+  }
+
+  const campaign = getCampaignMap(activeCampaign.activeCampaignId);
+  if (!campaign || !`${campaign.map_image_data || ""}`.trim()) {
+    return res.status(403).json({ error: "No campaign map available." });
+  }
+
+  const ping = publishCampaignMapPing(activeCampaign.activeCampaignId, xRaw, yRaw, "player");
+  return res.json({ campaignId: activeCampaign.activeCampaignId, ping });
+});
+
+app.post("/api/player/live/campaign-map-draw", (req, res) => {
+  if (isAdminUser(req.authUser)) {
+    return res.status(403).json({ error: "Player endpoint is not available for admin users." });
+  }
+  const campaignIdInput = asId(req.body?.campaignId);
+  if (campaignIdInput === null) return badRequest(res, "Invalid campaign id.");
+
+  const activeCampaign = ensureValidActiveCampaignForUser(req.authUser.id);
+  if (!Number.isInteger(activeCampaign.activeCampaignId)) {
+    return res.status(403).json({ error: "No active campaign selected." });
+  }
+  if (activeCampaign.activeCampaignId !== campaignIdInput) {
+    return res.status(403).json({ error: "Campaign map is no longer active." });
+  }
+
+  const campaign = getCampaignMap(activeCampaign.activeCampaignId);
+  if (!campaign || !`${campaign.map_image_data || ""}`.trim()) {
+    return res.status(403).json({ error: "No campaign map available." });
+  }
+
+  const drawDataRaw = `${req.body?.drawData || ""}`.trim();
+  if (drawDataRaw.length > 6_000_000) {
+    return badRequest(res, "Campaign drawing is too large.");
+  }
+  const normalizedDrawData =
+    drawDataRaw && drawDataRaw.startsWith("data:image/") ? drawDataRaw : "";
+
+  db.prepare(
+    `UPDATE campaigns
+     SET map_draw_data = ?,
+         updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(normalizedDrawData, activeCampaign.activeCampaignId);
+
+  notifyPlayerLiveForCampaign(activeCampaign.activeCampaignId);
+  scheduleCampaignMapPushForCampaign(activeCampaign.activeCampaignId);
+  const updated = getCampaignMap(activeCampaign.activeCampaignId);
+  return res.json({
+    campaignId: updated.id,
+    mapDrawData: updated.map_draw_data || "",
+    updatedAt: updated.updated_at || null
+  });
 });
 
 app.get("/api/campaigns/:campaignId/characters", (req, res) => {

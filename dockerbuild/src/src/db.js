@@ -20,7 +20,12 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS campaigns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      map_image_data TEXT NOT NULL DEFAULT '',
+      map_draw_data TEXT NOT NULL DEFAULT '',
+      map_fog_data TEXT NOT NULL DEFAULT '',
+      map_last_ping_json TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS campaign_members (
@@ -233,10 +238,34 @@ function initDb() {
     .prepare("PRAGMA table_info(combat_scenarios)")
     .all()
     .map((column) => column.name);
+  const campaignColumns = db
+    .prepare("PRAGMA table_info(campaigns)")
+    .all()
+    .map((column) => column.name);
   const campaignLiveColumns = db
     .prepare("PRAGMA table_info(campaign_live_state)")
     .all()
     .map((column) => column.name);
+  if (!campaignColumns.includes("map_image_data")) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN map_image_data TEXT NOT NULL DEFAULT ''");
+  }
+  if (!campaignColumns.includes("map_draw_data")) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN map_draw_data TEXT NOT NULL DEFAULT ''");
+  }
+  if (!campaignColumns.includes("map_fog_data")) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN map_fog_data TEXT NOT NULL DEFAULT ''");
+  }
+  if (!campaignColumns.includes("map_last_ping_json")) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN map_last_ping_json TEXT NOT NULL DEFAULT ''");
+  }
+  if (!campaignColumns.includes("updated_at")) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN updated_at TEXT");
+  }
+  db.exec("UPDATE campaigns SET map_image_data = '' WHERE map_image_data IS NULL");
+  db.exec("UPDATE campaigns SET map_draw_data = '' WHERE map_draw_data IS NULL");
+  db.exec("UPDATE campaigns SET map_fog_data = '' WHERE map_fog_data IS NULL");
+  db.exec("UPDATE campaigns SET map_last_ping_json = '' WHERE map_last_ping_json IS NULL");
+  db.exec("UPDATE campaigns SET updated_at = COALESCE(updated_at, datetime('now'))");
   if (!campaignLiveColumns.includes("shared_scene_image_id")) {
     db.exec("ALTER TABLE campaign_live_state ADD COLUMN shared_scene_image_id INTEGER");
   }

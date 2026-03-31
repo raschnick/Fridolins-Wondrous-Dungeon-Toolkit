@@ -36,6 +36,13 @@ body.page-player #pagePlayerHome {
   margin-right: calc(50% - 50vw + 1rem);
 }
 
+body.page-run #pageCampaignMap {
+  width: calc(100vw - 2rem);
+  max-width: none;
+  margin-left: calc(50% - 50vw + 1rem);
+  margin-right: calc(50% - 50vw + 1rem);
+}
+
 body.page-player #playerLiveWrap {
   margin-bottom: 0;
 }
@@ -683,7 +690,8 @@ body.page-player #playerLiveWrap {
 }
 
 #runMapPings,
-#playerMapPings {
+#playerMapPings,
+#campaignMapPings {
   position: absolute;
   inset: 0;
   z-index: 5;

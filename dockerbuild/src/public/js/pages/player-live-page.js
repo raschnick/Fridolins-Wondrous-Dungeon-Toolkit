@@ -27,6 +27,9 @@
     setPlayerMapFogOverlay,
     setPlayerMapDragLockUi,
     setPlayerMapPingModeUi,
+    setPlayerMapDrawModeUi,
+    ensurePlayerMapDrawCanvasFromData,
+    clearPlayerMapDrawCanvas,
     maybeShowPlayerMapPing,
     clamp,
     stopPlayerLivePolling
@@ -93,12 +96,22 @@
       state.playerMap.dragMode = "map";
       state.playerMap.dragCombatantId = null;
       state.playerMap.pointerId = null;
+      state.playerMap.drawPainting = false;
+      state.playerMap.drawPointerId = null;
+      state.playerMap.lastDrawX = null;
+      state.playerMap.lastDrawY = null;
       if (state.playerMap.saveTimer) {
         clearTimeout(state.playerMap.saveTimer);
         state.playerMap.saveTimer = null;
       }
+      if (state.playerMap.saveDrawTimer) {
+        clearTimeout(state.playerMap.saveDrawTimer);
+        state.playerMap.saveDrawTimer = null;
+      }
       state.playerMap.pendingTokenUpdate = null;
+      state.playerMap.drawCanvasLoadedKey = null;
       setPlayerMapPingModeUi(false);
+      setPlayerMapDrawModeUi("navigate");
       if (els.playerMapViewport) {
         els.playerMapViewport.classList.remove("is-dragging");
       }
@@ -138,6 +151,7 @@
     function renderPlayerLiveMap(
       scenarioId,
       mapImageData,
+      mapDrawData,
       mapFogData,
       mapLastPingJson,
       mapTokensJson,
@@ -165,6 +179,10 @@
         }
         els.playerMapImage.src = "";
         els.playerMapImage.classList.add("hidden");
+        clearPlayerMapDrawCanvas();
+        if (els.playerMapDrawCanvas) {
+          els.playerMapDrawCanvas.classList.add("hidden");
+        }
         setPlayerMapFogOverlay("");
         els.playerMapTokens.innerHTML = "";
         if (els.playerMapPings) els.playerMapPings.innerHTML = "";
@@ -180,6 +198,13 @@
 
       els.playerMapImage.src = mapImageData;
       els.playerMapImage.classList.remove("hidden");
+      ensurePlayerMapDrawCanvasFromData(mapDrawData);
+      if (els.playerMapDrawCanvas) {
+        els.playerMapDrawCanvas.classList.toggle(
+          "hidden",
+          state.playerLiveViewMode !== "campaign-map"
+        );
+      }
       setPlayerMapFogOverlay(mapFogData);
 
       const positions = parseMapTokensJson(mapTokensJson);
@@ -334,22 +359,34 @@
     function renderPlayerHome() {
       const shared = state.playerLiveData?.shared || null;
       const sharedScene = state.playerLiveData?.scene || null;
+      const campaignMap = state.playerLiveData?.campaignMap || null;
       const isMapMode = state.playerLiveViewMode === "map";
+      const isCampaignMapMode = state.playerLiveViewMode === "campaign-map";
       const isSceneMode = state.playerLiveViewMode === "scene";
       const hasEncounter = Boolean(shared);
       const hasScene = Boolean(sharedScene && sharedScene.imageData);
-      const hasContentForMode = isSceneMode ? hasScene : hasEncounter;
+      const hasCampaignMap = Boolean(campaignMap && campaignMap.mapImageData);
+      const hasContentForMode = isSceneMode
+        ? hasScene
+        : isCampaignMapMode
+          ? hasCampaignMap
+          : hasEncounter;
       if (els.playerWaitingTitle) {
         els.playerWaitingTitle.textContent = isSceneMode
           ? "Waiting for your genius DM to show a magical scene!"
-          : "Waiting for your genius DM to fire up an awesome encounter!";
+          : isCampaignMapMode
+            ? "Waiting for your genius DM to unveil the campaign map!"
+            : "Waiting for your genius DM to fire up an awesome encounter!";
       }
 
       els.playerWaitingWrap.classList.toggle("hidden", hasContentForMode);
       els.playerLiveWrap.classList.toggle("hidden", !hasContentForMode);
+      if (els.playerMapDrawBtn) els.playerMapDrawBtn.classList.toggle("hidden", !isCampaignMapMode);
+      if (els.playerMapEraseBtn) els.playerMapEraseBtn.classList.toggle("hidden", !isCampaignMapMode);
       if (!hasContentForMode) {
         state.playerLiveLastActiveCombatantId = null;
         state.playerVisibleCombatantIdsByScenario = {};
+        setPlayerMapDrawModeUi("navigate");
         return;
       }
 
@@ -362,14 +399,17 @@
       if (!isMapMode) {
         state.playerMap.hoverCombatantId = null;
       }
-      els.playerLiveWrap.classList.toggle("player-map-mode", isMapMode);
-      els.playerLiveInitiativeWrap.classList.toggle("hidden", isSceneMode);
-      els.playerLiveMapWrap.classList.toggle("hidden", !isMapMode);
+      const showMapWrap = isMapMode || isCampaignMapMode;
+      els.playerLiveWrap.classList.toggle("player-map-mode", showMapWrap);
+      els.playerLiveWrap.classList.toggle("player-campaign-map-mode", isCampaignMapMode);
+      els.playerLiveInitiativeWrap.classList.toggle("hidden", isSceneMode || isCampaignMapMode);
+      els.playerLiveMapWrap.classList.toggle("hidden", !showMapWrap);
       els.playerLiveSceneWrap.classList.toggle("hidden", !isSceneMode);
 
       if (isSceneMode) {
         els.playerLiveEncounterName.textContent = sharedScene?.name || "Scene View";
         els.playerLiveRound.textContent = "";
+        setPlayerMapDrawModeUi("navigate");
         if (sharedScene?.imageData) {
           els.playerLiveSceneImage.src = sharedScene.imageData;
           els.playerLiveSceneImage.classList.remove("hidden");
@@ -382,9 +422,32 @@
         return;
       }
 
+      if (isCampaignMapMode) {
+        els.playerLiveEncounterName.textContent = campaignMap?.name || "Campaign Map";
+        els.playerLiveRound.textContent = "";
+        els.playerLiveCombatantList.innerHTML = "";
+        if (els.playerMapDrawBtn) els.playerMapDrawBtn.classList.remove("hidden");
+        if (els.playerMapEraseBtn) els.playerMapEraseBtn.classList.remove("hidden");
+        setPlayerMapTokenSize(44);
+        renderPlayerLiveMap(
+          campaignMap?.campaignId || null,
+          `${campaignMap?.mapImageData || ""}`,
+          `${campaignMap?.mapDrawData || ""}`,
+          `${campaignMap?.mapFogData || ""}`,
+          `${campaignMap?.mapLastPingJson || ""}`,
+          "",
+          [],
+          null
+        );
+        return;
+      }
+
       els.playerLiveEncounterName.textContent = shared.name || "Shared Encounter";
       els.playerLiveRound.textContent = `Round ${shared.round ?? 1}`;
       els.playerLiveCombatantList.innerHTML = "";
+      if (els.playerMapDrawBtn) els.playerMapDrawBtn.classList.add("hidden");
+      if (els.playerMapEraseBtn) els.playerMapEraseBtn.classList.add("hidden");
+      setPlayerMapDrawModeUi("navigate");
 
       const combatants = Array.isArray(shared.combatants) ? shared.combatants : [];
       if (combatants.length === 0) {
@@ -522,6 +585,7 @@
         renderPlayerLiveMap(
           shared.scenarioId,
           mapImageData,
+          "",
           mapFogData,
           `${shared.mapLastPingJson || ""}`,
           mapTokensJson,

@@ -134,3 +134,9 @@
   min-width: 0;
 }
 
+#playerLiveWrap.player-campaign-map-mode {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "map";
+}
