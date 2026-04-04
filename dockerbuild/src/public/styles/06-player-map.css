@@ -305,4 +305,12 @@
     bottom: 4.3rem;
     min-width: 0;
   }
+
+  .map-draw-controls {
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: 4.3rem;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
 }

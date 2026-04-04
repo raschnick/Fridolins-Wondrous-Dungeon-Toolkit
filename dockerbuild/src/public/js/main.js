@@ -71,6 +71,8 @@ const state = {
     dragLocked: false,
     pingMode: false,
     drawMode: "navigate",
+    drawBrushSize: 8,
+    drawColor: "#ff6363",
     drawPainting: false,
     drawPointerId: null,
     lastDrawX: null,
@@ -99,6 +101,8 @@ const state = {
     dragLocked: false,
     pingMode: false,
     drawMode: "navigate",
+    drawBrushSize: 8,
+    drawColor: "#ff6363",
     drawPainting: false,
     drawPointerId: null,
     lastDrawX: null,
@@ -182,8 +186,10 @@ const state = {
 
 const RUN_MAP_FOG_BRUSH_SESSION_KEY = "runMapFogBrushSize";
 const RUN_MAP_FOG_BRUSH_SHAPE_SESSION_KEY = "runMapFogBrushShape";
-const CAMPAIGN_MAP_DRAW_BRUSH_RADIUS = 8;
-const CAMPAIGN_MAP_DRAW_COLOR = "rgba(255, 99, 99, 0.94)";
+const CAMPAIGN_MAP_DRAW_BRUSH_SIZE_SESSION_KEY = "campaignMapDrawBrushSize";
+const CAMPAIGN_MAP_DRAW_COLOR_SESSION_KEY = "campaignMapDrawColor";
+const DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE = 8;
+const DEFAULT_CAMPAIGN_MAP_DRAW_COLOR = "#ff6363";
 const DICE_SKIN_OPTIONS = [
   {
     key: "default",
@@ -351,6 +357,10 @@ const els = {
   playerMapPingBtn: document.getElementById("playerMapPingBtn"),
   playerMapDrawBtn: document.getElementById("playerMapDrawBtn"),
   playerMapEraseBtn: document.getElementById("playerMapEraseBtn"),
+  playerMapDrawControls: document.getElementById("playerMapDrawControls"),
+  playerMapDrawSizeInput: document.getElementById("playerMapDrawSizeInput"),
+  playerMapDrawSizeNumber: document.getElementById("playerMapDrawSizeNumber"),
+  playerMapDrawColorInput: document.getElementById("playerMapDrawColorInput"),
   playerMapScene: document.getElementById("playerMapScene"),
   playerMapImage: document.getElementById("playerMapImage"),
   playerMapDrawCanvas: document.getElementById("playerMapDrawCanvas"),
@@ -440,6 +450,10 @@ const els = {
   campaignMapPingBtn: document.getElementById("campaignMapPingBtn"),
   campaignMapDrawBtn: document.getElementById("campaignMapDrawBtn"),
   campaignMapEraseBtn: document.getElementById("campaignMapEraseBtn"),
+  campaignMapDrawControls: document.getElementById("campaignMapDrawControls"),
+  campaignMapDrawSizeInput: document.getElementById("campaignMapDrawSizeInput"),
+  campaignMapDrawSizeNumber: document.getElementById("campaignMapDrawSizeNumber"),
+  campaignMapDrawColorInput: document.getElementById("campaignMapDrawColorInput"),
   campaignMapFogPaintBtn: document.getElementById("campaignMapFogPaintBtn"),
   campaignMapFogEraseBtn: document.getElementById("campaignMapFogEraseBtn"),
   campaignMapFogClearBtn: document.getElementById("campaignMapFogClearBtn"),
@@ -1949,6 +1963,54 @@ function saveRunMapFogBrushShapeToSession(shape) {
   }
 }
 
+function loadCampaignMapDrawBrushSizeFromSession() {
+  try {
+    const raw = window.sessionStorage.getItem(CAMPAIGN_MAP_DRAW_BRUSH_SIZE_SESSION_KEY);
+    if (raw == null) return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return null;
+    return clamp(Math.round(parsed), 2, 32);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveCampaignMapDrawBrushSizeToSession(size) {
+  try {
+    window.sessionStorage.setItem(CAMPAIGN_MAP_DRAW_BRUSH_SIZE_SESSION_KEY, String(size));
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function normalizeHexColor(value, fallback = DEFAULT_CAMPAIGN_MAP_DRAW_COLOR) {
+  const raw = `${value || ""}`.trim();
+  if (/^#[0-9a-f]{6}$/i.test(raw)) return raw.toLowerCase();
+  return fallback;
+}
+
+function loadCampaignMapDrawColorFromSession() {
+  try {
+    return normalizeHexColor(
+      window.sessionStorage.getItem(CAMPAIGN_MAP_DRAW_COLOR_SESSION_KEY),
+      DEFAULT_CAMPAIGN_MAP_DRAW_COLOR
+    );
+  } catch (_error) {
+    return DEFAULT_CAMPAIGN_MAP_DRAW_COLOR;
+  }
+}
+
+function saveCampaignMapDrawColorToSession(color) {
+  try {
+    window.sessionStorage.setItem(
+      CAMPAIGN_MAP_DRAW_COLOR_SESSION_KEY,
+      normalizeHexColor(color, DEFAULT_CAMPAIGN_MAP_DRAW_COLOR)
+    );
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
 function setRunMapFogBrushSizeUi(size) {
   const finalSize = clamp(Math.round(Number(size) || 56), 12, 220);
   state.runMap.fogBrushSize = finalSize;
@@ -2487,12 +2549,34 @@ function setPlayerMapDrawModeUi(mode) {
   if (els.playerMapViewport) {
     els.playerMapViewport.classList.toggle("map-draw-mode", nextMode !== "navigate");
   }
+  if (els.playerMapDrawControls) {
+    els.playerMapDrawControls.classList.toggle("hidden", nextMode === "navigate");
+  }
   if (nextMode !== "navigate" && state.playerMap.pingMode) {
     setPlayerMapPingModeUi(false);
   }
 }
 
-function drawStrokeOnSharedMapCanvas(canvas, fromX, fromY, toX, toY, mode) {
+function setPlayerMapDrawBrushSizeUi(size) {
+  const finalSize = clamp(Math.round(Number(size) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE), 2, 32);
+  state.playerMap.drawBrushSize = finalSize;
+  if (els.playerMapDrawSizeInput) {
+    els.playerMapDrawSizeInput.value = String(finalSize);
+  }
+  if (els.playerMapDrawSizeNumber) {
+    els.playerMapDrawSizeNumber.value = String(finalSize);
+  }
+}
+
+function setPlayerMapDrawColorUi(color) {
+  const finalColor = normalizeHexColor(color, DEFAULT_CAMPAIGN_MAP_DRAW_COLOR);
+  state.playerMap.drawColor = finalColor;
+  if (els.playerMapDrawColorInput) {
+    els.playerMapDrawColorInput.value = finalColor;
+  }
+}
+
+function drawStrokeOnSharedMapCanvas(canvas, fromX, fromY, toX, toY, mode, brushSize, color) {
   if (!(canvas instanceof HTMLCanvasElement)) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -2500,16 +2584,18 @@ function drawStrokeOnSharedMapCanvas(canvas, fromX, fromY, toX, toY, mode) {
   const startY = Number.isFinite(fromY) ? fromY : toY;
   const endX = Number.isFinite(toX) ? toX : startX;
   const endY = Number.isFinite(toY) ? toY : startY;
+  const finalBrushSize = clamp(Math.round(Number(brushSize) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE), 2, 32);
+  const finalColor = normalizeHexColor(color, DEFAULT_CAMPAIGN_MAP_DRAW_COLOR);
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.lineWidth = CAMPAIGN_MAP_DRAW_BRUSH_RADIUS * 2;
+  ctx.lineWidth = finalBrushSize * 2;
   ctx.globalCompositeOperation = mode === "erase" ? "destination-out" : "source-over";
-  ctx.strokeStyle = CAMPAIGN_MAP_DRAW_COLOR;
-  ctx.fillStyle = CAMPAIGN_MAP_DRAW_COLOR;
+  ctx.strokeStyle = finalColor;
+  ctx.fillStyle = finalColor;
   if (startX === endX && startY === endY) {
     ctx.beginPath();
-    ctx.arc(endX, endY, CAMPAIGN_MAP_DRAW_BRUSH_RADIUS, 0, Math.PI * 2);
+    ctx.arc(endX, endY, finalBrushSize, 0, Math.PI * 2);
     ctx.fill();
   } else {
     ctx.beginPath();
@@ -2587,7 +2673,9 @@ function paintPlayerMapDrawAt(x, y, mode = "draw") {
     state.playerMap.lastDrawY,
     x,
     y,
-    mode
+    mode,
+    state.playerMap.drawBrushSize,
+    state.playerMap.drawColor
   );
   state.playerMap.lastDrawX = x;
   state.playerMap.lastDrawY = y;
@@ -2656,7 +2744,7 @@ function updateCampaignMapFogCursorPreview(clientX, clientY, eventTarget = null)
   }
   if (
     eventTarget instanceof Element &&
-    eventTarget.closest(".map-touch-controls, .map-fog-brush-controls")
+    eventTarget.closest(".map-touch-controls, .map-fog-brush-controls, .map-draw-controls")
   ) {
     hideCampaignMapFogCursorPreview();
     return;
@@ -2760,11 +2848,33 @@ function setCampaignMapDrawMode(mode) {
   if (els.campaignMapViewport) {
     els.campaignMapViewport.classList.toggle("map-draw-mode", nextMode !== "navigate");
   }
+  if (els.campaignMapDrawControls) {
+    els.campaignMapDrawControls.classList.toggle("hidden", nextMode === "navigate");
+  }
   if (nextMode !== "navigate" && state.campaignMap.pingMode) {
     setCampaignMapPingModeUi(false);
   }
   if (nextMode !== "navigate" && state.campaignMap.fogMode !== "navigate") {
     setCampaignMapFogMode("navigate");
+  }
+}
+
+function setCampaignMapDrawBrushSizeUi(size) {
+  const finalSize = clamp(Math.round(Number(size) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE), 2, 32);
+  state.campaignMap.drawBrushSize = finalSize;
+  if (els.campaignMapDrawSizeInput) {
+    els.campaignMapDrawSizeInput.value = String(finalSize);
+  }
+  if (els.campaignMapDrawSizeNumber) {
+    els.campaignMapDrawSizeNumber.value = String(finalSize);
+  }
+}
+
+function setCampaignMapDrawColorUi(color) {
+  const finalColor = normalizeHexColor(color, DEFAULT_CAMPAIGN_MAP_DRAW_COLOR);
+  state.campaignMap.drawColor = finalColor;
+  if (els.campaignMapDrawColorInput) {
+    els.campaignMapDrawColorInput.value = finalColor;
   }
 }
 
@@ -3001,7 +3111,9 @@ function paintCampaignMapDrawAt(x, y, mode = "draw") {
     state.campaignMap.lastDrawY,
     x,
     y,
-    mode
+    mode,
+    state.campaignMap.drawBrushSize,
+    state.campaignMap.drawColor
   );
   state.campaignMap.lastDrawX = x;
   state.campaignMap.lastDrawY = y;
@@ -5747,11 +5859,17 @@ function bindEvents() {
   setRunMapFogBrushSizeUi(fogBrushSizeFromSession ?? state.runMap.fogBrushSize);
   const fogBrushShapeFromSession = loadRunMapFogBrushShapeFromSession();
   setRunMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.runMap.fogBrushShape);
+  const drawBrushSizeFromSession = loadCampaignMapDrawBrushSizeFromSession();
+  const drawColorFromSession = loadCampaignMapDrawColorFromSession();
   setPlayerMapDragLockUi(false);
+  setPlayerMapDrawBrushSizeUi(drawBrushSizeFromSession ?? state.playerMap.drawBrushSize);
+  setPlayerMapDrawColorUi(drawColorFromSession ?? state.playerMap.drawColor);
   setCampaignMapDragLockUi(false);
   setCampaignMapFogMode("navigate");
   setCampaignMapFogBrushSizeUi(fogBrushSizeFromSession ?? state.campaignMap.fogBrushSize);
   setCampaignMapFogBrushShapeUi(fogBrushShapeFromSession ?? state.campaignMap.fogBrushShape);
+  setCampaignMapDrawBrushSizeUi(drawBrushSizeFromSession ?? state.campaignMap.drawBrushSize);
+  setCampaignMapDrawColorUi(drawColorFromSession ?? state.campaignMap.drawColor);
   setRunMapPingModeUi(false);
   setPlayerMapPingModeUi(false);
   setPlayerMapDrawModeUi("navigate");
@@ -5870,6 +5988,43 @@ function bindEvents() {
   els.playerMapEraseBtn?.addEventListener("click", () => {
     setPlayerMapDrawModeUi(state.playerMap.drawMode === "erase" ? "navigate" : "erase");
   });
+  const onPlayerMapDrawSizeChange = () => {
+    const nextSize = clamp(
+      Math.round(Number(els.playerMapDrawSizeInput?.value) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE),
+      2,
+      32
+    );
+    setPlayerMapDrawBrushSizeUi(nextSize);
+    saveCampaignMapDrawBrushSizeToSession(nextSize);
+  };
+  const onPlayerMapDrawSizeNumberCommit = () => {
+    const parsed = parseRoundedNumberOrNull(els.playerMapDrawSizeNumber?.value);
+    if (parsed == null) {
+      setPlayerMapDrawBrushSizeUi(Number(els.playerMapDrawSizeInput?.value) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE);
+      return;
+    }
+    const nextSize = clamp(parsed, 2, 32);
+    setPlayerMapDrawBrushSizeUi(nextSize);
+    saveCampaignMapDrawBrushSizeToSession(nextSize);
+  };
+  const onPlayerMapDrawSizeNumberKeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    onPlayerMapDrawSizeNumberCommit();
+    els.playerMapDrawSizeNumber?.blur();
+  };
+  els.playerMapDrawSizeInput?.addEventListener("input", onPlayerMapDrawSizeChange);
+  els.playerMapDrawSizeInput?.addEventListener("change", onPlayerMapDrawSizeChange);
+  els.playerMapDrawSizeNumber?.addEventListener("change", onPlayerMapDrawSizeNumberCommit);
+  els.playerMapDrawSizeNumber?.addEventListener("blur", onPlayerMapDrawSizeNumberCommit);
+  els.playerMapDrawSizeNumber?.addEventListener("keydown", onPlayerMapDrawSizeNumberKeydown);
+  const onPlayerMapDrawColorChange = () => {
+    const nextColor = normalizeHexColor(els.playerMapDrawColorInput?.value, state.playerMap.drawColor);
+    setPlayerMapDrawColorUi(nextColor);
+    saveCampaignMapDrawColorToSession(nextColor);
+  };
+  els.playerMapDrawColorInput?.addEventListener("input", onPlayerMapDrawColorChange);
+  els.playerMapDrawColorInput?.addEventListener("change", onPlayerMapDrawColorChange);
 
   els.campaignMapZoomOutBtn?.addEventListener("click", () => {
     zoomCampaignMapAtPointer(1 / 1.12);
@@ -5963,6 +6118,45 @@ function bindEvents() {
   els.campaignMapEraseBtn?.addEventListener("click", () => {
     setCampaignMapDrawMode(state.campaignMap.drawMode === "erase" ? "navigate" : "erase");
   });
+  const onCampaignMapDrawSizeChange = () => {
+    const nextSize = clamp(
+      Math.round(Number(els.campaignMapDrawSizeInput?.value) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE),
+      2,
+      32
+    );
+    setCampaignMapDrawBrushSizeUi(nextSize);
+    saveCampaignMapDrawBrushSizeToSession(nextSize);
+  };
+  const onCampaignMapDrawSizeNumberCommit = () => {
+    const parsed = parseRoundedNumberOrNull(els.campaignMapDrawSizeNumber?.value);
+    if (parsed == null) {
+      setCampaignMapDrawBrushSizeUi(
+        Number(els.campaignMapDrawSizeInput?.value) || DEFAULT_CAMPAIGN_MAP_DRAW_BRUSH_SIZE
+      );
+      return;
+    }
+    const nextSize = clamp(parsed, 2, 32);
+    setCampaignMapDrawBrushSizeUi(nextSize);
+    saveCampaignMapDrawBrushSizeToSession(nextSize);
+  };
+  const onCampaignMapDrawSizeNumberKeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    onCampaignMapDrawSizeNumberCommit();
+    els.campaignMapDrawSizeNumber?.blur();
+  };
+  els.campaignMapDrawSizeInput?.addEventListener("input", onCampaignMapDrawSizeChange);
+  els.campaignMapDrawSizeInput?.addEventListener("change", onCampaignMapDrawSizeChange);
+  els.campaignMapDrawSizeNumber?.addEventListener("change", onCampaignMapDrawSizeNumberCommit);
+  els.campaignMapDrawSizeNumber?.addEventListener("blur", onCampaignMapDrawSizeNumberCommit);
+  els.campaignMapDrawSizeNumber?.addEventListener("keydown", onCampaignMapDrawSizeNumberKeydown);
+  const onCampaignMapDrawColorChange = () => {
+    const nextColor = normalizeHexColor(els.campaignMapDrawColorInput?.value, state.campaignMap.drawColor);
+    setCampaignMapDrawColorUi(nextColor);
+    saveCampaignMapDrawColorToSession(nextColor);
+  };
+  els.campaignMapDrawColorInput?.addEventListener("input", onCampaignMapDrawColorChange);
+  els.campaignMapDrawColorInput?.addEventListener("change", onCampaignMapDrawColorChange);
 
   if (els.runMapImage) {
     els.runMapImage.addEventListener("load", () => {
@@ -6172,7 +6366,7 @@ function bindEvents() {
         return;
       }
       if (els.playerMapImage.classList.contains("hidden")) return;
-      if (event.target instanceof Element && event.target.closest(".map-touch-controls")) return;
+      if (event.target instanceof Element && event.target.closest(".map-touch-controls, .map-draw-controls")) return;
       if (event.button !== 0) return;
       if (state.playerLiveViewMode === "campaign-map" && state.playerMap.drawMode !== "navigate") {
         const point = playerMapPointerToImageCoords(event);
@@ -6333,7 +6527,7 @@ function bindEvents() {
       updateCampaignMapFogCursorPreview(event.clientX, event.clientY, event.target);
       if (
         event.target instanceof Element &&
-        event.target.closest(".map-touch-controls, .map-fog-brush-controls")
+        event.target.closest(".map-touch-controls, .map-fog-brush-controls, .map-draw-controls")
       ) {
         return;
       }

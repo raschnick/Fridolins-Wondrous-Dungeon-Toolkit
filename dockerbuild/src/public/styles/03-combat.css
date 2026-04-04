@@ -625,6 +625,55 @@ body.page-player #playerLiveWrap {
   outline-offset: 1px;
 }
 
+.map-draw-controls {
+  position: absolute;
+  left: 4.15rem;
+  bottom: 0.7rem;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-width: 260px;
+  padding: 0.48rem 0.62rem;
+  border-radius: 12px;
+  border: 1px solid rgba(121, 145, 168, 0.3);
+  background: rgba(8, 17, 29, 0.82);
+  box-shadow: 0 10px 22px rgba(2, 8, 14, 0.35);
+  backdrop-filter: blur(3px);
+}
+
+.map-draw-controls label {
+  grid-column: 1 / 4;
+  font-size: 0.74rem;
+  color: #bfd4e9;
+  letter-spacing: 0.02em;
+}
+
+.map-draw-controls input[type="range"] {
+  width: 100%;
+}
+
+.map-draw-controls input[type="number"] {
+  width: 4.2rem;
+  padding: 0.16rem 0.3rem;
+  border-radius: 6px;
+  border: 1px solid rgba(126, 152, 176, 0.4);
+  background: rgba(12, 25, 38, 0.62);
+  color: #e4effa;
+  font-size: 0.84rem;
+}
+
+.map-draw-controls input[type="color"] {
+  width: 2.5rem;
+  height: 2rem;
+  padding: 0.12rem;
+  border-radius: 8px;
+  border: 1px solid rgba(126, 152, 176, 0.4);
+  background: rgba(12, 25, 38, 0.62);
+  cursor: pointer;
+}
+
 .run-map-fog-cursor {
   position: absolute;
   top: 0;
