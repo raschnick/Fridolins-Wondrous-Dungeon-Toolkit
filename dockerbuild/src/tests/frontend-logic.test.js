@@ -20,7 +20,12 @@ const { createRoutingController } = require("../public/js/controllers/routing-co
 const { createLibraryPageController } = require("../public/js/pages/library-page.js");
 const { createCampaignPageController } = require("../public/js/pages/campaign-page.js");
 const { createScenarioEditPageController } = require("../public/js/pages/scenario-edit-page.js");
-const { createPlayerLivePageController } = require("../public/js/pages/player-live-page.js");
+const {
+  buildPlayerTurnToken,
+  createPlayerLivePageController,
+  getPlayerTurnResourceState,
+  isClaimedCharacterForUser
+} = require("../public/js/pages/player-live-page.js");
 const { createScenarioRunPageController } = require("../public/js/pages/scenario-run-page.js");
 const { createCampaignMapPageController } = require("../public/js/pages/campaign-map-page.js");
 
@@ -402,6 +407,163 @@ test("scenario run shortcut handler routes edit shortcut from scenario edit to m
     "scenario-map",
     { campaignId: 7, scenarioId: 11 }
   ]]);
+});
+
+test("claimed character turn resources stay visible outside the player's turn", () => {
+  const playerTurnResourcesByKey = {};
+  const playerTurnResourceTurnTokenByCombatant = {};
+  const shared = {
+    scenarioId: 14,
+    round: 3,
+    turnIndex: 1,
+    activeCombatantId: 9
+  };
+  const authUser = { id: 22, role: "player" };
+  const claimedCombatant = {
+    id: 5,
+    kind: "character",
+    claimed_user_id: 22
+  };
+
+  const result = getPlayerTurnResourceState({
+    combatant: claimedCombatant,
+    shared,
+    authUser,
+    playerTurnResourcesByKey,
+    playerTurnResourceTurnTokenByCombatant
+  });
+
+  assert.equal(result.visible, true);
+  assert.equal(result.toggleable, false);
+  assert.equal(result.key, "14:5");
+  assert.deepEqual(result.resources, {
+    actionUsed: false,
+    bonusUsed: false,
+    movementUsed: false
+  });
+  assert.deepEqual(playerTurnResourcesByKey["14:5"], result.resources);
+});
+
+test("claimed character turn resources are toggleable on the player's turn", () => {
+  const playerTurnResourcesByKey = {};
+  const playerTurnResourceTurnTokenByCombatant = {};
+  const shared = {
+    scenarioId: 14,
+    round: 3,
+    turnIndex: 4,
+    activeCombatantId: 5
+  };
+  const authUser = { id: 22, role: "player" };
+  const claimedCombatant = {
+    id: 5,
+    kind: "character",
+    claimed_user_id: 22
+  };
+
+  const result = getPlayerTurnResourceState({
+    combatant: claimedCombatant,
+    shared,
+    authUser,
+    playerTurnResourcesByKey,
+    playerTurnResourceTurnTokenByCombatant
+  });
+
+  assert.equal(result.visible, true);
+  assert.equal(result.toggleable, true);
+  assert.equal(result.key, "14:5");
+  assert.equal(playerTurnResourceTurnTokenByCombatant["14:5"], "14:3:4:5");
+});
+
+test("claimed character turn resources reset only when that character gets a fresh turn", () => {
+  const playerTurnResourcesByKey = {
+    "14:5": {
+      actionUsed: true,
+      bonusUsed: false,
+      movementUsed: true
+    }
+  };
+  const playerTurnResourceTurnTokenByCombatant = {
+    "14:5": "14:3:4:5"
+  };
+  const authUser = { id: 22, role: "player" };
+  const claimedCombatant = {
+    id: 5,
+    kind: "character",
+    claimed_user_id: 22
+  };
+
+  const sameTurn = getPlayerTurnResourceState({
+    combatant: claimedCombatant,
+    shared: {
+      scenarioId: 14,
+      round: 3,
+      turnIndex: 4,
+      activeCombatantId: 5
+    },
+    authUser,
+    playerTurnResourcesByKey,
+    playerTurnResourceTurnTokenByCombatant
+  });
+  assert.deepEqual(sameTurn.resources, {
+    actionUsed: true,
+    bonusUsed: false,
+    movementUsed: true
+  });
+
+  const freshTurn = getPlayerTurnResourceState({
+    combatant: claimedCombatant,
+    shared: {
+      scenarioId: 14,
+      round: 4,
+      turnIndex: 4,
+      activeCombatantId: 5
+    },
+    authUser,
+    playerTurnResourcesByKey,
+    playerTurnResourceTurnTokenByCombatant
+  });
+  assert.deepEqual(freshTurn.resources, {
+    actionUsed: false,
+    bonusUsed: false,
+    movementUsed: false
+  });
+  assert.equal(playerTurnResourceTurnTokenByCombatant["14:5"], "14:4:4:5");
+});
+
+test("turn resources stay hidden for unclaimed or foreign characters", () => {
+  assert.equal(
+    isClaimedCharacterForUser(
+      { id: 5, kind: "character", claimed_user_id: 30 },
+      { id: 22, role: "player" }
+    ),
+    false
+  );
+  assert.deepEqual(
+    getPlayerTurnResourceState({
+      combatant: { id: 5, kind: "enemy", claimed_user_id: 22 },
+      shared: { scenarioId: 14, round: 3, turnIndex: 4, activeCombatantId: 5 },
+      authUser: { id: 22, role: "player" },
+      playerTurnResourcesByKey: {},
+      playerTurnResourceTurnTokenByCombatant: {}
+    }),
+    {
+      visible: false,
+      toggleable: false,
+      key: null,
+      resources: null
+    }
+  );
+});
+
+test("player turn token is scoped to the active combatant turn instance", () => {
+  assert.equal(
+    buildPlayerTurnToken({ scenarioId: 7, round: 2, turnIndex: 5, activeCombatantId: 11 }, 11),
+    "7:2:5:11"
+  );
+  assert.equal(
+    buildPlayerTurnToken({ scenarioId: 7, round: 2, turnIndex: 5, activeCombatantId: 9 }, 11),
+    null
+  );
 });
 
 test("page-specific controller modules export controller factories", () => {

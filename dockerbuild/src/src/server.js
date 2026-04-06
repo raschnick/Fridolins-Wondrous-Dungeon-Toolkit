@@ -149,6 +149,7 @@ function listCombatants(scenarioId) {
         sc.id, sc.scenario_id, sc.kind, CASE WHEN sc.enemy_role = 'npc' THEN 'ally' ELSE sc.enemy_role END AS enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
+        cc.user_id AS claimed_user_id,
         cu.profile_image_data AS claimed_profile_image_data,
         ms.monster_image_data,
         ms.token_image_data AS monster_token_image_data,
@@ -193,6 +194,7 @@ function getCombatantById(combatantId) {
         sc.id, sc.scenario_id, sc.kind, CASE WHEN sc.enemy_role = 'npc' THEN 'ally' ELSE sc.enemy_role END AS enemy_role, sc.character_id, sc.monster_id, sc.name,
         sc.initiative, sc.hp, sc.player_visible, sc.reaction_available, sc.reaction_auto_readied, sc.is_legendary, sc.legendary_actions_count, sc.legendary_actions_remaining, sc.created_at,
         c.class_name AS character_class,
+        cc.user_id AS claimed_user_id,
         cu.profile_image_data AS claimed_profile_image_data,
         ms.monster_image_data,
         ms.token_image_data AS monster_token_image_data,
@@ -787,6 +789,9 @@ function buildPlayerLiveSnapshotForUser(userId) {
           name: combatant.name,
           initiative: combatant.initiative,
           kind: combatant.kind,
+          claimed_user_id: Number.isInteger(Number(combatant.claimed_user_id))
+            ? Number(combatant.claimed_user_id)
+            : null,
           enemy_role: combatant.enemy_role,
           monster_size: combatant.monster_size,
           monster_token_image_data: combatant.monster_token_image_data || "",

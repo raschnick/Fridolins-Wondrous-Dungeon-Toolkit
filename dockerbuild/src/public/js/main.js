@@ -122,6 +122,7 @@ const state = {
     saveDrawTimer: null
   },
   playerTurnResourcesByKey: {},
+  playerTurnResourceTurnTokenByCombatant: {},
   runPreviewEnemyId: null,
   sceneImages: [],
   sceneSearchQuery: "",

@@ -277,6 +277,11 @@ body.page-player #playerLiveWrap {
   color: #ffeef0;
 }
 
+.player-turn-resource-btn.locked {
+  opacity: 0.78;
+  cursor: default;
+}
+
 .edit-add-layout {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(560px, 2.3fr);

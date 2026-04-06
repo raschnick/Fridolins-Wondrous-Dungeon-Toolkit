@@ -5,6 +5,92 @@
   }
   root.FWDTPlayerLivePage = exported;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  function isClaimedCharacterForUser(combatant, authUser) {
+    const authUserId = Number(authUser?.id);
+    const claimedUserId = Number(combatant?.claimed_user_id);
+    return (
+      combatant?.kind === "character" &&
+      Number.isInteger(authUserId) &&
+      authUserId > 0 &&
+      Number.isInteger(claimedUserId) &&
+      claimedUserId === authUserId
+    );
+  }
+
+  function buildPlayerTurnToken(shared, combatantId) {
+    const scenarioId = Number(shared?.scenarioId);
+    const round = Number(shared?.round);
+    const turnIndex = Number(shared?.turnIndex);
+    const activeCombatantId = Number(shared?.activeCombatantId);
+    if (
+      !Number.isInteger(scenarioId) ||
+      !Number.isInteger(round) ||
+      !Number.isInteger(turnIndex) ||
+      !Number.isInteger(activeCombatantId) ||
+      activeCombatantId !== combatantId
+    ) {
+      return null;
+    }
+    return `${scenarioId}:${round}:${turnIndex}:${combatantId}`;
+  }
+
+  function getPlayerTurnResourceState({
+    combatant,
+    shared,
+    authUser,
+    playerTurnResourcesByKey,
+    playerTurnResourceTurnTokenByCombatant
+  }) {
+    if (!isClaimedCharacterForUser(combatant, authUser)) {
+      return {
+        visible: false,
+        toggleable: false,
+        key: null,
+        resources: null
+      };
+    }
+
+    const scenarioId = Number(shared?.scenarioId);
+    const combatantId = Number(combatant?.id);
+    if (!Number.isInteger(scenarioId) || !Number.isInteger(combatantId)) {
+      return {
+        visible: true,
+        toggleable: false,
+        key: null,
+        resources: {
+          actionUsed: false,
+          bonusUsed: false,
+          movementUsed: false
+        }
+      };
+    }
+
+    const key = `${scenarioId}:${combatantId}`;
+    const turnToken = buildPlayerTurnToken(shared, combatantId);
+    if (turnToken && playerTurnResourceTurnTokenByCombatant[key] !== turnToken) {
+      playerTurnResourceTurnTokenByCombatant[key] = turnToken;
+      playerTurnResourcesByKey[key] = {
+        actionUsed: false,
+        bonusUsed: false,
+        movementUsed: false
+      };
+    }
+    if (!playerTurnResourcesByKey[key]) {
+      playerTurnResourcesByKey[key] = {
+        actionUsed: false,
+        bonusUsed: false,
+        movementUsed: false
+      };
+    }
+
+    return {
+      visible: true,
+      toggleable: Boolean(turnToken),
+      key,
+      resources: playerTurnResourcesByKey[key]
+    };
+  }
+
   function createPlayerLivePageController({
     state,
     els,
@@ -497,17 +583,15 @@
         const name = createCombatantNameElement(combatant);
         row.appendChild(name);
 
-        const isActivePlayerTurn = combatant.kind === "character" && combatant.id === shared.activeCombatantId;
-        if (isActivePlayerTurn) {
-          const turnResourceKey = `${shared.scenarioId}:${shared.round}:${shared.activeCombatantId}`;
-          if (!state.playerTurnResourcesByKey[turnResourceKey]) {
-            state.playerTurnResourcesByKey[turnResourceKey] = {
-              actionUsed: false,
-              bonusUsed: false,
-              movementUsed: false
-            };
-          }
-          const resources = state.playerTurnResourcesByKey[turnResourceKey];
+        const turnResourceState = getPlayerTurnResourceState({
+          combatant,
+          shared,
+          authUser: state.authUser,
+          playerTurnResourcesByKey: state.playerTurnResourcesByKey,
+          playerTurnResourceTurnTokenByCombatant: state.playerTurnResourceTurnTokenByCombatant
+        });
+        if (turnResourceState.visible && turnResourceState.resources) {
+          const resources = turnResourceState.resources;
           const controls = document.createElement("div");
           controls.className = "player-turn-resources";
           const options = [
@@ -523,10 +607,14 @@
             button.setAttribute("data-tip", playerTurnResourceTips[tipKey]);
             button.setAttribute("data-tip-style", tipKey === "action" ? "action-list" : "plain");
             const isUsed = Boolean(resources[option.key]);
+            const isToggleable = Boolean(turnResourceState.toggleable);
             button.classList.toggle("used", isUsed);
+            button.classList.toggle("locked", !isToggleable);
             button.setAttribute("aria-pressed", isUsed ? "true" : "false");
+            button.setAttribute("aria-disabled", isToggleable ? "false" : "true");
             button.textContent = option.label;
             button.addEventListener("click", () => {
+              if (!isToggleable) return;
               resources[option.key] = !resources[option.key];
               const nextUsed = Boolean(resources[option.key]);
               button.classList.toggle("used", nextUsed);
@@ -617,5 +705,10 @@
     };
   }
 
-  return { createPlayerLivePageController };
+  return {
+    buildPlayerTurnToken,
+    createPlayerLivePageController,
+    getPlayerTurnResourceState,
+    isClaimedCharacterForUser
+  };
 });
